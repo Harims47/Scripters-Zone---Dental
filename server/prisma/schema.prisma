@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Core User & Identity
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  role         String
+  staff        Staff?   @relation(fields: [staffId], references: [id])
+  staffId      String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Staff {
+  id        String   @id @default(uuid())
+  name      String
+  role      String
+  user      User?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Patient {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  age       Int
+  gender    String
+  status    String   @default("Active")
+  visits    Visit[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ----------------------------------------------------------------------------
+// Workflow Entities
+// ----------------------------------------------------------------------------
+
+model Appointment {
+  id         String   @id @default(uuid())
+  patientId  String
+  providerId String
+  date       String
+  time       String
+  type       String
+  status     String   @default("Scheduled")
+  visit      Visit?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Visit {
+  id             String        @id @default(uuid())
+  patientId      String
+  doctorId       String
+  appointmentId  String?       @unique
+  status         String
+  amountDue      Float         @default(0)
+  patient        Patient       @relation(fields: [patientId], references: [id])
+  appointment    Appointment?  @relation(fields: [appointmentId], references: [id])
+  queueEntry     QueueEntry?
+  consultation   Consultation?
+  prescription   Prescription?
+  dispensing     Dispensing?
+  payment        Payment?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model QueueEntry {
+  id               String   @id @default(uuid())
+  visitId          String   @unique
+  patientId        String
+  assignedDoctorId String
+  position         Int
+  status           String
+  priority         Boolean  @default(false)
+  arrivalTime      String
+  visit            Visit    @relation(fields: [visitId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Consultation {
+  id             String   @id @default(uuid())
+  visitId        String   @unique
+  doctorId       String
+  reasonForVisit String
+  clinicalNotes  String
+  status         String   @default("In Progress")
+  visit          Visit    @relation(fields: [visitId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ----------------------------------------------------------------------------
+// Pharmacy & Dispensing
+// ----------------------------------------------------------------------------
+
+model Medicine {
+  id               String             @id @default(uuid())
+  name             String
+  category         String
+  strength         String
+  currentStock     Int                @default(0)
+  minimumStock     Int                @default(0)
+  prescriptionItems PrescriptionItem[]
+  dispensingItems  DispensingItem[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Prescription {
+  id          String             @id @default(uuid())
+  visitId     String             @unique
+  doctorId    String
+  status      String             @default("Draft")
+  notes       String
+  visit       Visit              @relation(fields: [visitId], references: [id])
+  items       PrescriptionItem[]
+  dispensing  Dispensing?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model PrescriptionItem {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  medicineId     String
+  quantity       Int
+  instructions   String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+  medicine       Medicine     @relation(fields: [medicineId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Dispensing {
+  id             String           @id @default(uuid())
+  visitId        String           @unique
+  prescriptionId String           @unique
+  status         String           @default("Pending")
+  visit          Visit            @relation(fields: [visitId], references: [id])
+  prescription   Prescription     @relation(fields: [prescriptionId], references: [id])
+  items          DispensingItem[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model DispensingItem {
+  id                 String     @id @default(uuid())
+  dispensingId       String
+  medicineId         String
+  prescribedQuantity Int
+  dispensedQuantity  Int        @default(0)
+  dispensing         Dispensing @relation(fields: [dispensingId], references: [id])
+  medicine           Medicine   @relation(fields: [medicineId], references: [id])
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+}
+
+// ----------------------------------------------------------------------------
+// Finance
+// ----------------------------------------------------------------------------
+
+model Payment {
+  id        String   @id @default(uuid())
+  visitId   String   @unique
+  amount    Float
+  method    String
+  status    String   @default("Pending")
+  visit     Visit    @relation(fields: [visitId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
