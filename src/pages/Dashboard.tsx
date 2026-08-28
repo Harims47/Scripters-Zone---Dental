@@ -10,20 +10,10 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { AlertCircle, PlayCircle } from "lucide-react"
 
-// --- DEMO DATA ---
-const appointmentsData = [
-  { id: "a1", time: "09:00 AM", patientName: "Patricia Williams", doctor: "Dr. Smith", type: "Consultation" },
-  { id: "a2", time: "09:30 AM", patientName: "John Brown", doctor: "Dr. Adams", type: "Follow-up" },
-  { id: "a3", time: "10:00 AM", patientName: "Linda Davis", doctor: "Dr. Lee", type: "Root Canal" },
-  { id: "a4", time: "10:45 AM", patientName: "Michael Miller", doctor: "Dr. Smith", type: "Cleaning" },
-]
-
-
-
 export function Dashboard() {
   const { currentUser } = useAuth()
   const navigate = useNavigate()
-  const { queue, patients, startConsultationFlow, callPatient } = useClinicContext()
+  const { queue, patients, appointments, dispensings, payments, visits, startConsultationFlow, callPatient } = useClinicContext()
   const isReceptionist = currentUser?.role === 'Receptionist'
 
   // Find if there is a patient called for this doctor
@@ -54,6 +44,32 @@ export function Dashboard() {
       }
     })
     .slice(0, 5) // Show top 5
+
+  const realAppointmentsData = appointments
+    .filter(a => a.status !== 'Cancelled' && a.status !== 'No Show')
+    .map(a => {
+      const p = patients.find(pt => pt.id === a.patientId)
+      return {
+        id: a.id,
+        time: a.time,
+        patientName: p?.name || 'Unknown',
+        doctor: a.providerId,
+        type: a.type
+      }
+    })
+    .slice(0, 5)
+
+  // Derived KPI Counts
+  const today = new Date().toISOString().split('T')[0]
+  const waitingNowCount = queue.filter(q => q.status === 'Waiting').length
+  const todayAppointmentsCount = appointments.filter(a => a.date === today && !['Cancelled', 'No Show'].includes(a.status)).length
+  const readyForDispensingCount = dispensings.filter(d => d.status === 'Pending').length
+  const pendingPaymentsCount = payments.filter(p => p.status === 'Pending').length
+
+  const myWaitingCount = queue.filter(q => q.assignedDoctorId === currentUser?.staffId && q.status === 'Waiting').length
+  const inConsultationCount = queue.filter(q => q.assignedDoctorId === currentUser?.staffId && q.status === 'In Progress').length
+  const myPatientsTodayCount = visits.filter(v => v.doctorId === currentUser?.staffId && v.status !== 'CANCELLED').length
+  const myCompletedTodayCount = visits.filter(v => v.doctorId === currentUser?.staffId && v.status === 'COMPLETED').length
 
   const handleQueueAction = (item: any) => {
     if (isReceptionist) {
@@ -99,38 +115,38 @@ export function Dashboard() {
       {isReceptionist ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard 
-            title="Waiting Now" value="3" icon={Clock} trendLabel="Call patients when ready" 
+            title="Waiting Now" value={waitingNowCount.toString()} icon={Clock} trendLabel="Call patients when ready" 
             colorClass="text-amber-600" bgClass="bg-amber-100" 
           />
           <KpiCard 
-            title="Today's Appointments" value="8" icon={Users} trendLabel="Next at 10:00 AM" 
+            title="Today's Appointments" value={todayAppointmentsCount.toString()} icon={Users} trendLabel="Next at 10:00 AM" 
             colorClass="text-blue-600" bgClass="bg-blue-100" 
           />
           <KpiCard 
-            title="Ready for Dispensing" value="2" icon={UserCheck} trendLabel="Medicines ready" 
+            title="Ready for Dispensing" value={readyForDispensingCount.toString()} icon={UserCheck} trendLabel="Medicines ready" 
             colorClass="text-emerald-600" bgClass="bg-emerald-100" 
           />
           <KpiCard 
-            title="Pending Payments" value="5" icon={CreditCard} trendLabel="Collection required" 
+            title="Pending Payments" value={pendingPaymentsCount.toString()} icon={CreditCard} trendLabel="Collection required" 
             colorClass="text-rose-600" bgClass="bg-rose-100" 
           />
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard 
-            title="My Waiting Patients" value="3" icon={Clock} trendLabel="Ready for consultation" 
+            title="My Waiting Patients" value={myWaitingCount.toString()} icon={Clock} trendLabel="Ready for consultation" 
             colorClass="text-amber-600" bgClass="bg-amber-100" 
           />
           <KpiCard 
-            title="In Consultation" value="1" icon={UserCheck} trendLabel="Current active visits" 
+            title="In Consultation" value={inConsultationCount.toString()} icon={UserCheck} trendLabel="Current active visits" 
             colorClass="text-blue-600" bgClass="bg-blue-100" 
           />
           <KpiCard 
-            title="Today's Patients" value="12" icon={Users} trendLabel="Assigned to you" 
+            title="Today's Patients" value={myPatientsTodayCount.toString()} icon={Users} trendLabel="Assigned to you" 
             colorClass="text-primary" bgClass="bg-primary/10" 
           />
           <KpiCard 
-            title="Completed Today" value="8" icon={CheckCircle2} trendLabel="Visits finished" 
+            title="Completed Today" value={myCompletedTodayCount.toString()} icon={CheckCircle2} trendLabel="Visits finished" 
             colorClass="text-emerald-600" bgClass="bg-emerald-100" 
           />
 
@@ -148,7 +164,7 @@ export function Dashboard() {
               <QueueSummary items={realQueueData} title={isReceptionist ? "Patients Waiting" : "My Patients Waiting"} isDoctor={!isReceptionist} onAction={handleQueueAction} />
             </div>
             <div className="h-[420px]">
-              <AppointmentSummary items={appointmentsData} title="Today's Appointments" />
+              <AppointmentSummary items={realAppointmentsData} title="Today's Appointments" />
             </div>
           </div>
           

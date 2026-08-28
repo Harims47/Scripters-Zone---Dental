@@ -5,7 +5,9 @@ export interface DemoUser {
   id: string
   name: string
   role: ClinicRole
-  staffId?: string // Link to a canonical staff record if applicable
+  staffId?: string
+  username?: string
+  password?: string
 }
 
 // Derive users from the existing mock staff data where possible
@@ -20,13 +22,17 @@ export const DEMO_USERS: DemoUser[] = [
     id: 'U-002',
     name: 'Dr. Carter',
     role: 'Duty Doctor',
-    staffId: DEMO_STAFF.find(s => s.role === 'Duty Doctor')?.id
+    staffId: DEMO_STAFF.find(s => s.role === 'Duty Doctor')?.id,
+    username: 'doctor',
+    password: 'password123'
   },
   {
     id: 'U-003',
     name: 'Reception User',
     role: 'Receptionist',
-    staffId: DEMO_STAFF.find(s => s.role === 'Receptionist')?.id
+    staffId: DEMO_STAFF.find(s => s.role === 'Receptionist')?.id,
+    username: 'reception',
+    password: 'password123'
   },
   {
     id: 'U-004',

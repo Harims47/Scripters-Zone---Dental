@@ -1,23 +1,12 @@
 import React, { createContext, useContext, useState } from 'react'
 import type { Patient, Visit, QueueEntry, Consultation, Prescription, Dispensing, Payment } from '../types/domain'
 import {
-  DEMO_CANONICAL_PATIENT,
-  DEMO_CANONICAL_VISIT,
-  DEMO_CANONICAL_QUEUE,
-  DEMO_CANONICAL_CONSULTATION,
-  DEMO_CANONICAL_PRESCRIPTION,
-  DEMO_PATIENTS,
-  DEMO_QUEUE,
   DEMO_MEDICINES,
-  DEMO_APPOINTMENTS,
-  DEMO_VISITS,
-  DEMO_PRESCRIPTIONS,
-  DEMO_DISPENSING,
-  DEMO_PAYMENTS,
   type Medicine,
   type Appointment
 } from '../lib/mock-data'
 import { canTransitionVisit, type VisitStatus } from '../lib/visit-status'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 
 interface ClinicContextType {
   patients: Patient[]
@@ -53,52 +42,15 @@ interface ClinicContextType {
 const ClinicContext = createContext<ClinicContextType | null>(null)
 
 export function ClinicProvider({ children }: { children: React.ReactNode }) {
-  const [patients, setPatients] = useState<Patient[]>(() => {
-    const map = new Map<string, Patient>()
-    map.set(DEMO_CANONICAL_PATIENT.id, DEMO_CANONICAL_PATIENT)
-    DEMO_PATIENTS.forEach(p => {
-      if (!map.has(p.id)) {
-        map.set(p.id, p as any)
-      }
-    })
-    return Array.from(map.values())
-  })
-
-  const [appointments, setAppointments] = useState<Appointment[]>(DEMO_APPOINTMENTS.map(a => ({ ...a })))
-
-  const [visits, setVisits] = useState<Visit[]>([
-    { ...DEMO_CANONICAL_VISIT, status: 'CALLED' },
-    { ...DEMO_CANONICAL_VISIT, id: "VIS-0000", status: "COMPLETED" },
-    ...(typeof DEMO_VISITS !== 'undefined' ? DEMO_VISITS.map(v => ({...v})) : [])
-  ])
-
-  const [queue, setQueue] = useState<QueueEntry[]>(() => {
-    const list: QueueEntry[] = [DEMO_CANONICAL_QUEUE]
-    DEMO_QUEUE.forEach(q => {
-      if (q.id !== DEMO_CANONICAL_QUEUE.id) {
-        list.push({
-          id: q.id,
-          visitId: q.visitId,
-          patientId: q.patientId,
-          assignedDoctorId: q.doctorId,
-          position: parseInt(q.queueNumber) || 99,
-          // Change one to 'Called' so doctor can start consultation
-          status: q.id === 'Q-001' ? 'Called' : (q.status === 'With Doctor' ? 'In Progress' : q.status as any),
-          priority: q.priority === 'Urgent',
-          arrivalTime: q.arrivalTime
-        })
-      }
-    })
-    return list
-  })
-
-  const [consultations, setConsultations] = useState<Consultation[]>([{ ...DEMO_CANONICAL_CONSULTATION, visitId: "VIS-0000" }])
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([
-    { ...DEMO_CANONICAL_PRESCRIPTION, visitId: "VIS-0000" },
-    ...(typeof DEMO_PRESCRIPTIONS !== 'undefined' ? DEMO_PRESCRIPTIONS.map(p => ({...p})) : [])
-  ])
-  const [dispensings, setDispensings] = useState<Dispensing[]>(typeof DEMO_DISPENSING !== 'undefined' ? DEMO_DISPENSING.map(d => ({...d})) : [])
-  const [payments, setPayments] = useState<Payment[]>(typeof DEMO_PAYMENTS !== 'undefined' ? DEMO_PAYMENTS.map(p => ({...p})) : [])
+  const [patients, setPatients] = useLocalStorage<Patient[]>('dc_v2_patients', [])
+  const [appointments, setAppointments] = useLocalStorage<Appointment[]>('dc_v2_appointments', [])
+  const [visits, setVisits] = useLocalStorage<Visit[]>('dc_v2_visits', [])
+  const [queue, setQueue] = useLocalStorage<QueueEntry[]>('dc_v2_queue', [])
+  const [consultations, setConsultations] = useLocalStorage<Consultation[]>('dc_v2_consultations', [])
+  const [prescriptions, setPrescriptions] = useLocalStorage<Prescription[]>('dc_v2_prescriptions', [])
+  const [dispensings, setDispensings] = useLocalStorage<Dispensing[]>('dc_v2_dispensings', [])
+  const [payments, setPayments] = useLocalStorage<Payment[]>('dc_v2_payments', [])
+  
   const [medicines, setMedicines] = useState<Medicine[]>(DEMO_MEDICINES.map(m => ({ ...m })))
 
   const normalizePhone = (phone: string) => {
