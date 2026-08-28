@@ -10,9 +10,9 @@ import { Textarea } from '../components/ui/textarea'
 import { Label } from '../components/ui/label'
 import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { DrawerSection, ReadOnlyField, PatientProfileHeader } from '../components/ui/drawer-patterns'
-import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components'
+import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog'
 
 import { DraggableMedicineItem, PrescriptionDropZone, PrescriptionRow } from '../components/prescription/prescription-components'
 import type { PrescriptionLineItem } from '../components/prescription/prescription-components'
@@ -21,7 +21,6 @@ import { type Medicine } from '../lib/mock-data'
 
 import { useClinicContext } from '../context/ClinicContext'
 import { DEMO_STAFF } from '../lib/mock-data'
-import { DEMO_MEDICINES } from '../lib/mock-data/medicines'
 
 export function DoctorWorkspacePage() {
   const { patientId } = useParams<{ patientId: string }>()
@@ -196,35 +195,21 @@ export function DoctorWorkspacePage() {
   }
 
   // Patient History Resolution
-  const getStableDate = (id: string) => {
-    const num = parseInt(id.replace(/\D/g, '')) || 0
-    const d = new Date()
-    d.setDate(d.getDate() - (num % 60) - 1)
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-  }
-
   const patientHistory = visits
-    .filter(v => v.patientId === patient.id)
+    .filter(v => v.patientId === patient.id && v.status === 'COMPLETED' && v.id !== visitId)
     .map(v => {
-      const isCurrent = v.id === visit.id
       return {
         id: v.id,
-        date: isCurrent ? 'Today' : getStableDate(v.id),
-        title: isCurrent ? 'Current Visit' : (v.status === 'COMPLETED' ? 'Consultation completed' : 'Previous Visit'),
+        date: 'Completed Visit',
+        title: v.reasonForVisit || 'Consultation completed',
         status: v.status
       }
     })
-    .sort((a, b) => a.date === 'Today' ? -1 : b.date === 'Today' ? 1 : b.date.localeCompare(a.date))
 
   const handleViewPastVisit = (id: string) => {
     setSelectedHistoryVisitId(id)
     setHistoryDrawerOpen(true)
   }
-
-  const selectedHistoryConsultation = consultations.find(c => c.visitId === selectedHistoryVisitId)
-  const selectedHistoryPrescription = prescriptions.find(p => p.visitId === selectedHistoryVisitId)
-  const selectedHistoryVisitObj = visits.find(v => v.id === selectedHistoryVisitId)
-  const historicalDoctor = DEMO_STAFF.find(d => d.id === selectedHistoryVisitObj?.doctorId)
 
   const filteredMedicines = medicines.filter(m => {
     const matchesSearch = m.name.toLowerCase().includes(medSearch.toLowerCase())
@@ -418,81 +403,18 @@ export function DoctorWorkspacePage() {
           </div>
         </div>
 
-        {/* Historical Visit Drawer */}
-        <Sheet open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>
-          <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0">
-            <PatientProfileHeader 
-              name={patient.name}
-              patientId={patient.id}
-              phone={patient.phone}
-              statusElement={<Badge variant="secondary">Historical Record</Badge>}
-              modeText={`Visit • ${selectedHistoryVisitId}`}
-            />
-            <SheetScrollArea className="p-0 bg-slate-50 flex-1">
-              <div className="px-6 sm:px-8 py-8 space-y-8">
-                
-                <DrawerSection title="Visit Details">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <ReadOnlyField label="Date" value={selectedHistoryVisitId ? getStableDate(selectedHistoryVisitId) : '-'} />
-                    <ReadOnlyField label="Consulting Doctor" value={historicalDoctor?.name || 'Unknown'} />
-                  </div>
-                </DrawerSection>
-
-                <DrawerSection title="Clinical Notes">
-                  {selectedHistoryConsultation ? (
-                    <div className="space-y-4">
-                      <ReadOnlyField label="Reason for Visit" value={selectedHistoryConsultation.reasonForVisit || '-'} />
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Observations</Label>
-                        <div className="text-sm text-slate-700 bg-white p-3 rounded-lg border leading-relaxed whitespace-pre-wrap">
-                          {selectedHistoryConsultation.clinicalNotes || 'No notes recorded.'}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500 p-4 bg-white rounded-lg border text-center">
-                      No consultation notes found for this visit.
-                    </div>
-                  )}
-                </DrawerSection>
-
-                <DrawerSection title="Prescription">
-                  {selectedHistoryPrescription && selectedHistoryPrescription.items.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedHistoryPrescription.items.map(item => {
-                        const med = DEMO_MEDICINES.find((m: any) => m.id === item.medicineId)
-                        return (
-                          <div key={item.id} className="bg-white p-3 rounded-lg border text-sm">
-                            <div className="font-semibold text-slate-900 mb-1">{med ? med.name : item.medicineId}</div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
-                              <div>Qty: <span className="font-medium text-slate-900">{item.quantity}</span></div>
-                              <div>Dosage: <span className="font-medium text-slate-900">{item.dosage || '-'}</span></div>
-                              <div>Freq: <span className="font-medium text-slate-900">{item.frequency || '-'}</span></div>
-                              <div>Dur: <span className="font-medium text-slate-900">{item.duration || '-'}</span></div>
-                            </div>
-                            {item.instructions && (
-                              <div className="mt-2 text-xs text-slate-500 border-t pt-2">
-                                {item.instructions}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500 p-4 bg-white rounded-lg border text-center">
-                      No prescription recorded for this visit.
-                    </div>
-                  )}
-                </DrawerSection>
-
-              </div>
-            </SheetScrollArea>
-            <div className="p-4 border-t bg-white flex justify-end">
-              <Button variant="outline" onClick={() => setHistoryDrawerOpen(false)}>Close</Button>
-            </div>
-          </SheetContent>
-        </Sheet>
+        {/* Historical Visit Dialog */}
+        <Dialog open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>
+          <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Historical Visit Details</DialogTitle>
+              <DialogDescription>
+                Review the read-only clinical records for this completed visit.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedHistoryVisitId && <HistoricalVisitDetails visitId={selectedHistoryVisitId} />}
+          </DialogContent>
+        </Dialog>
 
       </div>
     </DndContext>

@@ -18,7 +18,7 @@ export function DispensingMedicineItem({
   onChange
 }: {
   item: DispensingItem
-  onChange: (id: string, qty: number) => void
+  onChange?: (id: string, qty: number) => void
 }) {
   const category = MEDICINE_CATEGORIES[item.categoryId]
   const isPartial = item.dispensedQty < item.prescribedQty
@@ -26,11 +26,13 @@ export function DispensingMedicineItem({
   const isLowStock = item.availableStock < item.prescribedQty && item.availableStock > 0
 
   const handleDecrease = () => {
-    if (item.dispensedQty > 0) onChange(item.id, item.dispensedQty - 1)
+    if (item.dispensedQty > 0) onChange?.(item.id, item.dispensedQty - 1)
   }
 
   const handleIncrease = () => {
-    if (item.dispensedQty < item.prescribedQty) onChange(item.id, item.dispensedQty + 1)
+    if (item.dispensedQty < item.prescribedQty && item.availableStock > 0) {
+      onChange?.(item.id, item.dispensedQty + 1)
+    }
   }
 
   return (

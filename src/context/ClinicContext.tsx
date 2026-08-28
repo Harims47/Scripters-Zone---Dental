@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext } from 'react'
 import type { Patient, Visit, QueueEntry, Consultation, Prescription, Dispensing, Payment } from '../types/domain'
 import {
   DEMO_MEDICINES,
@@ -18,8 +18,8 @@ interface ClinicContextType {
   dispensings: Dispensing[]
   payments: Payment[]
   medicines: Medicine[]
-
-  addPatient: (patient: Omit<Patient, 'id'>) => Patient
+  
+  addPatient: (patientData: Omit<Patient, 'id'>) => Patient
   addAppointment: (appointment: Omit<Appointment, 'id'>) => void
   updateAppointment: (appointment: Partial<Appointment>) => void
   confirmAppointmentArrival: (appointmentId: string) => { success: boolean, visitId?: string, error?: string }
@@ -34,9 +34,8 @@ interface ClinicContextType {
 
   // Phase 0P.5
   completeDispensing: (visitId: string, prescriptionId: string, items: { medicineId: string, prescribedQuantity: number, dispensedQuantity: number }[]) => { success: boolean, error?: string }
-
-  // Phase 0P.6
   recordPayment: (visitId: string, method: 'Cash' | 'GPay') => { success: boolean, error?: string }
+  updateMedicine: (id: string, updates: Partial<Medicine>) => void
 }
 
 const ClinicContext = createContext<ClinicContextType | null>(null)
@@ -51,7 +50,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   const [dispensings, setDispensings] = useLocalStorage<Dispensing[]>('dc_v2_dispensings', [])
   const [payments, setPayments] = useLocalStorage<Payment[]>('dc_v2_payments', [])
   
-  const [medicines, setMedicines] = useState<Medicine[]>(DEMO_MEDICINES.map(m => ({ ...m })))
+  const [medicines, setMedicines] = useLocalStorage<Medicine[]>('dc_v2_medicines', DEMO_MEDICINES.map(m => ({ ...m })))
 
   const normalizePhone = (phone: string) => {
     return phone.replace(/[\s\-\(\)\+]/g, '')
@@ -257,6 +256,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     })
   }
 
+  const updateMedicine = (id: string, updates: Partial<Medicine>) => {
+    setMedicines(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m))
+  }
+
   const completeDispensing = (visitId: string, prescriptionId: string, items: { medicineId: string, prescribedQuantity: number, dispensedQuantity: number }[]) => {
     // 1. Duplicate check
     const existing = dispensings.find(d => d.visitId === visitId && d.prescriptionId === prescriptionId)
@@ -357,7 +360,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
       addPatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, normalizePhone,
-      callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment
+      callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, updateMedicine
     }}>
       {children}
     </ClinicContext.Provider>

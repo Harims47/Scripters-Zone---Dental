@@ -5,6 +5,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { Dashboard } from './pages/Dashboard';
 import { QueuePage } from './pages/QueuePage';
 import { InventoryPage } from './pages/InventoryPage';
+import { BillingPage } from './pages/BillingPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { DoctorWorkspacePage } from './pages/DoctorWorkspacePage';
 import { ReceptionDispensingPage } from './pages/ReceptionDispensingPage';
 import { PaymentPage } from './pages/PaymentPage';
@@ -32,11 +34,13 @@ function App() {
             <Route path="/" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="reports" element={<ReportsPage />} />
             <Route path="patients" element={<PatientsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="queue" element={<QueuePage />} />
             <Route path="doctor/patient/:patientId" element={<DoctorWorkspacePage />} />
             <Route path="reception/dispensing" element={<ReceptionDispensingPage />} />
+            <Route path="billing" element={<BillingPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="payments" element={<PaymentPage />} />
             <Route path="staff" element={<StaffPage />} />

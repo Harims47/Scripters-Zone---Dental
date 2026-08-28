@@ -1,6 +1,7 @@
 
 import { Badge } from '../ui/badge'
-import { DEMO_PROVIDERS, DEMO_PATIENTS } from '../../lib/mock-data'
+import { DEMO_PROVIDERS } from '../../lib/mock-data'
+import { useClinicContext } from '../../context/ClinicContext'
 import { type AppointmentStatus } from '../../lib/mock-data'
 
 export function getAppointmentStatusBadge(status: AppointmentStatus) {
@@ -111,8 +112,9 @@ export function PatientSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const filtered = DEMO_PATIENTS.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase()))
-  const selected = DEMO_PATIENTS.find(p => p.id === value)
+  const { patients } = useClinicContext()
+  const filtered = patients.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase()))
+  const selected = patients.find(p => p.id === value)
 
   return (
     <div className="relative" ref={ref}>

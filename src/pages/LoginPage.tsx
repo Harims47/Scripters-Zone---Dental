@@ -137,10 +137,22 @@ export function LoginPage() {
                 onClick={() => handleDemoLogin('doctor')}
                 className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 group transition-all text-left w-full"
               >
-                <span className="font-semibold text-slate-900 group-hover:text-emerald-700 text-sm mb-1">Doctor</span>
+                <span className="font-semibold text-slate-900 group-hover:text-emerald-700 text-sm mb-1">Duty Doctor</span>
                 <div className="text-[10px] text-slate-500 font-mono w-full text-center">
                   <div>user: doctor</div>
                   <div>pass: password123</div>
+                </div>
+              </button>
+
+              <button 
+                type="button"
+                onClick={() => handleDemoLogin('U-001')}
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 group transition-all text-left w-full"
+              >
+                <span className="font-semibold text-slate-900 group-hover:text-indigo-700 text-sm mb-1">Head Doctor</span>
+                <div className="text-[10px] text-slate-500 font-mono w-full text-center">
+                  <div>user: U-001</div>
+                  <div>pass: (any)</div>
                 </div>
               </button>
             </div>

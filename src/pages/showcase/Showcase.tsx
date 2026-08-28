@@ -167,7 +167,7 @@ export default function Showcase() {
                 <Button variant="default" className="bg-rose-600 hover:bg-rose-700">View Payment Settlement</Button>
               </a>
               <a href="/appointments">
-                <Button variant="default" className="bg-teal-600 hover:bg-teal-700">View Appointments / Surgeon</Button>
+                <Button variant="default" className="bg-teal-600 hover:bg-teal-700">View Appointments / Doctor</Button>
               </a>
               <a href="/staff">
                 <Button variant="default" className="bg-slate-800 hover:bg-slate-900">View Staff & Roles</Button>

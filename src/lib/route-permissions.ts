@@ -11,9 +11,11 @@ export const ROUTE_MODULE_MAP: Record<string, ClinicModule> = {
   '/doctor': 'Doctor Workspace', // Matches /doctor/patient/:id
   '/inventory': 'Inventory',
   '/reception/dispensing': 'Dispensing',
+  '/billing': 'Billing',
   '/payments': 'Payments',
   '/staff': 'Staff Management',
-  '/settings': 'Settings'
+  '/settings': 'Settings',
+  '/reports': 'Reports'
 }
 
 /**

@@ -1,15 +1,15 @@
 import { NavLink } from "react-router-dom"
 import { 
   LayoutDashboard, Users, Calendar, Clock, 
-  Package, CreditCard, Stethoscope, Settings,
-  LogOut, Menu
+  Package, Stethoscope, Settings, Receipt,
+  LogOut, Menu, BarChart3
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { t } from "../../lib/i18n"
 import { useAuth } from "../../context/AuthContext"
 import { canAccessRoute } from "../../lib/route-permissions"
 
-export type ClinicRole = 'head-doctor' | 'duty-doctor' | 'receptionist' | 'assistant' | 'surgeon'
+export type ClinicRole = 'head-doctor' | 'duty-doctor' | 'receptionist'
 
 interface NavItem {
   title: string
@@ -23,10 +23,10 @@ const navItems: NavItem[] = [
   { title: "Patients", href: "/patients", icon: Users },
   { title: "Appointments", href: "/appointments", icon: Calendar },
   { title: "Queue", href: "/queue", icon: Clock },
-  { title: "Dispensing", href: "/reception/dispensing", icon: Package },
-  { title: "Payments", href: "/payments", icon: CreditCard },
+  { title: "Billing", href: "/billing", icon: Receipt },
   { title: "Inventory", href: "/inventory", icon: Package },
   { title: "Staff", href: "/staff", icon: Stethoscope },
+  { title: "Reports", href: "/reports", icon: BarChart3 },
   { title: "Settings", href: "/settings", icon: Settings },
 ]
 

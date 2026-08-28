@@ -1,4 +1,4 @@
-export type ClinicRole = 'Head Doctor' | 'Duty Doctor' | 'Receptionist' | 'Assistant' | 'Surgeon'
+export type ClinicRole = 'Head Doctor' | 'Duty Doctor' | 'Receptionist'
 
 export type ClinicModule = 
   | 'Dashboard'
@@ -9,9 +9,11 @@ export type ClinicModule =
   | 'Prescriptions'
   | 'Inventory'
   | 'Dispensing'
+  | 'Billing'
   | 'Payments'
   | 'Staff Management'
   | 'Settings'
+  | 'Reports'
 
 export interface RoleConfig {
   role: ClinicRole
@@ -25,7 +27,7 @@ export const ROLE_CONFIG: Record<ClinicRole, RoleConfig> = {
     role: 'Head Doctor',
     label: 'Head Doctor (Super Admin)',
     description: 'Full clinic access including staff and settings management.',
-    permissions: ['Dashboard', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing', 'Payments', 'Staff Management', 'Settings']
+    permissions: ['Dashboard', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports']
   },
   'Duty Doctor': {
     role: 'Duty Doctor',
@@ -37,24 +39,12 @@ export const ROLE_CONFIG: Record<ClinicRole, RoleConfig> = {
     role: 'Receptionist',
     label: 'Receptionist',
     description: 'Front-desk operations, appointments, and payments.',
-    permissions: ['Dashboard', 'Patients', 'Appointments', 'Queue', 'Dispensing', 'Payments']
-  },
-  'Assistant': {
-    role: 'Assistant',
-    label: 'Assistant',
-    description: 'Limited access for operational assistance.',
-    permissions: ['Queue', 'Inventory']
-  },
-  'Surgeon': {
-    role: 'Surgeon',
-    label: 'Surgeon',
-    description: 'Access specifically for scheduled surgeries.',
-    permissions: ['Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions']
+    permissions: ['Dashboard', 'Patients', 'Appointments', 'Queue', 'Dispensing', 'Billing', 'Payments']
   }
 }
 
 // All available modules for the preview UI
 export const ALL_MODULES: ClinicModule[] = [
   'Dashboard', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 
-  'Prescriptions', 'Inventory', 'Dispensing', 'Payments', 'Staff Management', 'Settings'
+  'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports'
 ]

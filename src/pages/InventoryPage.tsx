@@ -23,18 +23,30 @@ import { type Medicine } from '../lib/mock-data'
 type InventoryItem = Medicine
 
 export function InventoryPage() {
-  const { medicines } = useClinicContext()
+  const { medicines, updateMedicine } = useClinicContext()
   
   const [searchQuery, setSearchQuery] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'view' | 'edit' | 'create' | 'adjust'>('view')
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [adjustAmount, setAdjustAmount] = useState(5)
 
   const openDrawer = (item: InventoryItem | null, mode: 'view' | 'edit' | 'create' | 'adjust') => {
     setSelectedItem(item)
     setDrawerMode(mode)
     setDrawerOpen(true)
+    setAdjustAmount(5)
+  }
+
+  const handleConfirmAdjustment = () => {
+    if (selectedItem) {
+      const newStock = Math.max(0, selectedItem.currentStock + adjustAmount)
+      updateMedicine(selectedItem.id, { currentStock: newStock })
+      setSelectedItem({ ...selectedItem, currentStock: newStock })
+      setDrawerMode('view')
+      setAdjustAmount(5)
+    }
   }
 
   const getStockStatus = (current: number, min: number) => {
@@ -290,15 +302,15 @@ export function InventoryPage() {
                     <div className="space-y-4">
                       <Label className="text-sm font-medium text-slate-700">Adjustment Amount</Label>
                       <div className="flex items-center gap-4">
-                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Decrease stock"><Minus className="h-5 w-5" /></Button>
-                        <Input type="number" defaultValue={5} className="h-12 text-center text-lg font-bold shadow-sm" />
-                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Increase stock"><Plus className="h-5 w-5" /></Button>
+                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Decrease stock" onClick={() => setAdjustAmount(a => a - 1)}><Minus className="h-5 w-5" /></Button>
+                        <Input type="number" value={adjustAmount} onChange={e => setAdjustAmount(parseInt(e.target.value) || 0)} className="h-12 text-center text-lg font-bold shadow-sm" />
+                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Increase stock" onClick={() => setAdjustAmount(a => a + 1)}><Plus className="h-5 w-5" /></Button>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
                       <span className="font-medium text-emerald-800">New Quantity</span>
-                      <span className="text-2xl font-bold text-emerald-900">{selectedItem.currentStock + 5}</span>
+                      <span className="text-2xl font-bold text-emerald-900">{Math.max(0, selectedItem.currentStock + adjustAmount)}</span>
                     </div>
                   </div>
                 </DrawerSection>
@@ -315,7 +327,7 @@ export function InventoryPage() {
             ) : drawerMode === 'adjust' ? (
               <>
                 <Button variant="outline" onClick={() => setDrawerMode('view')} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Cancel</Button>
-                <Button onClick={() => setDrawerMode('view')} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md bg-emerald-600 hover:bg-emerald-700">Confirm Adjustment</Button>
+                <Button onClick={handleConfirmAdjustment} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md bg-emerald-600 hover:bg-emerald-700">Confirm Adjustment</Button>
               </>
             ) : (
               <>

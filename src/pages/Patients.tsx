@@ -9,11 +9,14 @@ import { Input } from '../components/ui/input';
 import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
 
 import { 
-  PatientProfileHeader, 
-  DrawerFooterActions,
+  PatientProfileHeader,
   DrawerSection,
+  DrawerFooterActions,
   ReadOnlyField
 } from '../components/ui/drawer-patterns';
+import { PatientVisitHistory } from '../components/consultation/consultation-components';
+import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import type { Patient } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
@@ -22,13 +25,14 @@ import { DEMO_STAFF } from '../lib/mock-data';
 export function PatientsPage() {
   const { patients, visits, addPatient, startVisit, normalizePhone } = useClinicContext();
   const { currentUser } = useAuth();
-  const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Surgeon' || currentUser?.role === 'Head Doctor';
+  const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Head Doctor';
   const [search, setSearch] = useState('');
   
   // Drawer State
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<'view' | 'edit' | 'create' | 'startVisit'>('view');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [historicalVisitId, setHistoricalVisitId] = useState<string | null>(null);
 
   // Form states
   const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '' });
@@ -37,7 +41,7 @@ export function PatientsPage() {
   const [visitReason, setVisitReason] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  const doctors = DEMO_STAFF.filter(s => ['Head Doctor', 'Duty Doctor', 'Surgeon'].includes(s.role));
+  const doctors = DEMO_STAFF.filter(s => ['Head Doctor', 'Duty Doctor'].includes(s.role));
 
   const hasActiveVisit = (patientId: string) => {
     return visits.some(v => v.patientId === patientId && !['COMPLETED', 'CANCELLED'].includes(v.status));
@@ -243,6 +247,17 @@ export function PatientsPage() {
                     </DrawerSection>
                   )}
 
+                  {drawerMode === 'view' && selectedPatient && (
+                    <div className="mt-8">
+                      <PatientVisitHistory 
+                        visits={visits
+                          .filter(v => v.patientId === selectedPatient.id && v.status === 'COMPLETED')
+                          .map(v => ({ id: v.id, date: 'Completed Visit', title: v.reasonForVisit || 'Consultation', status: v.status }))} 
+                        onView={(id) => setHistoricalVisitId(id)}
+                      />
+                    </div>
+                  )}
+
                   {(drawerMode === 'edit' || drawerMode === 'create') && (
                     <DrawerSection title="Basic Information">
                       <div className="space-y-6">
@@ -441,8 +456,19 @@ export function PatientsPage() {
             </>
           )}
         </SheetContent>
-      </Sheet>
+    </Sheet>
 
+      <Dialog open={!!historicalVisitId} onOpenChange={(open) => !open && setHistoricalVisitId(null)}>
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Historical Visit Details</DialogTitle>
+            <DialogDescription>
+              Review the read-only clinical records for this completed visit.
+            </DialogDescription>
+          </DialogHeader>
+          {historicalVisitId && <HistoricalVisitDetails visitId={historicalVisitId} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

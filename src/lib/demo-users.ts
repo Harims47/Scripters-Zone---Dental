@@ -33,17 +33,5 @@ export const DEMO_USERS: DemoUser[] = [
     staffId: DEMO_STAFF.find(s => s.role === 'Receptionist')?.id,
     username: 'reception',
     password: 'password123'
-  },
-  {
-    id: 'U-004',
-    name: 'Assistant User',
-    role: 'Assistant',
-    staffId: DEMO_STAFF.find(s => s.role === 'Assistant')?.id
-  },
-  {
-    id: 'U-005',
-    name: 'Dr. Surgeon',
-    role: 'Surgeon',
-    staffId: DEMO_STAFF.find(s => s.role === 'Surgeon')?.id
   }
 ]

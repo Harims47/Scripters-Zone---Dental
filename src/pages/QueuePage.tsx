@@ -195,7 +195,7 @@ export function QueuePage() {
               onChange={(e) => setDoctorFilter(e.target.value)}
             >
               <option value="all">All Doctors</option>
-              {DEMO_STAFF.filter(s => s.role.includes('Doctor') || s.role.includes('Surgeon')).map(doc => (
+              {DEMO_STAFF.filter(s => s.role.includes('Doctor')).map(doc => (
                 <option key={doc.id} value={doc.id}>{doc.name}</option>
               ))}
             </select>
