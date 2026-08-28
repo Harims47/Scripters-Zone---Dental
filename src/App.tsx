@@ -4,7 +4,6 @@ import { PatientsPage } from './pages/Patients';
 import { SettingsPage } from './pages/SettingsPage';
 import { Dashboard } from './pages/Dashboard';
 import { QueuePage } from './pages/QueuePage';
-import { PrescriptionPage } from './pages/PrescriptionPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { DoctorWorkspacePage } from './pages/DoctorWorkspacePage';
 import { ReceptionDispensingPage } from './pages/ReceptionDispensingPage';
@@ -37,7 +36,6 @@ function App() {
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="queue" element={<QueuePage />} />
             <Route path="doctor/patient/:patientId" element={<DoctorWorkspacePage />} />
-            <Route path="prescriptions" element={<PrescriptionPage />} />
             <Route path="reception/dispensing" element={<ReceptionDispensingPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="payments" element={<PaymentPage />} />

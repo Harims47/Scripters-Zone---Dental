@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { QueueHeader, getStatusBadge, getPriorityBadge } from '../components/queue/queue-components'
 import type { QueueRow, QueueStatus } from '../components/queue/queue-components'
-import { Search, PlayCircle, CheckCircle2, Users } from 'lucide-react'
+import { Search, PlayCircle, Users } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
@@ -20,6 +20,8 @@ export function QueuePage() {
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
+  const [doctorFilter, setDoctorFilter] = useState<string>(canManageClinical ? (currentUser?.staffId || 'all') : 'all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   
   const navigate = useNavigate()
 
@@ -77,7 +79,7 @@ export function QueuePage() {
     }
   }
 
-  const handleAction = (id: string, action: 'Call' | 'Start' | 'Complete' | 'Cancel') => {
+  const handleAction = (id: string, action: 'Call' | 'Start' | 'Resume' | 'Cancel') => {
     const row = queueRows.find(q => q.id === id)
     if (!row) return;
 
@@ -90,10 +92,18 @@ export function QueuePage() {
       if (success) {
         navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
       }
+    } else if (action === 'Resume') {
+      // Re-enter the Doctor Workspace
+      navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
     }
   }
 
-  const filteredQueue = queueRows.filter(q => q.name.toLowerCase().includes(search.toLowerCase()) || q.patientId.toLowerCase().includes(search.toLowerCase()))
+  const filteredQueue = queueRows.filter(q => {
+    const matchesSearch = q.name.toLowerCase().includes(search.toLowerCase()) || q.patientId.toLowerCase().includes(search.toLowerCase())
+    const matchesDoctor = doctorFilter === 'all' || q.assignedDoctorId === doctorFilter
+    const matchesStatus = statusFilter === 'all' || q.status.toLowerCase().replace(' ', '-') === statusFilter
+    return matchesSearch && matchesDoctor && matchesStatus
+  })
 
   const summary = {
     waiting: queueRows.filter(q => q.status === 'Waiting').length,
@@ -112,17 +122,23 @@ export function QueuePage() {
     },
     {
       accessorKey: "name",
-      header: "Patient",
+      header: "Patient & Time",
       cell: ({ row }) => (
         <div>
           <span className="font-semibold text-slate-900 block">{row.original.name}</span>
+          <span className="text-xs text-amber-600 font-medium mt-0.5 inline-block">Waiting {row.original.waitTimeMin}m</span>
         </div>
       )
     },
-    {
+    ...(doctorFilter === 'all' ? [{
       accessorKey: "doctor",
       header: "Assigned Doctor",
-      cell: ({ row }) => <span className="text-sm font-medium text-slate-700">{row.original.doctor}</span>
+      cell: ({ row }: any) => <span className="text-sm font-medium text-slate-700">{row.original.doctor}</span>
+    }] as any[] : []),
+    {
+      accessorKey: "source",
+      header: "Context",
+      cell: ({ row }) => <span className="text-sm text-slate-500 font-medium">{row.original.source}</span>
     },
     {
       accessorKey: "status",
@@ -146,8 +162,8 @@ export function QueuePage() {
           );
         } else if (item.status === 'With Doctor' && canManageClinical && item.assignedDoctorId === currentUser?.staffId) {
           actionButton = (
-            <Button size="sm" variant="outline" className="h-9 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200 shadow-sm" onClick={() => handleAction(item.id, 'Complete')}>
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Complete
+            <Button size="sm" variant="outline" className="h-9 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200 shadow-sm" onClick={() => handleAction(item.id, 'Resume')}>
+              <PlayCircle className="mr-2 h-4 w-4" /> Resume
             </Button>
           );
         }
@@ -173,14 +189,22 @@ export function QueuePage() {
         exportOptions={{ pdf: true, excel: true, csv: true }}
         filterSlot={
           <>
-            <select className="flex h-9 w-[140px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-              <option value="all-doctors">All Doctors</option>
-              <option value="dr-smith">Dr. Smith</option>
-              <option value="dr-adams">Dr. Adams</option>
-              <option value="dr-lee">Dr. Lee</option>
+            <select 
+              className="flex h-9 w-[140px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              value={doctorFilter}
+              onChange={(e) => setDoctorFilter(e.target.value)}
+            >
+              <option value="all">All Doctors</option>
+              {DEMO_STAFF.filter(s => s.role.includes('Doctor') || s.role.includes('Surgeon')).map(doc => (
+                <option key={doc.id} value={doc.id}>{doc.name}</option>
+              ))}
             </select>
-            <select className="flex h-9 w-[130px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-              <option value="all-status">All Statuses</option>
+            <select 
+              className="flex h-9 w-[130px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All Statuses</option>
               <option value="waiting">Waiting</option>
               <option value="called">Called</option>
               <option value="with-doctor">With Doctor</option>

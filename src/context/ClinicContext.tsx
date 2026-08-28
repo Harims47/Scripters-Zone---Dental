@@ -214,23 +214,19 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   // --- Phase 0P.3 Handlers ---
 
   const transitionVisitSafely = (visitId: string, targetStatus: VisitStatus, queueStatusMap?: QueueEntry['status']): boolean => {
-    let success = false;
-    setVisits(prev => prev.map(v => {
-      if (v.id === visitId) {
-        if (canTransitionVisit(v.status, targetStatus)) {
-          success = true;
-          return { ...v, status: targetStatus }
-        } else {
-          console.warn(`Invalid visit transition: ${v.status} -> ${targetStatus}`)
-        }
-      }
-      return v
-    }))
+    const v = visits.find(v => v.id === visitId)
+    if (!v) return false;
 
-    if (success && queueStatusMap) {
-      setQueue(prev => prev.map(q => q.visitId === visitId ? { ...q, status: queueStatusMap } : q))
+    if (canTransitionVisit(v.status, targetStatus)) {
+      setVisits(prev => prev.map(visit => visit.id === visitId ? { ...visit, status: targetStatus } : visit))
+      if (queueStatusMap) {
+        setQueue(prev => prev.map(q => q.visitId === visitId ? { ...q, status: queueStatusMap } : q))
+      }
+      return true;
+    } else {
+      console.warn(`Invalid visit transition: ${v.status} -> ${targetStatus}`)
+      return false;
     }
-    return success;
   }
 
   const callPatient = (visitId: string) => {

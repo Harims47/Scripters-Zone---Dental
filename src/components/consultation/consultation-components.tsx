@@ -1,4 +1,4 @@
-import { Clock, User } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import { Badge } from '../ui/badge'
 
 export function PatientClinicalSummary({
@@ -6,13 +6,13 @@ export function PatientClinicalSummary({
   name,
   phone,
   age,
-  assignedDoctor
+  status
 }: {
   patientId: string
   name: string
   phone: string
   age: number | string
-  assignedDoctor: string
+  status?: string
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] p-5">
@@ -34,12 +34,9 @@ export function PatientClinicalSummary({
           <div className="text-slate-500 font-medium mb-1">Age</div>
           <div className="text-slate-700">{age} Years</div>
         </div>
-        <div className="col-span-2 pt-2 border-t mt-1">
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-slate-400" />
-            <span className="text-slate-500 font-medium">Assigned to:</span>
-            <span className="font-semibold text-slate-900">{assignedDoctor}</span>
-          </div>
+        <div className="col-span-2 pt-2 border-t mt-1 flex items-center justify-between">
+          <div className="text-slate-500 font-medium">Status</div>
+          <Badge variant="statusWithDoctor"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5" /> {status}</Badge>
         </div>
       </div>
     </div>

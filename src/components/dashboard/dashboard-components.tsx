@@ -84,13 +84,14 @@ export function KpiCard({
 // --- QUEUE SUMMARY ---
 export interface QueueItem {
   id: string
+  visitId: string
   patientName: string
   patientId: string
   status: string
   waitTime: string
 }
 
-export function QueueSummary({ items, title, isDoctor }: { items: QueueItem[], title?: string, isDoctor?: boolean }) {
+export function QueueSummary({ items, title, isDoctor, onAction }: { items: QueueItem[], title?: string, isDoctor?: boolean, onAction?: (item: QueueItem) => void }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col h-full">
       <div className="px-5 py-4 border-b flex items-center justify-between bg-slate-50/50">
@@ -118,11 +119,11 @@ export function QueueSummary({ items, title, isDoctor }: { items: QueueItem[], t
                 </div>
               </div>
               {isDoctor ? (
-                <Button variant="outline" size="sm" className="h-8 text-teal-600 border-teal-200 hover:bg-teal-50">
+                <Button variant="outline" size="sm" className="h-8 text-teal-600 border-teal-200 hover:bg-teal-50" onClick={() => onAction?.(item)}>
                   <span className="hidden sm:inline font-medium">Start Consultation</span>
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" className="h-8">
+                <Button variant="outline" size="sm" className="h-8" onClick={() => onAction?.(item)}>
                   <Phone className="h-3.5 w-3.5 sm:mr-2" />
                   <span className="hidden sm:inline">Call</span>
                 </Button>
