@@ -1,13 +1,17 @@
+import { useState } from "react"
 import { Outlet } from "react-router-dom"
 import { Sidebar } from "./sidebar"
 import { Topbar } from "./topbar"
+import { cn } from "../../lib/utils"
 
 export function AppShell() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
   return (
     <div className="flex h-screen w-full bg-[#f8fafc] text-slate-900 overflow-hidden font-sans">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:block w-[260px] flex-shrink-0 relative z-20">
-        <Sidebar />
+      <aside className={cn("hidden md:block flex-shrink-0 relative z-20 transition-all duration-300", isSidebarCollapsed ? "w-[88px]" : "w-[260px]")}>
+        <Sidebar isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
       </aside>
 
       {/* Main Container */}

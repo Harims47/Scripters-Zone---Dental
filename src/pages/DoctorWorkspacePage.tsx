@@ -6,10 +6,12 @@ import { Input } from '../components/ui/input'
 import { Textarea } from '../components/ui/textarea'
 import { Label } from '../components/ui/label'
 import { Badge } from '../components/ui/badge'
-import { PatientProfileHeader } from '../components/ui/drawer-patterns'
+import { PatientProfileHeader, DrawerSection, ReadOnlyField } from '../components/ui/drawer-patterns'
+import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components'
 import { useClinicContext } from '../context/ClinicContext'
 import { DEMO_STAFF } from '../lib/mock-data'
+import { DEMO_MEDICINES } from '../lib/mock-data/medicines'
 
 export function DoctorWorkspacePage() {
   const { patientId } = useParams<{ patientId: string }>()
@@ -26,15 +28,19 @@ export function DoctorWorkspacePage() {
   const prescription = prescriptions.find(p => p.visitId === visitId)
   const assignedDoctor = DEMO_STAFF.find(d => d.id === visit?.doctorId)
 
-  // 2. Local State for Form
+  // 2. Local State for Form & History
   const [reason, setReason] = useState('')
   const [notes, setNotes] = useState('')
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const [selectedHistoryVisitId, setSelectedHistoryVisitId] = useState<string | null>(null)
+  const [consultationFee, setConsultationFee] = useState<number>(500)
 
   // 3. Hydrate form when consultation changes
   useEffect(() => {
     if (consultation) {
       setReason(consultation.reasonForVisit)
       setNotes(consultation.clinicalNotes)
+      if (consultation.consultationFee !== undefined) setConsultationFee(consultation.consultationFee)
     }
   }, [consultation])
 
@@ -61,13 +67,13 @@ export function DoctorWorkspacePage() {
   // --- ACTIONS ---
   const handleSaveDraft = () => {
     if (visit && assignedDoctor) {
-      saveConsultation(visit.id, assignedDoctor.id, { reasonForVisit: reason, clinicalNotes: notes }, false)
+      saveConsultation(visit.id, assignedDoctor.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, false)
     }
   }
 
   const handleComplete = () => {
     if (visit && assignedDoctor) {
-      saveConsultation(visit.id, assignedDoctor.id, { reasonForVisit: reason, clinicalNotes: notes }, true)
+      saveConsultation(visit.id, assignedDoctor.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, true)
     }
   }
 
@@ -99,17 +105,37 @@ export function DoctorWorkspacePage() {
     )
   }
 
-  // Mock patient history resolution for demo
+  // Patient History Resolution
+  const getStableDate = (id: string) => {
+    const num = parseInt(id.replace(/\D/g, '')) || 0
+    const d = new Date()
+    d.setDate(d.getDate() - (num % 60) - 1)
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+
   const patientHistory = visits
-    .filter(v => v.patientId === patient.id && v.id !== visit.id) // Get historical, excluding current
-    .map(v => ({
-      date: 'Previously', // Fake date mapping for demo
-      title: v.status === 'COMPLETED' ? 'Consultation completed' : 'Previous Visit',
-      status: v.status
-    }))
-    .concat([
-      { date: 'Today', title: 'Current Visit', status: visit.status }
-    ])
+    .filter(v => v.patientId === patient.id)
+    .map(v => {
+      const isCurrent = v.id === visit.id
+      return {
+        id: v.id,
+        date: isCurrent ? 'Today' : getStableDate(v.id),
+        title: isCurrent ? 'Current Visit' : (v.status === 'COMPLETED' ? 'Consultation completed' : 'Previous Visit'),
+        status: v.status
+      }
+    })
+    .sort((a, b) => a.date === 'Today' ? -1 : b.date === 'Today' ? 1 : b.date.localeCompare(a.date)) // rough sort
+
+  const handleViewPastVisit = (id: string) => {
+    setSelectedHistoryVisitId(id)
+    setHistoryDrawerOpen(true)
+  }
+
+  // Find data for selected historical visit
+  const selectedHistoryConsultation = consultations.find(c => c.visitId === selectedHistoryVisitId)
+  const selectedHistoryPrescription = prescriptions.find(p => p.visitId === selectedHistoryVisitId)
+  const selectedHistoryVisitObj = visits.find(v => v.id === selectedHistoryVisitId)
+  const historicalDoctor = DEMO_STAFF.find(d => d.id === selectedHistoryVisitObj?.doctorId)
 
   return (
     <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
@@ -145,7 +171,7 @@ export function DoctorWorkspacePage() {
             age={patient.age}
             assignedDoctor={assignedDoctor?.name || 'Unassigned'}
           />
-          <PatientVisitHistory visits={patientHistory as any} />
+          <PatientVisitHistory visits={patientHistory} onView={handleViewPastVisit} />
         </div>
 
         {/* RIGHT COLUMN: Clinical Input */}
@@ -174,17 +200,16 @@ export function DoctorWorkspacePage() {
                 />
               </div>
 
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
-                <Textarea 
-                  placeholder="Enter detailed observation and consultation notes..." 
-                  className="min-h-[250px] resize-y bg-slate-50 border-slate-200 shadow-none text-base p-4 leading-relaxed"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                />
+                <div className="space-y-3 pt-6 border-t border-slate-100">
+                  <Label htmlFor="clinicalNotes" className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
+                  <Textarea id="clinicalNotes" placeholder="Enter detailed clinical findings, diagnosis, and treatment plan..." className="min-h-[160px] resize-y bg-slate-50/50 border-slate-200 focus-visible:ring-emerald-500/20" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                </div>
+                <div className="space-y-3 pt-6 border-t border-slate-100 max-w-sm">
+                  <Label htmlFor="consultationFee" className="text-sm font-semibold text-slate-700">Consultation Fee (₹)</Label>
+                  <Input id="consultationFee" type="number" min="0" step="50" className="bg-slate-50/50 border-slate-200 focus-visible:ring-emerald-500/20" value={consultationFee} onChange={(e) => setConsultationFee(Number(e.target.value) || 0)} />
+                </div>
               </div>
             </div>
-          </div>
 
           {/* Prescription Connect */}
           <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -230,6 +255,83 @@ export function DoctorWorkspacePage() {
         </div>
 
       </div>
+      {/* Historical Visit Drawer */}
+      <Sheet open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>
+        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0">
+          <PatientProfileHeader 
+            name={patient.name}
+            patientId={patient.id}
+            phone={patient.phone}
+            statusElement={<Badge variant="secondary">Historical Record</Badge>}
+            modeText={`Visit • ${selectedHistoryVisitId}`}
+          />
+          <SheetScrollArea className="p-0 bg-slate-50 flex-1">
+            <div className="px-6 sm:px-8 py-8 space-y-8">
+              
+              <DrawerSection title="Visit Details">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <ReadOnlyField label="Date" value={selectedHistoryVisitId ? getStableDate(selectedHistoryVisitId) : '-'} />
+                  <ReadOnlyField label="Consulting Doctor" value={historicalDoctor?.name || 'Unknown'} />
+                </div>
+              </DrawerSection>
+
+              <DrawerSection title="Clinical Notes">
+                {selectedHistoryConsultation ? (
+                  <div className="space-y-4">
+                    <ReadOnlyField label="Reason for Visit" value={selectedHistoryConsultation.reasonForVisit || '-'} />
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Observations</Label>
+                      <div className="text-sm text-slate-700 bg-white p-3 rounded-lg border leading-relaxed whitespace-pre-wrap">
+                        {selectedHistoryConsultation.clinicalNotes || 'No notes recorded.'}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 p-4 bg-white rounded-lg border text-center">
+                    No consultation notes found for this visit.
+                  </div>
+                )}
+              </DrawerSection>
+
+              <DrawerSection title="Prescription">
+                {selectedHistoryPrescription && selectedHistoryPrescription.items.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedHistoryPrescription.items.map(item => {
+                      // resolve medicine name
+                      const med = DEMO_MEDICINES.find((m: any) => m.id === item.medicineId)
+                      return (
+                        <div key={item.id} className="bg-white p-3 rounded-lg border text-sm">
+                          <div className="font-semibold text-slate-900 mb-1">{med ? med.name : item.medicineId}</div>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                            <div>Qty: <span className="font-medium text-slate-900">{item.quantity}</span></div>
+                            <div>Dosage: <span className="font-medium text-slate-900">{item.dosage || '-'}</span></div>
+                            <div>Freq: <span className="font-medium text-slate-900">{item.frequency || '-'}</span></div>
+                            <div>Dur: <span className="font-medium text-slate-900">{item.duration || '-'}</span></div>
+                          </div>
+                          {item.instructions && (
+                            <div className="mt-2 text-xs text-slate-500 border-t pt-2">
+                              {item.instructions}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 p-4 bg-white rounded-lg border text-center">
+                    No prescription recorded for this visit.
+                  </div>
+                )}
+              </DrawerSection>
+
+            </div>
+          </SheetScrollArea>
+          <div className="p-4 border-t bg-white flex justify-end">
+            <Button variant="outline" onClick={() => setHistoryDrawerOpen(false)}>Close</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
     </div>
   )
 }

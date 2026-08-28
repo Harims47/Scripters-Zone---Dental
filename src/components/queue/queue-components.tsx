@@ -104,6 +104,7 @@ export interface QueueRow {
   arrivalTime: string
   waitTimeMin: number
   doctor: string
+  assignedDoctorId?: string
   status: QueueStatus
   priority: QueuePriority
   source?: 'Appointment' | 'Walk-in'

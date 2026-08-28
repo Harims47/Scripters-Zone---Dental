@@ -10,6 +10,10 @@ import { type Medicine } from "../../lib/mock-data"
 
 export interface PrescriptionLineItem extends Medicine {
   quantity: number
+  dosage?: string
+  frequency?: string
+  duration?: string
+  instructions?: string
 }
 
 export function MedicineCategoryBadge({ categoryId }: { categoryId: string }) {
@@ -23,7 +27,7 @@ export function MedicineCategoryBadge({ categoryId }: { categoryId: string }) {
   )
 }
 
-export function DraggableMedicineItem({ medicine }: { medicine: Medicine }) {
+export function DraggableMedicineItem({ medicine, onAdd }: { medicine: Medicine, onAdd?: (med: Medicine) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: medicine.id,
     data: medicine,
@@ -50,6 +54,19 @@ export function DraggableMedicineItem({ medicine }: { medicine: Medicine }) {
         <div className="text-xs text-slate-500 mb-2">{medicine.unit}</div>
         <MedicineCategoryBadge categoryId={medicine.categoryId} />
       </div>
+      {onAdd && (
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 shrink-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 ml-2" 
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd(medicine);
+          }}
+        >
+          <Plus className="h-4 w-4 mr-1" /> Add
+        </Button>
+      )}
     </div>
   )
 }
@@ -74,52 +91,98 @@ export function PrescriptionDropZone({ children }: { children: React.ReactNode }
 
 export function PrescriptionRow({ 
   item, 
-  onUpdateQuantity, 
+  onUpdateField, 
   onRemove 
 }: { 
   item: PrescriptionLineItem, 
-  onUpdateQuantity: (id: string, qty: number) => void,
+  onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void,
   onRemove: (id: string) => void 
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border rounded-xl shadow-sm gap-4">
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-slate-900 text-sm leading-tight mb-1">{item.name} <span className="text-slate-500 font-normal ml-1">{item.unit}</span></div>
-        <MedicineCategoryBadge categoryId={item.categoryId} />
-      </div>
-      
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1 border rounded-lg bg-slate-50 p-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-7 w-7 text-slate-500 hover:text-slate-900"
-            onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
-          >
-            <Minus className="h-3 w-3" />
-          </Button>
-          <Input 
-            className="w-14 h-7 text-center font-semibold border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
-            value={item.quantity}
-            onChange={(e) => {
-              const val = parseInt(e.target.value)
-              if (!isNaN(val) && val >= 1) onUpdateQuantity(item.id, val)
-            }}
-          />
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-7 w-7 text-slate-500 hover:text-slate-900"
-            onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-          >
-            <Plus className="h-3 w-3" />
-          </Button>
+    <div className="flex flex-col p-4 bg-white border rounded-xl shadow-sm gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-slate-900 text-sm leading-tight mb-1">
+            {item.name} <span className="text-slate-500 font-normal ml-1">{item.unit}</span>
+          </div>
+          <MedicineCategoryBadge categoryId={item.categoryId} />
         </div>
-        
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-rose-600 hover:bg-rose-50 ml-1" onClick={() => onRemove(item.id)}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 -mt-1 -mr-1" onClick={() => onRemove(item.id)}>
           <Trash2 className="h-4 w-4" />
           <span className="sr-only">Remove medicine</span>
         </Button>
+      </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase">Quantity</label>
+          <div className="flex items-center gap-1 border rounded-md bg-slate-50 p-1">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-7 w-7 text-slate-500 hover:text-slate-900 shrink-0"
+              onClick={() => onUpdateField(item.id, 'quantity', Math.max(1, item.quantity - 1))}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <Input 
+              className="w-full h-7 text-center font-semibold border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+              value={item.quantity}
+              onChange={(e) => {
+                const val = parseInt(e.target.value)
+                if (!isNaN(val) && val >= 1) onUpdateField(item.id, 'quantity', val)
+              }}
+            />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-7 w-7 text-slate-500 hover:text-slate-900 shrink-0"
+              onClick={() => onUpdateField(item.id, 'quantity', item.quantity + 1)}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase">Dosage</label>
+          <Input 
+            className="h-9 bg-slate-50/50" 
+            placeholder="e.g. 1 tablet" 
+            value={item.dosage || ''}
+            onChange={(e) => onUpdateField(item.id, 'dosage', e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase">Frequency</label>
+          <Input 
+            className="h-9 bg-slate-50/50" 
+            placeholder="e.g. Twice daily" 
+            value={item.frequency || ''}
+            onChange={(e) => onUpdateField(item.id, 'frequency', e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase">Duration</label>
+          <Input 
+            className="h-9 bg-slate-50/50" 
+            placeholder="e.g. 5 days" 
+            value={item.duration || ''}
+            onChange={(e) => onUpdateField(item.id, 'duration', e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase">Instructions</label>
+          <Input 
+            className="h-9 bg-slate-50/50" 
+            placeholder="e.g. After food" 
+            value={item.instructions || ''}
+            onChange={(e) => onUpdateField(item.id, 'instructions', e.target.value)}
+          />
+        </div>
       </div>
     </div>
   )

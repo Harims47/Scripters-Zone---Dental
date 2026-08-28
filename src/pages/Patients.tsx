@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
-import { Play, UserPlus, AlertCircle, Calendar } from 'lucide-react';
+import { Play, UserPlus, AlertCircle, Calendar, Camera, X } from 'lucide-react';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
+import { DataTableEmpty } from '../components/data-table/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet';
-import { PatientIdentity } from '../components/ui/patient-identity';
+import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
+
 import { 
   PatientProfileHeader, 
   DrawerFooterActions,
@@ -16,10 +16,13 @@ import {
 } from '../components/ui/drawer-patterns';
 import type { Patient } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
+import { useAuth } from '../context/AuthContext';
 import { DEMO_STAFF } from '../lib/mock-data';
 
 export function PatientsPage() {
   const { patients, visits, addPatient, startVisit, normalizePhone } = useClinicContext();
+  const { currentUser } = useAuth();
+  const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Surgeon' || currentUser?.role === 'Head Doctor';
   const [search, setSearch] = useState('');
   
   // Drawer State
@@ -28,14 +31,20 @@ export function PatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
   // Form states
-  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other' });
+  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '' });
   const [visitDoctor, setVisitDoctor] = useState('');
   const [activeVisitWarning, setActiveVisitWarning] = useState(false);
+  const [visitReason, setVisitReason] = useState('');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const doctors = DEMO_STAFF.filter(s => ['Head Doctor', 'Duty Doctor', 'Surgeon'].includes(s.role));
 
   const hasActiveVisit = (patientId: string) => {
     return visits.some(v => v.patientId === patientId && !['COMPLETED', 'CANCELLED'].includes(v.status));
+  }
+
+  const getActiveVisit = (patientId: string) => {
+    return visits.find(v => v.patientId === patientId && !['COMPLETED', 'CANCELLED'].includes(v.status));
   }
 
   const handleRowClick = (patient: Patient) => {
@@ -52,8 +61,11 @@ export function PatientsPage() {
       name: !isNumber ? rawSearch : '',
       phone: isNumber ? rawSearch : '',
       age: '',
-      gender: 'Male'
+      gender: 'Male',
+      photoUrl: ''
     });
+    setVisitReason('');
+    setIsCameraOpen(false);
     setSelectedPatient(null);
     setDrawerMode('create');
     setDrawerOpen(true);
@@ -75,7 +87,8 @@ export function PatientsPage() {
       phone: newPatient.phone,
       age: parseInt(newPatient.age) || 0,
       gender: newPatient.gender,
-      status: 'Active'
+      status: 'Active',
+      photoUrl: newPatient.photoUrl || undefined
     });
     
     setSelectedPatient(created);
@@ -94,38 +107,19 @@ export function PatientsPage() {
 
   const handleConfirmVisit = () => {
     if (!selectedPatient || !visitDoctor) return;
-    startVisit(selectedPatient.id, visitDoctor);
+    startVisit(selectedPatient.id, visitDoctor, false, visitReason);
     setDrawerOpen(false);
-  };
-
-  const getStatusBadge = (status: string) => {
-    if (status === 'Active') {
-      return (
-        <Badge variant="statusActive">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />
-          Active
-        </Badge>
-      );
-    }
-    return (
-      <Badge variant="statusInactive">
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5" />
-        Inactive
-      </Badge>
-    );
   };
 
   const columns: ColumnDef<Patient>[] = [
     {
       accessorKey: "name",
-      header: "Patient Identity",
+      header: "Patient",
       cell: ({ row }) => (
-        <PatientIdentity 
-          name={row.original.name} 
-          patientId={row.original.id} 
-          avatarUrl={`https://i.pravatar.cc/150?u=${row.original.id}`}
-        />
-      ),
+        <div>
+          <span className="font-semibold text-slate-900 block">{row.original.name}</span>
+        </div>
+      )
     },
     {
       accessorKey: "phone",
@@ -146,7 +140,7 @@ export function PatientsPage() {
       header: "",
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" className="shadow-sm font-medium" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }}>
+          <Button variant="outline" size="sm" className="shadow-sm font-medium bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }}>
             View
           </Button>
         </div>
@@ -166,43 +160,47 @@ export function PatientsPage() {
   return (
     <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
       
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patient Directory</h1>
-          <p className="text-slate-500 mt-1">Reception workflow: search patients, register new arrivals, and begin visits.</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {isDoctor ? "Doctor workflow: search patients and view clinical history." : "Reception workflow: search patients, register new arrivals, and begin visits."}
+          </p>
         </div>
-        <Button className="w-full sm:w-auto shadow-sm" onClick={handleNewPatient}>
-          <UserPlus className="w-4 h-4 mr-2" />
-          Register Patient
-        </Button>
+        {!isDoctor && (
+          <Button onClick={handleNewPatient} className="shrink-0 shadow-sm gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+            <UserPlus className="w-4 h-4" />
+            Register Patient
+          </Button>
+        )}
       </div>
 
       <DataTableToolbar
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name, ID or phone..."
-        actionSlot={
-          <>
-            <Button variant="outline" className="flex-none shadow-sm">Export PDF</Button>
-          </>
-        }
+        exportOptions={{ pdf: true, excel: true, csv: true }}
       />
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
-        {filteredData.length === 0 && search !== '' ? (
-          <div className="p-12 text-center flex flex-col items-center justify-center flex-1">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-              <UserPlus className="w-8 h-8 text-slate-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">No patient found</h3>
-            <p className="text-slate-500 max-w-sm mx-auto mb-6">There is no patient matching "{search}". Register them to begin their visit.</p>
-            <Button onClick={handleNewPatient} className="shadow-sm">
-              Register New Patient
-            </Button>
-          </div>
-        ) : (
-          <DataTable columns={columns} data={filteredData} selectable={false} />
-        )}
+        <DataTable 
+          columns={columns} 
+          data={filteredData} 
+          selectable={false}
+          onRowClick={handleRowClick}
+          emptyState={
+            search !== '' ? (
+              <DataTableEmpty 
+                icon={UserPlus} 
+                title="No patient found" 
+                description={`There is no patient matching "${search}". Register them to begin their visit.`}
+                action={<Button onClick={handleNewPatient} className="shadow-sm">Register New Patient</Button>}
+              />
+            ) : (
+              <DataTableEmpty title="No patients yet" description="Start by registering a new patient." />
+            )
+          }
+        />
       </div>
 
       {/* Universal Drawer */}
@@ -212,18 +210,12 @@ export function PatientsPage() {
           {(selectedPatient || drawerMode === 'create') && (
             <>
               {drawerMode === 'create' ? (
-                <PatientProfileHeader 
-                  name={newPatient.name || 'New Patient'}
-                  patientId="Unassigned"
-                  phone={newPatient.phone || 'Phone'}
-                  modeText="Register Patient"
-                />
+                <SheetTitle className="sr-only">Register Patient</SheetTitle>
               ) : (
                 <PatientProfileHeader 
                   name={selectedPatient!.name}
                   patientId={selectedPatient!.id}
                   phone={selectedPatient!.phone}
-                  statusElement={getStatusBadge(selectedPatient!.status)}
                   modeText={
                     drawerMode === 'view' ? 'Patient Profile' : 
                     drawerMode === 'startVisit' ? 'Start Clinic Visit' : 
@@ -242,13 +234,63 @@ export function PatientsPage() {
                         <ReadOnlyField label="Phone" value={selectedPatient.phone} />
                         <ReadOnlyField label="Age" value={`${selectedPatient.age} Yrs`} />
                         <ReadOnlyField label="Gender" value={selectedPatient.gender} />
+                        {getActiveVisit(selectedPatient.id) && (
+                          <div className="sm:col-span-2 mt-2">
+                            <ReadOnlyField label="Current Reason for Visit" value={getActiveVisit(selectedPatient.id)!.reasonForVisit || 'Not specified'} />
+                          </div>
+                        )}
                       </div>
                     </DrawerSection>
                   )}
 
                   {(drawerMode === 'edit' || drawerMode === 'create') && (
                     <DrawerSection title="Basic Information">
-                      <div className="space-y-4">
+                      <div className="space-y-6">
+                        
+                        {/* Camera Capture Section */}
+                        {drawerMode === 'create' && (
+                          <div className="flex flex-col items-center justify-center space-y-3 p-6 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                            {newPatient.photoUrl ? (
+                              <div className="relative">
+                                <img src={newPatient.photoUrl} alt="Patient" className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-sm" />
+                                <button 
+                                  onClick={() => setNewPatient({...newPatient, photoUrl: ''})}
+                                  className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                                <Button variant="outline" size="sm" className="mt-4 shadow-sm w-full" onClick={() => setNewPatient({...newPatient, photoUrl: ''})}>
+                                  Retake Photo
+                                </Button>
+                              </div>
+                            ) : isCameraOpen ? (
+                              <div className="w-full max-w-[200px] flex flex-col items-center gap-3">
+                                <div className="w-full aspect-square bg-slate-800 rounded-full flex items-center justify-center text-slate-400 overflow-hidden relative shadow-inner">
+                                  <Camera className="w-8 h-8 opacity-20" />
+                                  <div className="absolute inset-0 bg-teal-500/10 animate-pulse" />
+                                </div>
+                                <div className="flex gap-2 w-full">
+                                  <Button variant="outline" size="sm" className="flex-1 text-slate-500" onClick={() => setIsCameraOpen(false)}>Cancel</Button>
+                                  <Button size="sm" className="flex-1 bg-teal-600 hover:bg-teal-700" onClick={() => {
+                                    setIsCameraOpen(false);
+                                    setNewPatient({...newPatient, photoUrl: 'https://i.pravatar.cc/150?img=' + Math.floor(Math.random() * 70)});
+                                  }}>Capture</Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center gap-2">
+                                <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-slate-400">
+                                  <UserPlus className="w-6 h-6" />
+                                </div>
+                                <Button variant="outline" size="sm" className="shadow-sm gap-2" onClick={() => setIsCameraOpen(true)}>
+                                  <Camera className="w-4 h-4" />
+                                  Take Photo
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Full Name</label>
                           <Input 
@@ -288,6 +330,15 @@ export function PatientsPage() {
                             <option value="Female">Female</option>
                             <option value="Other">Other</option>
                           </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Reason for Visit</label>
+                          <textarea 
+                            value={visitReason}
+                            onChange={e => setVisitReason(e.target.value)}
+                            placeholder="e.g. Routine Checkup, Toothache, Cleaning..."
+                            className="flex min-h-[80px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                          />
                         </div>
                       </div>
                     </DrawerSection>
@@ -337,16 +388,25 @@ export function PatientsPage() {
               <DrawerFooterActions>
                 {drawerMode === 'view' ? (
                   <>
-                    <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white shadow-sm">
+                    <Button onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-rose-500 hover:bg-rose-600 text-white shadow-sm border-0">
                       Close
                     </Button>
-                    <Button variant="outline" onClick={() => setDrawerMode('edit')} className="w-full sm:w-auto bg-white shadow-sm">
+                    <Button 
+                      onClick={() => {
+                        setDrawerMode('edit');
+                        const activeVisit = getActiveVisit(selectedPatient!.id);
+                        setVisitReason(activeVisit?.reasonForVisit || '');
+                      }} 
+                      className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm border-0"
+                    >
                       Edit Patient
                     </Button>
-                    <Button className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 shadow-sm" onClick={() => selectedPatient && handleOpenStartVisit(selectedPatient)}>
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Visit
-                    </Button>
+                    {!isDoctor && (
+                      <Button className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 shadow-sm" onClick={() => selectedPatient && handleOpenStartVisit(selectedPatient)}>
+                        <Play className="w-4 h-4 mr-2" />
+                        Start Visit
+                      </Button>
+                    )}
                   </>
                 ) : drawerMode === 'startVisit' ? (
                   <>

@@ -90,7 +90,7 @@ export interface QueueItem {
   waitTime: string
 }
 
-export function QueueSummary({ items, title }: { items: QueueItem[], title?: string }) {
+export function QueueSummary({ items, title, isDoctor }: { items: QueueItem[], title?: string, isDoctor?: boolean }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col h-full">
       <div className="px-5 py-4 border-b flex items-center justify-between bg-slate-50/50">
@@ -117,10 +117,16 @@ export function QueueSummary({ items, title }: { items: QueueItem[], title?: str
                   </div>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="h-8">
-                <Phone className="h-3.5 w-3.5 sm:mr-2" />
-                <span className="hidden sm:inline">Call</span>
-              </Button>
+              {isDoctor ? (
+                <Button variant="outline" size="sm" className="h-8 text-teal-600 border-teal-200 hover:bg-teal-50">
+                  <span className="hidden sm:inline font-medium">Start Consultation</span>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="h-8">
+                  <Phone className="h-3.5 w-3.5 sm:mr-2" />
+                  <span className="hidden sm:inline">Call</span>
+                </Button>
+              )}
             </div>
           ))
         )}

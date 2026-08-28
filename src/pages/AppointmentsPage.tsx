@@ -5,16 +5,19 @@ import { DataTable } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog'
-import { PatientProfileHeader, DrawerFooterActions } from '../components/ui/drawer-patterns'
-import { 
-  getAppointmentStatusBadge, 
-  DoctorSelector, 
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
+import { DataTableEmpty } from '../components/data-table/data-table'
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
+import { DrawerFooterActions } from '../components/ui/drawer-patterns'
+import {
+  getAppointmentStatusBadge,
+  DoctorSelector,
   PatientSelector
 } from '../components/appointments/appointment-components'
 import { DEMO_STAFF, type AppointmentStatus } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
+import { useAuth } from '../context/AuthContext'
 
 interface AppointmentRow {
   id: string
@@ -27,14 +30,17 @@ interface AppointmentRow {
   type: string
   status: AppointmentStatus
   notes: string
+  photoUrl?: string
 }
 
 
 
 export function AppointmentsPage() {
   const { appointments, patients, visits, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
+  const { currentUser } = useAuth()
+  const isReceptionist = currentUser?.role === 'Receptionist'
   const navigate = useNavigate()
-  
+
   const data: AppointmentRow[] = useMemo(() => appointments.map(a => {
     const p = patients.find(pt => pt.id === a.patientId)
     return {
@@ -52,16 +58,21 @@ export function AppointmentsPage() {
   }), [appointments, patients])
 
   const [search, setSearch] = useState('')
-  
+
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create')
-  
+
   // Edit/Create form state
   const [activeItem, setActiveItem] = useState<Partial<AppointmentRow>>({})
 
-  // Cancel dialog state
-  const [cancelId, setCancelId] = useState<string | null>(null)
+  // Modal states
+  const [checkInModalOpen, setCheckInModalOpen] = useState(false)
+  const [checkInTarget, setCheckInTarget] = useState<AppointmentRow | null>(null)
+
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState<AppointmentRow | null>(null)
+
 
   const handleOpenCreate = () => {
     setActiveItem({
@@ -111,23 +122,36 @@ export function AppointmentsPage() {
     setDrawerOpen(false)
   }
 
-  const handleConfirmCancel = () => {
-    if (cancelId) {
-      updateAppointment({ id: cancelId, status: 'Cancelled' })
-      setCancelId(null)
+  const initiateCancel = (row: Partial<AppointmentRow>) => {
+    setCancelTarget(row as AppointmentRow)
+    setCancelModalOpen(true)
+  }
+
+  const handleDelete = () => {
+    if (cancelTarget) {
+      updateAppointment({ id: cancelTarget.id, status: 'Cancelled' })
+      setCancelModalOpen(false)
+      setCancelTarget(null)
+      setDrawerOpen(false)
     }
   }
 
-  const handleConfirmArrival = (id: string) => {
-    const res = confirmAppointmentArrival(id)
-    if (!res.success) {
-      alert(res.error)
+  const initiateCheckIn = (row: AppointmentRow) => {
+    setCheckInTarget(row)
+    setCheckInModalOpen(true)
+  }
+
+  const handleConfirmArrival = () => {
+    if (checkInTarget) {
+      confirmAppointmentArrival(checkInTarget.id)
+      setCheckInModalOpen(false)
+      setCheckInTarget(null)
     }
   }
 
   const filteredData = useMemo(() => {
-    return data.filter(d => 
-      d.patientName.toLowerCase().includes(search.toLowerCase()) || 
+    return data.filter(d =>
+      d.patientName.toLowerCase().includes(search.toLowerCase()) ||
       d.patientId.toLowerCase().includes(search.toLowerCase()) ||
       d.patientPhone.includes(search)
     )
@@ -139,8 +163,7 @@ export function AppointmentsPage() {
       accessorKey: "patientName",
       cell: ({ row }) => (
         <div>
-          <div className="font-semibold text-slate-900">{row.original.patientName}</div>
-          <div className="text-sm font-mono text-slate-500">{row.original.patientId}</div>
+          <span className="font-semibold text-slate-900 block">{row.original.patientName}</span>
         </div>
       )
     },
@@ -160,10 +183,7 @@ export function AppointmentsPage() {
       cell: ({ row }) => {
         const doc = DEMO_STAFF.find((d: any) => d.id === row.original.doctorId)
         return (
-          <div>
-            <div className="text-slate-900">{doc?.name || row.original.doctorId}</div>
-            <div className="text-xs text-slate-500">{doc?.role}</div>
-          </div>
+          <span className="text-sm font-medium text-slate-700">{doc?.name || row.original.doctorId}</span>
         )
       }
     },
@@ -182,20 +202,24 @@ export function AppointmentsPage() {
       header: "",
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          {['Scheduled', 'Confirmed'].includes(row.original.status) && (
+          {['Scheduled', 'Confirmed'].includes(row.original.status) ? (
+            <Button variant="outline" size="sm" className="h-8 shadow-sm text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100" onClick={(e) => { e.stopPropagation(); initiateCheckIn(row.original); }}>
+              Check In
+            </Button>
+          ) : row.original.status === 'Checked In' ? (
+            <span className="text-sm text-slate-500 font-medium px-2">Checked In</span>
+          ) : null}
+          {!isReceptionist && ['Scheduled', 'Confirmed'].includes(row.original.status) && (
             <>
-              <Button variant="outline" size="sm" className="h-8 shadow-sm text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100" onClick={() => handleConfirmArrival(row.original.id)}>
-                Check In
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-900" onClick={() => handleOpenEdit(row.original)} aria-label="Edit appointment">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-900" onClick={(e) => { e.stopPropagation(); handleOpenEdit(row.original); }} aria-label="Edit appointment">
                 <Edit2 className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => setCancelId(row.original.id)} aria-label="Cancel appointment">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={(e) => { e.stopPropagation(); initiateCancel(row.original); }} aria-label="Cancel appointment">
                 <XCircle className="w-4 h-4" />
               </Button>
             </>
           )}
-          <Button variant="outline" size="sm" onClick={() => handleOpenView(row.original)} className="shadow-sm">
+          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenView(row.original); }} className="shadow-sm bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700">
             View
           </Button>
         </div>
@@ -206,15 +230,15 @@ export function AppointmentsPage() {
   // Derived for drawer header
   const isEditing = drawerMode === 'edit'
   const isCreating = drawerMode === 'create'
-  
-  const drawerPatient = patients.find(p => p.id === activeItem.patientId) || 
+
+  const drawerPatient = patients.find(p => p.id === activeItem.patientId) ||
     (isCreating ? undefined : { name: activeItem.patientName || '', id: activeItem.patientId || '', phone: activeItem.patientPhone || '' })
 
   const relatedVisit = activeItem.id ? visits.find(v => v.appointmentId === activeItem.id) : undefined
 
   return (
     <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
-      
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -227,63 +251,85 @@ export function AppointmentsPage() {
         </Button>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input 
-            placeholder="Search patient or phone..." 
-            className="pl-9 bg-white"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <Button variant="outline" className="flex-1 sm:flex-none">Doctor</Button>
-          <Button variant="outline" className="flex-1 sm:flex-none">Status</Button>
-          <Button variant="outline" className="flex-1 sm:flex-none">Date</Button>
-        </div>
-      </div>
+      <DataTableToolbar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search patient or phone..."
+        exportOptions={{ pdf: true, excel: true, csv: true }}
+        filterSlot={
+          <>
+            <select className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+              <option value="today">Today</option>
+              <option value="tomorrow">Tomorrow</option>
+              <option value="next-7-days">Next 7 Days</option>
+              <option value="all-dates">All Dates</option>
+            </select>
+            <select className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+              <option value="all-status">All Statuses</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="checked-in">Checked In</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+              <option value="all-doctors">All Doctors</option>
+              <option value="dr-smith">Dr. Smith</option>
+              <option value="dr-adams">Dr. Adams</option>
+              <option value="dr-lee">Dr. Lee</option>
+            </select>
+          </>
+        }
+      />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
-        <DataTable columns={columns} data={filteredData} />
+        <DataTable
+          columns={columns}
+          data={filteredData}
+          onRowClick={handleOpenView}
+          emptyState={
+            search !== '' ? (
+              <DataTableEmpty
+                icon={Search}
+                title="No appointments found"
+                description={`There are no appointments matching "${search}".`}
+              />
+            ) : (
+              <DataTableEmpty
+                icon={CalendarIcon}
+                title="No appointments yet"
+                description="No appointments scheduled for this period."
+              />
+            )
+          }
+        />
       </div>
 
-      {/* Cancel Dialog */}
-      <Dialog open={!!cancelId} onOpenChange={(open) => !open && setCancelId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Appointment?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel this appointment? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0 mt-4">
-            <Button variant="outline" onClick={() => setCancelId(null)}>Keep Appointment</Button>
-            <Button variant="destructive" onClick={handleConfirmCancel}>Cancel Appointment</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Appointment Modal */}
+      <Dialog open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DialogContent className="sm:max-w-2xl bg-white p-0 gap-0 overflow-hidden">
 
-      {/* Appointment Drawer */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
-          
-          {/* Drawer Header */}
+          {/* Modal Header */}
           {isCreating ? (
-            <div className="px-6 py-6 bg-slate-900 border-b border-slate-800">
-              <h2 className="text-xl font-bold tracking-tight text-white">New Appointment</h2>
-              <p className="text-slate-400 mt-1">Schedule a visit with a doctor or surgeon.</p>
+            <div className="px-6 py-5 bg-white border-b border-slate-100/60 relative z-10 flex-shrink-0">
+              <h2 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mt-1">New Appointment</h2>
             </div>
           ) : (
-            <PatientProfileHeader 
-              name={drawerPatient?.name || ''}
-              patientId={drawerPatient?.id || ''}
-              phone={drawerPatient?.phone || ''}
-              statusElement={getAppointmentStatusBadge(activeItem.status as AppointmentStatus)}
-              modeText={isEditing ? 'Reschedule / Edit' : `Appointment: ${activeItem.id}`}
-            />
+            <div className="px-6 py-5 bg-white border-b border-slate-100/60 relative z-10 flex flex-col gap-2 flex-shrink-0">
+              <div className="flex justify-between items-start">
+                <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{isEditing ? 'Reschedule / Edit' : `Appointment: ${activeItem.id}`}</h2>
+                {getAppointmentStatusBadge(activeItem.status as AppointmentStatus)}
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-semibold text-slate-600 border border-slate-200">
+                  {drawerPatient?.name?.charAt(0) || '?'}
+                </div>
+                <div>
+                  <div className="font-semibold text-slate-900">{drawerPatient?.name}</div>
+                  <div className="text-sm text-slate-500">{drawerPatient?.phone}</div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Checked In Success State */}
@@ -297,28 +343,28 @@ export function AppointmentsPage() {
             </div>
           )}
 
-          {/* Drawer Body */}
-          <SheetScrollArea className="p-0 bg-slate-50 flex-1">
-            <div className="px-6 sm:px-8 py-8 space-y-8">
-              
+          {/* Modal Body */}
+          <div className="p-0 bg-slate-50 flex-1 overflow-y-auto max-h-[60vh]">
+            <div className="px-6 sm:px-8 py-6 space-y-8">
+
               {/* Form Fields */}
               <div className="space-y-6">
-                
+
                 {/* Patient Selection (Only in Create Mode) */}
                 {isCreating && (
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Patient</label>
-                    <PatientSelector 
-                      value={activeItem.patientId || ''} 
+                    <PatientSelector
+                      value={activeItem.patientId || ''}
                       onChange={(val) => setActiveItem(prev => ({ ...prev, patientId: val }))}
                     />
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Provider</label>
-                  <DoctorSelector 
-                    value={activeItem.doctorId || ''} 
+                  <label className="text-sm font-semibold text-slate-700">Doctor</label>
+                  <DoctorSelector
+                    value={activeItem.doctorId || ''}
                     onChange={(val) => setActiveItem(prev => ({ ...prev, doctorId: val }))}
                     disabled={drawerMode === 'view'}
                   />
@@ -329,9 +375,9 @@ export function AppointmentsPage() {
                     <label className="text-sm font-semibold text-slate-700">Date</label>
                     <div className="relative">
                       <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        type="date" 
-                        className="pl-9 bg-white" 
+                      <Input
+                        type="date"
+                        className="pl-9 bg-white"
                         value={activeItem.date || ''}
                         onChange={e => setActiveItem(prev => ({ ...prev, date: e.target.value }))}
                         readOnly={drawerMode === 'view'}
@@ -342,9 +388,9 @@ export function AppointmentsPage() {
                     <label className="text-sm font-semibold text-slate-700">Time</label>
                     <div className="relative">
                       <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        type="time" 
-                        className="pl-9 bg-white" 
+                      <Input
+                        type="time"
+                        className="pl-9 bg-white"
                         value={activeItem.time ? activeItem.time.replace(/ (AM|PM)/, '') : ''} // basic mock time handling
                         onChange={e => setActiveItem(prev => ({ ...prev, time: e.target.value }))}
                         readOnly={drawerMode === 'view'}
@@ -355,7 +401,7 @@ export function AppointmentsPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Appointment Type</label>
-                  <Input 
+                  <Input
                     value={activeItem.type || ''}
                     placeholder="e.g. Consultation, Surgery"
                     onChange={e => setActiveItem(prev => ({ ...prev, type: e.target.value }))}
@@ -368,7 +414,7 @@ export function AppointmentsPage() {
                   <label className="text-sm font-semibold text-slate-700">Notes / Reason</label>
                   <div className="relative">
                     <FileText className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <textarea 
+                    <textarea
                       className="flex min-h-[100px] w-full rounded-md border border-input bg-white px-3 py-2 pl-9 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       value={activeItem.notes || ''}
                       placeholder="Enter appointment notes..."
@@ -381,7 +427,7 @@ export function AppointmentsPage() {
                 {isEditing && (
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Status</label>
-                    <select 
+                    <select
                       className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       value={activeItem.status || 'Scheduled'}
                       onChange={e => setActiveItem(prev => ({ ...prev, status: e.target.value as AppointmentStatus }))}
@@ -396,16 +442,53 @@ export function AppointmentsPage() {
                   </div>
                 )}
 
+                {/* Camera Capture Section for Appointments */}
+                {(isCreating || isEditing) && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Attachment / Photo (Optional)</label>
+                    <div className="flex flex-col items-center justify-center space-y-3 p-6 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                      {activeItem.photoUrl ? (
+                        <div className="relative">
+                          <img src={activeItem.photoUrl} alt="Attachment" className="w-full max-w-[200px] rounded-lg object-cover border-4 border-white shadow-sm" />
+                          <button
+                            onClick={() => setActiveItem(prev => ({ ...prev, photoUrl: '' }))}
+                            className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                          <Button variant="outline" size="sm" className="mt-4 shadow-sm w-full" onClick={() => setActiveItem(prev => ({ ...prev, photoUrl: '' }))}>
+                            Retake Photo
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="w-full max-w-[200px] flex flex-col items-center gap-3">
+                          <div className="w-32 aspect-video bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 overflow-hidden relative shadow-inner">
+                            <span className="text-xs font-semibold">Camera Area</span>
+                          </div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm"
+                            onClick={() => setActiveItem(prev => ({ ...prev, photoUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop' }))}
+                          >
+                            Take Photo
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
             </div>
-          </SheetScrollArea>
-          
-          {/* Drawer Footer */}
+          </div>
+
+          {/* Modal Footer */}
           <div className="bg-white border-t px-6 py-4">
             {drawerMode === 'view' ? (
               <DrawerFooterActions>
-                <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto">Close</Button>
+                <Button onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-rose-500 hover:bg-rose-600 text-white border-0">Close</Button>
                 {activeItem.status === 'Checked In' && relatedVisit && (
                   <Button variant="outline" className="w-full sm:w-auto border-teal-200 text-teal-700 bg-teal-50" onClick={() => navigate('/queue')}>
                     View in Queue
@@ -413,10 +496,13 @@ export function AppointmentsPage() {
                 )}
                 {['Scheduled', 'Confirmed'].includes(activeItem.status || '') && (
                   <>
-                    <Button className="w-full sm:w-auto border-teal-600 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => { handleConfirmArrival(activeItem.id || ''); setDrawerOpen(false); }}>
+                    <Button className="w-full sm:w-auto border-teal-600 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => { initiateCheckIn(activeItem as AppointmentRow); }}>
                       Check In
                     </Button>
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => setDrawerMode('edit')}>
+                    <Button variant="outline" className="w-full sm:w-auto text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => initiateCancel(activeItem)}>
+                      Cancel
+                    </Button>
+                    <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white border-0" onClick={() => setDrawerMode('edit')}>
                       Edit
                     </Button>
                   </>
@@ -425,8 +511,8 @@ export function AppointmentsPage() {
             ) : (
               <DrawerFooterActions>
                 <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto">Cancel</Button>
-                <Button 
-                  className="w-full sm:w-auto" 
+                <Button
+                  className="w-full sm:w-auto"
                   onClick={handleSave}
                   disabled={isCreating && !activeItem.patientId}
                 >
@@ -436,9 +522,44 @@ export function AppointmentsPage() {
             )}
           </div>
 
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
+      {/* Check In Modal */}
+      <Dialog open={checkInModalOpen} onOpenChange={setCheckInModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle>Confirm Check In</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-600">
+              Are you sure you want to check in <span className="font-semibold text-slate-900">{checkInTarget?.patientName}</span>?
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setCheckInModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleConfirmArrival} className="bg-teal-600 hover:bg-teal-700 text-white">Confirm Check In</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Appointment Modal */}
+      <Dialog open={cancelModalOpen} onOpenChange={setCancelModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle>Cancel Appointment</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-600">
+              Are you sure you want to cancel the appointment for <span className="font-semibold text-slate-900">{cancelTarget?.patientName}</span>? This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setCancelModalOpen(false)}>Back</Button>
+            <Button variant="destructive" onClick={handleDelete}>Cancel Appointment</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

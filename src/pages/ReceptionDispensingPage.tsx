@@ -5,7 +5,8 @@ import { DataTable } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
+import { DataTableEmpty } from '../components/data-table/data-table'
 import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { PatientProfileHeader, DrawerFooterActions } from '../components/ui/drawer-patterns'
 import { DispensingMedicineItem } from '../components/dispensing/dispensing-components'
@@ -134,16 +135,6 @@ export function ReceptionDispensingPage() {
       )
     },
     {
-      header: "Doctor",
-      accessorKey: "doctorName",
-      cell: ({ row }) => <span className="text-slate-600">{row.original.doctorName}</span>
-    },
-    {
-      header: "Time",
-      accessorKey: "time",
-      cell: ({ row }) => <span className="text-slate-600">{row.original.time}</span>
-    },
-    {
       header: "Items",
       accessorKey: "itemCount",
       cell: ({ row }) => <span className="font-medium text-slate-700">{row.original.itemCount} Medicines</span>
@@ -167,7 +158,7 @@ export function ReceptionDispensingPage() {
             variant="outline" 
             size="sm"
             onClick={() => handleOpenDrawer(row.original)}
-            className="font-medium shadow-sm"
+            className={`font-medium shadow-sm ${row.original.status === 'Dispensed' ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'}`}
           >
             {row.original.status === 'Dispensed' ? 'View' : 'Dispense'}
           </Button>
@@ -188,22 +179,34 @@ export function ReceptionDispensingPage() {
         <p className="text-slate-500 mt-1">Give prescribed medicines to patients.</p>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input 
-            placeholder="Search patient or ID..." 
-            className="pl-9 bg-white"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-      </div>
+      <DataTableToolbar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search patient, ID or visit..."
+        exportOptions={{ pdf: true, excel: true, csv: true }}
+      />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
-        <DataTable columns={columns} data={filteredData} />
+        <DataTable 
+          columns={columns} 
+          data={filteredData}
+          onRowClick={handleOpenDrawer}
+          emptyState={
+            search !== '' ? (
+              <DataTableEmpty 
+                icon={Search} 
+                title="No dispensing tasks found" 
+                description={`There are no records matching "${search}".`}
+              />
+            ) : (
+              <DataTableEmpty 
+                title="No pending dispensing" 
+                description="All prescribed medicines have been dispensed." 
+              />
+            )
+          }
+        />
       </div>
 
       {/* Dispensing Drawer */}

@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { Plus, Search, User, Phone, Edit2, ShieldOff } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
+import { DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -150,26 +152,41 @@ export function StaffPage() {
         </Button>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input 
-            placeholder="Search name or phone..." 
-            className="pl-9 bg-white"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <Button variant="outline" className="flex-1 sm:flex-none">Role</Button>
-          <Button variant="outline" className="flex-1 sm:flex-none">Status</Button>
-        </div>
-      </div>
+      <DataTableToolbar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search name or phone..."
+        exportOptions={{ pdf: true, excel: true, csv: true }}
+        filterSlot={
+          <>
+            <Button variant="outline" className="h-9 shadow-sm">Role</Button>
+            <Button variant="outline" className="h-9 shadow-sm">Status</Button>
+          </>
+        }
+      />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
-        <DataTable columns={columns} data={filteredData} />
+        <DataTable 
+          columns={columns} 
+          data={filteredData} 
+          emptyState={
+            search !== '' ? (
+              <DataTableEmpty 
+                icon={Search} 
+                title="No staff found" 
+                description={`There are no staff matching "${search}".`}
+              />
+            ) : (
+              <DataTableEmpty 
+                icon={User}
+                title="No staff members" 
+                description="Add staff members to get started." 
+                action={<Button onClick={handleOpenCreate} className="shadow-sm">Add Staff</Button>}
+              />
+            )
+          }
+        />
       </div>
 
       {/* Deactivate Dialog */}
@@ -284,9 +301,9 @@ export function StaffPage() {
           <div className="bg-slate-50 border-t px-6 py-4">
             {drawerMode === 'view' ? (
               <DrawerFooterActions>
-                <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white">Close</Button>
+                <Button onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-rose-500 hover:bg-rose-600 text-white border-0">Close</Button>
                 {activeItem.status === 'Active' && (
-                  <Button className="w-full sm:w-auto" onClick={() => setDrawerMode('edit')}>
+                  <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white border-0" onClick={() => setDrawerMode('edit')}>
                     Edit Profile
                   </Button>
                 )}

@@ -21,7 +21,7 @@ export const DEMO_CANONICAL_PATIENT: Patient = {
 export const DEMO_CANONICAL_VISIT: Visit = {
   id: "VIS-0001",
   patientId: "PT-0001",
-  doctorId: "DOC-001", // Assuming Dr. Arun
+  doctorId: "STF-102", // Dr. Smith / Carter mapping
   status: "WAITING",
   amountDue: 1500,
   
@@ -37,7 +37,7 @@ export const DEMO_CANONICAL_QUEUE: QueueEntry = {
   id: "Q-0001",
   visitId: "VIS-0001",
   patientId: "PT-0001",
-  assignedDoctorId: "DOC-001",
+  assignedDoctorId: "STF-102",
   position: 1,
   status: "Waiting",
   priority: false,
@@ -47,16 +47,17 @@ export const DEMO_CANONICAL_QUEUE: QueueEntry = {
 export const DEMO_CANONICAL_CONSULTATION: Consultation = {
   id: "CON-0001",
   visitId: "VIS-0001",
-  doctorId: "DOC-001",
-  reasonForVisit: "Routine checkup and slight pain in lower right molar.",
-  clinicalNotes: "Observed mild caries on tooth 46. Patient advised to maintain oral hygiene.",
-  status: "Completed"
+  doctorId: "STF-102",
+  reasonForVisit: "Initial checkup and mild toothache.",
+  clinicalNotes: "Patient has mild caries on lower right molar. Recommend filling.",
+  status: "In Progress",
+  consultationFee: 500
 }
 
 export const DEMO_CANONICAL_PRESCRIPTION: Prescription = {
   id: "RX-0001",
   visitId: "VIS-0001",
-  doctorId: "DOC-001",
+  doctorId: "STF-102",
   status: "Finalized",
   notes: "Take after meals.",
   items: [

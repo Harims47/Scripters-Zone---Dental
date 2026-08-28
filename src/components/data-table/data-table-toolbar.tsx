@@ -1,7 +1,14 @@
 import * as React from "react"
-import { Search } from "lucide-react"
+import { Search, Download, FileText, FileSpreadsheet, File } from "lucide-react"
 import { Input } from "../ui/input"
+import { Button } from "../ui/button"
 import { cn } from "../../lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu"
 
 interface DataTableToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
   searchQuery: string
@@ -9,6 +16,11 @@ interface DataTableToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
   searchPlaceholder?: string
   filterSlot?: React.ReactNode
   actionSlot?: React.ReactNode
+  exportOptions?: {
+    pdf?: boolean
+    excel?: boolean
+    csv?: boolean
+  }
 }
 
 export function DataTableToolbar({
@@ -17,6 +29,7 @@ export function DataTableToolbar({
   searchPlaceholder = "Search...",
   filterSlot,
   actionSlot,
+  exportOptions,
   className,
   ...props
 }: DataTableToolbarProps) {
@@ -38,9 +51,39 @@ export function DataTableToolbar({
           </div>
         )}
       </div>
-      {actionSlot && (
+      {(actionSlot || exportOptions) && (
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {actionSlot}
+          {exportOptions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 shadow-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[150px]">
+                {exportOptions.pdf && (
+                  <DropdownMenuItem>
+                    <FileText className="mr-2 h-4 w-4 text-red-500/80" />
+                    <span>PDF</span>
+                  </DropdownMenuItem>
+                )}
+                {exportOptions.excel && (
+                  <DropdownMenuItem>
+                    <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600/80" />
+                    <span>Excel</span>
+                  </DropdownMenuItem>
+                )}
+                {exportOptions.csv && (
+                  <DropdownMenuItem>
+                    <File className="mr-2 h-4 w-4 text-slate-400" />
+                    <span>CSV</span>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       )}
     </div>

@@ -1,13 +1,19 @@
 import React, { createContext, useContext, useState } from 'react'
 import type { Patient, Visit, QueueEntry, Consultation, Prescription, Dispensing, Payment } from '../types/domain'
-import { 
-  DEMO_CANONICAL_PATIENT, 
-  DEMO_CANONICAL_VISIT, 
-  DEMO_CANONICAL_QUEUE, 
+import {
+  DEMO_CANONICAL_PATIENT,
+  DEMO_CANONICAL_VISIT,
+  DEMO_CANONICAL_QUEUE,
+  DEMO_CANONICAL_CONSULTATION,
+  DEMO_CANONICAL_PRESCRIPTION,
   DEMO_PATIENTS,
   DEMO_QUEUE,
   DEMO_MEDICINES,
   DEMO_APPOINTMENTS,
+  DEMO_VISITS,
+  DEMO_PRESCRIPTIONS,
+  DEMO_DISPENSING,
+  DEMO_PAYMENTS,
   type Medicine,
   type Appointment
 } from '../lib/mock-data'
@@ -23,23 +29,23 @@ interface ClinicContextType {
   dispensings: Dispensing[]
   payments: Payment[]
   medicines: Medicine[]
-  
+
   addPatient: (patient: Omit<Patient, 'id'>) => Patient
   addAppointment: (appointment: Omit<Appointment, 'id'>) => void
   updateAppointment: (appointment: Partial<Appointment>) => void
   confirmAppointmentArrival: (appointmentId: string) => { success: boolean, visitId?: string, error?: string }
-  startVisit: (patientId: string, doctorId: string, isUrgent?: boolean) => { visit: Visit, queueEntry: QueueEntry }
+  startVisit: (patientId: string, doctorId: string, isUrgent?: boolean, reasonForVisit?: string) => { visit: Visit, queueEntry: QueueEntry }
   normalizePhone: (phone: string) => string
-  
+
   // Phase 0P.3 Transitions
   callPatient: (visitId: string) => boolean
   startConsultationFlow: (visitId: string) => boolean
-  saveConsultation: (visitId: string, doctorId: string, data: { reasonForVisit: string, clinicalNotes: string }, isComplete?: boolean) => boolean
+  saveConsultation: (visitId: string, doctorId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number }, isComplete?: boolean) => boolean
   savePrescription: (prescription: Omit<Prescription, 'id'>) => void
-  
+
   // Phase 0P.5
   completeDispensing: (visitId: string, prescriptionId: string, items: { medicineId: string, prescribedQuantity: number, dispensedQuantity: number }[]) => { success: boolean, error?: string }
-  
+
   // Phase 0P.6
   recordPayment: (visitId: string, method: 'Cash' | 'GPay') => { success: boolean, error?: string }
 }
@@ -58,9 +64,13 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return Array.from(map.values())
   })
 
-  const [appointments, setAppointments] = useState<Appointment[]>(DEMO_APPOINTMENTS.map(a => ({...a})))
+  const [appointments, setAppointments] = useState<Appointment[]>(DEMO_APPOINTMENTS.map(a => ({ ...a })))
 
-  const [visits, setVisits] = useState<Visit[]>([DEMO_CANONICAL_VISIT])
+  const [visits, setVisits] = useState<Visit[]>([
+    { ...DEMO_CANONICAL_VISIT, status: 'CALLED' },
+    { ...DEMO_CANONICAL_VISIT, id: "VIS-0000", status: "COMPLETED" },
+    ...(typeof DEMO_VISITS !== 'undefined' ? DEMO_VISITS.map(v => ({...v})) : [])
+  ])
 
   const [queue, setQueue] = useState<QueueEntry[]>(() => {
     const list: QueueEntry[] = [DEMO_CANONICAL_QUEUE]
@@ -72,7 +82,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
           patientId: q.patientId,
           assignedDoctorId: q.doctorId,
           position: parseInt(q.queueNumber) || 99,
-          status: q.status === 'With Doctor' ? 'In Progress' : q.status as any,
+          // Change one to 'Called' so doctor can start consultation
+          status: q.id === 'Q-001' ? 'Called' : (q.status === 'With Doctor' ? 'In Progress' : q.status as any),
           priority: q.priority === 'Urgent',
           arrivalTime: q.arrivalTime
         })
@@ -81,11 +92,14 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return list
   })
 
-  const [consultations, setConsultations] = useState<Consultation[]>([])
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
-  const [dispensings, setDispensings] = useState<Dispensing[]>([])
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [medicines, setMedicines] = useState<Medicine[]>(DEMO_MEDICINES.map(m => ({...m})))
+  const [consultations, setConsultations] = useState<Consultation[]>([{ ...DEMO_CANONICAL_CONSULTATION, visitId: "VIS-0000" }])
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([
+    { ...DEMO_CANONICAL_PRESCRIPTION, visitId: "VIS-0000" },
+    ...(typeof DEMO_PRESCRIPTIONS !== 'undefined' ? DEMO_PRESCRIPTIONS.map(p => ({...p})) : [])
+  ])
+  const [dispensings, setDispensings] = useState<Dispensing[]>(typeof DEMO_DISPENSING !== 'undefined' ? DEMO_DISPENSING.map(d => ({...d})) : [])
+  const [payments, setPayments] = useState<Payment[]>(typeof DEMO_PAYMENTS !== 'undefined' ? DEMO_PAYMENTS.map(p => ({...p})) : [])
+  const [medicines, setMedicines] = useState<Medicine[]>(DEMO_MEDICINES.map(m => ({ ...m })))
 
   const normalizePhone = (phone: string) => {
     return phone.replace(/[\s\-\(\)\+]/g, '')
@@ -116,7 +130,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     if (appointment.status === 'Cancelled' || appointment.status === 'No Show') {
       return { success: false, error: 'Cannot confirm arrival for a cancelled or no-show appointment.' }
     }
-    
+
     // Check if a visit already exists for this appointment
     const existingVisit = visits.find(v => v.appointmentId === appointmentId)
     if (existingVisit) {
@@ -131,7 +145,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
     const newVisitId = `VIS-${String(visits.length + 1000).padStart(4, '0')}`
     const newQueueId = `Q-${String(queue.length + 1000).padStart(4, '0')}`
-    
+
     const newVisit: Visit = {
       id: newVisitId,
       patientId: appointment.patientId,
@@ -141,10 +155,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       amountDue: 1500, // standard mock amount
       queueEntryId: newQueueId
     }
-    
+
     const now = new Date()
     const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    
+
     const newQueueEntry: QueueEntry = {
       id: newQueueId,
       visitId: newVisitId,
@@ -163,22 +177,23 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return { success: true, visitId: newVisitId }
   }
 
-  const startVisit = (patientId: string, doctorId: string, isUrgent = false) => {
+  const startVisit = (patientId: string, doctorId: string, isUrgent = false, reasonForVisit?: string) => {
     const newVisitId = `VIS-${String(visits.length + 1000).padStart(4, '0')}`
     const newQueueId = `Q-${String(queue.length + 1000).padStart(4, '0')}`
-    
+
     const newVisit: Visit = {
       id: newVisitId,
       patientId,
       doctorId,
       status: 'WAITING',
+      reasonForVisit,
       amountDue: 1500, // Mock billing amount Phase 0P.6
       queueEntryId: newQueueId
     }
-    
+
     const now = new Date()
     const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    
+
     const newQueueEntry: QueueEntry = {
       id: newQueueId,
       visitId: newVisitId,
@@ -192,7 +207,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
     setVisits(prev => [...prev, newVisit])
     setQueue(prev => [...prev, newQueueEntry])
-    
+
     return { visit: newVisit, queueEntry: newQueueEntry }
   }
 
@@ -226,9 +241,9 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return transitionVisitSafely(visitId, 'WITH_DOCTOR', 'In Progress')
   }
 
-  const saveConsultation = (visitId: string, doctorId: string, data: { reasonForVisit: string, clinicalNotes: string }, isComplete = false) => {
+  const saveConsultation = (visitId: string, doctorId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number }, isComplete = false) => {
     let success = false;
-    
+
     if (isComplete) {
       const transitioned = transitionVisitSafely(visitId, 'READY_FOR_RECEPTION', 'Completed')
       if (!transitioned) return false;
@@ -241,10 +256,11 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       setConsultations(prev => {
         const existing = prev.find(c => c.visitId === visitId)
         if (existing) {
-          return prev.map(c => c.visitId === visitId ? { 
-            ...c, 
-            ...data, 
-            status: isComplete ? 'Completed' : 'In Progress' 
+          return prev.map(c => c.visitId === visitId ? {
+            ...c,
+            ...data,
+            consultationFee: data.consultationFee || 0,
+            status: isComplete ? 'Completed' : 'In Progress'
           } : c)
         } else {
           const newId = `CON-${String(prev.length + 1000).padStart(4, '0')}`
@@ -253,20 +269,29 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
             visitId,
             doctorId,
             ...data,
+            consultationFee: data.consultationFee || 0,
             status: isComplete ? 'Completed' : 'In Progress'
           }]
         }
       })
-      // Link consultation ID to visit if not already linked
+      // Link consultation ID and update fee to visit if not already linked
       setVisits(prev => prev.map(v => {
-        if (v.id === visitId && !v.consultationId) {
-          const newId = `CON-${String(consultations.length + 1000).padStart(4, '0')}` // Naive generation fallback
-          return { ...v, consultationId: newId }
+        if (v.id === visitId) {
+          let updated = { ...v }
+          if (!v.consultationId) {
+            const newId = `CON-${String(consultations.length + 1000).padStart(4, '0')}` // Naive generation fallback
+            updated.consultationId = newId
+          }
+          if (data.consultationFee !== undefined) {
+            updated.consultationFee = data.consultationFee
+            updated.amountDue = (data.consultationFee || 0) + (updated.medicineCost || 0)
+          }
+          return updated
         }
         return v
       }))
     }
-    
+
     return success;
   }
 
@@ -322,7 +347,26 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
     setDispensings(prev => [...prev, newRecord])
 
-    // 5. Transition Visit
+    // Calculate medicine cost
+    let medicineCost = 0;
+    for (const item of items) {
+      const med = medicines.find(m => m.id === item.medicineId);
+      if (med && med.unitPrice) {
+        medicineCost += (item.dispensedQuantity * med.unitPrice);
+      }
+    }
+
+    // 5. Transition Visit and update cost
+    setVisits(prev => prev.map(v => {
+      if (v.id === visitId) {
+        return {
+          ...v,
+          medicineCost,
+          amountDue: (v.consultationFee || 0) + medicineCost
+        }
+      }
+      return v
+    }))
     transitionVisitSafely(visitId, 'READY_FOR_PAYMENT')
 
     return { success: true }
@@ -342,7 +386,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
 
     const newId = `PAY-${String(payments.length + 1000).padStart(4, '0')}`
-    
+
     const newPayment: Payment = {
       id: newId,
       visitId,
@@ -350,7 +394,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       method,
       status: 'Paid'
     }
-    
+
     setPayments(prev => [...prev, newPayment])
 
     // Transition 1: READY_FOR_PAYMENT -> PAID
@@ -362,7 +406,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ClinicContext.Provider value={{ 
+    <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
       addPatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, normalizePhone,
       callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment

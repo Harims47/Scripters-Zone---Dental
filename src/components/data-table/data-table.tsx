@@ -23,6 +23,30 @@ import {
   TableRow,
 } from "../ui/table"
 import { DataTablePagination } from "./data-table-pagination"
+import { Search } from "lucide-react"
+
+export function DataTableEmpty({ 
+  icon: Icon = Search, 
+  title = "No results found", 
+  description = "Try adjusting your filters or search query.",
+  action 
+}: { 
+  icon?: any, 
+  title?: string, 
+  description?: string,
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+        <Icon className="w-8 h-8 text-slate-400" />
+      </div>
+      <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
+      <p className="text-slate-500 max-w-sm mx-auto mb-6">{description}</p>
+      {action}
+    </div>
+  )
+}
 
 export interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -40,6 +64,7 @@ export interface DataTableProps<TData, TValue> {
   loading?: boolean
   error?: Error | null
   emptyState?: React.ReactNode
+  onRowClick?: (row: TData) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -55,6 +80,7 @@ export function DataTable<TData, TValue>({
   loading = false,
   error = null,
   emptyState,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   // Internal state for demo/client-side mode
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -162,6 +188,8 @@ export function DataTable<TData, TValue>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
+                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                    className={onRowClick ? "cursor-pointer hover:bg-slate-50/80 transition-colors" : ""}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
@@ -177,9 +205,9 @@ export function DataTable<TData, TValue>({
                 <TableRow>
                   <TableCell
                     colSpan={finalColumns.length}
-                    className="h-32 text-center"
+                    className="h-32 p-0 text-center"
                   >
-                    {emptyState || "No results found."}
+                    {emptyState || <DataTableEmpty />}
                   </TableCell>
                 </TableRow>
               )}

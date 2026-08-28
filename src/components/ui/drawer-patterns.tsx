@@ -17,7 +17,7 @@ export function PatientProfileHeader({
 }) {
   return (
     <SheetHeader className="bg-white border-b border-slate-100/60 px-8 py-6 space-y-0 text-left relative flex-shrink-0 z-10">
-      <div className="flex justify-between items-start mb-5">
+      <div className="flex justify-between items-start mb-5 pr-8">
         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
           {modeText}
         </span>
@@ -64,7 +64,7 @@ export function EntityDrawerHeader({
 }) {
   return (
     <SheetHeader className="bg-white border-b border-slate-100/60 px-8 py-6 space-y-0 text-left relative flex-shrink-0 z-10">
-      <div className="flex justify-between items-start mb-5">
+      <div className="flex justify-between items-start mb-5 pr-8">
         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
           {modeText}
         </span>

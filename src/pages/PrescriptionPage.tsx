@@ -47,6 +47,10 @@ export function PrescriptionPage() {
           stockWarningLevel: med?.stockWarningLevel || 0,
           currentStock: med?.currentStock || 0,
           quantity: item.quantity,
+          dosage: item.dosage,
+          frequency: item.frequency,
+          duration: item.duration,
+          instructions: item.instructions
         }
       })
       setActivePrescription(mappedItems as any[])
@@ -67,21 +71,22 @@ export function PrescriptionPage() {
     const { over, active } = event
     if (over && over.id === 'prescription-dropzone') {
       const draggedMed = active.data.current as Medicine
-      if (!draggedMed) return
-
-      setActivePrescription(prev => {
-        const existing = prev.find(p => p.id === draggedMed.id)
-        if (existing) {
-          return prev.map(p => p.id === draggedMed.id ? { ...p, quantity: p.quantity + 1 } : p)
-        }
-        return [...prev, { ...draggedMed, quantity: 1 }]
-      })
+      if (draggedMed) handleAddMedicine(draggedMed)
     }
   }
 
-  const updateQuantity = (id: string, qty: number) => {
-    if (qty < 1) return // Prevent going below 1
-    setActivePrescription(prev => prev.map(p => p.id === id ? { ...p, quantity: qty } : p))
+  const handleAddMedicine = (med: Medicine) => {
+    setActivePrescription(prev => {
+      const existing = prev.find(p => p.id === med.id)
+      if (existing) {
+        return prev.map(p => p.id === med.id ? { ...p, quantity: p.quantity + 1 } : p)
+      }
+      return [...prev, { ...med, quantity: 1 }]
+    })
+  }
+
+  const updateItemField = (id: string, field: keyof PrescriptionLineItem, value: any) => {
+    setActivePrescription(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p))
   }
 
   const removeItem = (id: string) => {
@@ -99,7 +104,10 @@ export function PrescriptionPage() {
           id: `RXI-${Math.random().toString(36).substring(2, 9)}`, // naive ID generator
           medicineId: p.id,
           quantity: p.quantity,
-          instructions: ''
+          dosage: p.dosage,
+          frequency: p.frequency,
+          duration: p.duration,
+          instructions: p.instructions || ''
         }))
       })
       navigate(`/doctor/patient/${patient.id}?visitId=${visit.id}`)
@@ -183,7 +191,7 @@ export function PrescriptionPage() {
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/30">
               {filteredMedicines.map(med => (
-                <DraggableMedicineItem key={med.id} medicine={med} />
+                <DraggableMedicineItem key={med.id} medicine={med} onAdd={handleAddMedicine} />
               ))}
               {filteredMedicines.length === 0 && (
                 <div className="text-center p-6 text-slate-500 text-sm">No medicines found.</div>
@@ -210,15 +218,15 @@ export function PrescriptionPage() {
                       <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 border border-dashed border-slate-300">
                         <Info className="w-6 h-6 text-slate-400" />
                       </div>
-                      <p className="font-medium text-slate-600">Prescription is empty</p>
-                      <p className="text-sm mt-1">Drag and drop medicines from the palette here to build the prescription.</p>
+                      <p className="font-medium text-slate-600">No medicines added</p>
+                      <p className="text-sm mt-1">Search for a medicine above to add it to this prescription.</p>
                     </div>
                   ) : (
                     activePrescription.map(item => (
                       <PrescriptionRow 
                         key={item.id} 
                         item={item} 
-                        onUpdateQuantity={updateQuantity} 
+                        onUpdateField={updateItemField} 
                         onRemove={removeItem} 
                       />
                     ))
@@ -239,14 +247,13 @@ export function PrescriptionPage() {
               </DrawerSection>
               
               <div className="pt-4 border-t flex flex-col-reverse sm:flex-row justify-end gap-3">
-                <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate(`/doctor/patient/${patient.id}?visitId=${visit.id}`)}>Cancel</Button>
-                <Button variant="secondary" className="w-full sm:w-auto bg-slate-100 text-slate-900 hover:bg-slate-200" onClick={() => handleSave('Draft')}>Save Draft</Button>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate(`/doctor/patient/${patient.id}?visitId=${visit.id}`)}>Back / Cancel</Button>
                 <Button 
                   className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700" 
                   disabled={activePrescription.length === 0}
                   onClick={() => handleSave('Finalized')}
                 >
-                  Complete Prescription
+                  {prescription ? 'Update Prescription' : 'Save Prescription'}
                 </Button>
               </div>
             </div>

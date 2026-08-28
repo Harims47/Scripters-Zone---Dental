@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Package, Search, FileText, FileSpreadsheet, Printer, Filter, Eye, Edit2, Trash2, Plus, Minus } from 'lucide-react'
+import { Package, Search, Filter, Eye, Edit2, Trash2, Plus, Minus } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip'
 import { DataTable } from '../components/data-table/data-table'
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
+import { DataTableEmpty } from '../components/data-table/data-table'
 import { DataTableColumnHeader } from '../components/data-table/data-table-column-header'
 import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { Label } from '../components/ui/label'
@@ -138,17 +140,13 @@ export function InventoryPage() {
         </div>
       </div>
 
-      {/* List Surface */}
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
-        
-        {/* Toolbar */}
-        <div className="p-4 border-b flex flex-col xl:flex-row xl:items-center justify-between gap-6 bg-white">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search inventory..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-[260px] pl-9 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-colors h-9" />
-            </div>
-            <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+      <DataTableToolbar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search inventory..."
+        exportOptions={{ pdf: true, excel: true, csv: true }}
+        filterSlot={
+          <>
             <Select defaultValue="all">
               <SelectTrigger className="w-[150px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Category" /></SelectTrigger>
               <SelectContent>
@@ -168,19 +166,35 @@ export function InventoryPage() {
               </SelectContent>
             </Select>
             <Button variant="outline" className="h-9 shadow-sm"><Filter className="mr-2 h-4 w-4 text-slate-400" />More Filters</Button>
-          </div>
+          </>
+        }
+      />
 
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Button variant="outline" size="sm" className="h-9 text-slate-600 font-medium hover:bg-slate-50"><FileText className="mr-2 h-4 w-4 text-red-500/80" />PDF</Button>
-            <Button variant="outline" size="sm" className="h-9 text-slate-600 font-medium hover:bg-slate-50"><FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600/80" />Excel</Button>
-            <Button variant="outline" size="sm" className="h-9 text-slate-600 font-medium hover:bg-slate-50">CSV</Button>
-            <div className="h-5 w-px bg-slate-200 mx-1.5 hidden sm:block"></div>
-            <Button variant="outline" size="sm" className="h-9 text-slate-600 font-medium hover:bg-slate-50"><Printer className="mr-2 h-4 w-4 text-slate-400" />Print</Button>
-          </div>
-        </div>
+      {/* List Surface */}
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
 
         {/* Table */}
-        <DataTable columns={columns} data={filteredData} selectable={true} />
+        <DataTable 
+          columns={columns} 
+          data={filteredData} 
+          selectable={true}
+          emptyState={
+            searchQuery !== '' ? (
+              <DataTableEmpty 
+                icon={Search} 
+                title="No items found" 
+                description={`There are no inventory items matching "${searchQuery}".`}
+              />
+            ) : (
+              <DataTableEmpty 
+                icon={Package}
+                title="Inventory is empty" 
+                description="Add items to track your clinic's stock." 
+                action={<Button onClick={() => openDrawer(null, 'create')} className="shadow-sm">Add Item</Button>}
+              />
+            )
+          } 
+        />
       </div>
 
       {/* DRAWER */}

@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { QueueHeader, QueueEntry, getStatusBadge } from '../components/queue/queue-components'
+import { QueueHeader, getStatusBadge, getPriorityBadge } from '../components/queue/queue-components'
 import type { QueueRow, QueueStatus } from '../components/queue/queue-components'
-import { Search } from 'lucide-react'
-import { Input } from '../components/ui/input'
-import { PatientProfileHeader, DrawerSection, DrawerFooterActions, ReadOnlyField } from '../components/ui/drawer-patterns'
-import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
+import { Search, PlayCircle, CheckCircle2, Users } from 'lucide-react'
+import { DataTable } from '../components/data-table/data-table'
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
+import { DataTableEmpty } from '../components/data-table/data-table'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { Button } from '../components/ui/button'
 
 import { DEMO_STAFF } from '../lib/mock-data'
@@ -18,8 +20,6 @@ export function QueuePage() {
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selectedPatient, setSelectedPatient] = useState<QueueRow | null>(null)
   
   const navigate = useNavigate()
 
@@ -53,11 +53,29 @@ export function QueuePage() {
       arrivalTime: q.arrivalTime,
       waitTimeMin: isNaN(diffMin) ? 0 : diffMin,
       doctor: d?.name || 'Unassigned',
+      assignedDoctorId: q.assignedDoctorId,
       status: q.status as QueueStatus,
       priority: q.priority ? 'Urgent' : 'Normal',
       source
     }
   })
+
+  // Modal states
+  const [callModalOpen, setCallModalOpen] = useState(false)
+  const [callTarget, setCallTarget] = useState<QueueRow | null>(null)
+
+  const initiateCall = (row: QueueRow) => {
+    setCallTarget(row)
+    setCallModalOpen(true)
+  }
+
+  const handleConfirmCall = () => {
+    if (callTarget) {
+      callPatient(callTarget.visitId)
+      setCallModalOpen(false)
+      setCallTarget(null)
+    }
+  }
 
   const handleAction = (id: string, action: 'Call' | 'Start' | 'Complete' | 'Cancel') => {
     const row = queueRows.find(q => q.id === id)
@@ -65,21 +83,13 @@ export function QueuePage() {
 
     if (action === 'Call') {
       // Transition WAITING -> CALLED
-      callPatient(row.visitId)
+      initiateCall(row)
     } else if (action === 'Start') {
       // Transition CALLED -> WITH_DOCTOR
       const success = startConsultationFlow(row.visitId)
       if (success) {
         navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
       }
-    }
-  }
-
-  const handleView = (id: string) => {
-    const p = queueRows.find(q => q.id === id)
-    if (p) {
-      setSelectedPatient(p)
-      setDrawerOpen(true)
     }
   }
 
@@ -92,110 +102,133 @@ export function QueuePage() {
     completed: queueRows.filter(q => q.status === 'Completed').length,
   }
 
+  const columns: ColumnDef<QueueRow>[] = [
+    {
+      accessorKey: "queueNumber",
+      header: "Queue #",
+      cell: ({ row }) => (
+        <span className="font-mono text-xl font-bold text-slate-400">#{row.original.queueNumber}</span>
+      )
+    },
+    {
+      accessorKey: "name",
+      header: "Patient",
+      cell: ({ row }) => (
+        <div>
+          <span className="font-semibold text-slate-900 block">{row.original.name}</span>
+        </div>
+      )
+    },
+    {
+      accessorKey: "doctor",
+      header: "Assigned Doctor",
+      cell: ({ row }) => <span className="text-sm font-medium text-slate-700">{row.original.doctor}</span>
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const item = row.original;
+        
+        // Determine if there is an actionable button for the current user
+        let actionButton = null;
+        if (item.status === 'Waiting' && !canManageClinical) {
+          actionButton = (
+            <Button size="sm" className="h-9 shadow-sm" onClick={() => handleAction(item.id, 'Call')}>
+              Call Patient
+            </Button>
+          );
+        } else if (item.status === 'Called' && canManageClinical && item.assignedDoctorId === currentUser?.staffId) {
+          actionButton = (
+            <Button size="sm" variant="default" className="h-9 bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={() => handleAction(item.id, 'Start')}>
+              <PlayCircle className="mr-2 h-4 w-4" /> Start
+            </Button>
+          );
+        } else if (item.status === 'With Doctor' && canManageClinical && item.assignedDoctorId === currentUser?.staffId) {
+          actionButton = (
+            <Button size="sm" variant="outline" className="h-9 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200 shadow-sm" onClick={() => handleAction(item.id, 'Complete')}>
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Complete
+            </Button>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-2">
+            {actionButton ? actionButton : getStatusBadge(item.status)}
+            <span className="hidden xl:inline">{getPriorityBadge(item.priority)}</span>
+          </div>
+        );
+      }
+    }
+  ];
+
   return (
     <div className="space-y-6 pb-8">
       <QueueHeader summary={summary} />
 
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
-        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-4 bg-white">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search patient, ID or phone..." className="pl-9 bg-slate-50/50 hover:bg-slate-50 h-9 transition-colors" onChange={(e: any) => setSearch(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-3">
-            <select className="flex h-9 w-[140px] items-center justify-between rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+      <DataTableToolbar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search patient, ID or phone..."
+        exportOptions={{ pdf: true, excel: true, csv: true }}
+        filterSlot={
+          <>
+            <select className="flex h-9 w-[140px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
               <option value="all-doctors">All Doctors</option>
               <option value="dr-smith">Dr. Smith</option>
               <option value="dr-adams">Dr. Adams</option>
               <option value="dr-lee">Dr. Lee</option>
             </select>
-            {canManageClinical && (
-              <select className="flex h-9 w-[130px] items-center justify-between rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-                <option value="all-status">All Statuses</option>
-                <option value="waiting">Waiting</option>
-                <option value="called">Called</option>
-                <option value="with-doctor">With Doctor</option>
-              </select>
-            )}
-            {canManageClinical && (
-              <Button variant="outline" size="sm" className="h-9 shadow-sm">
-                Filters
-              </Button>
-            )}
-          </div>
-        </div>
-        
-        {/* Table Header (Desktop Only) */}
-        <div className="hidden xl:flex items-center gap-6 px-4 py-3 border-b bg-slate-50/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          <div className="w-24">Queue #</div>
-          <div className="flex-1">Patient Identity</div>
-          <div className="w-32">Wait / Arrival</div>
-          <div className="w-36">Assigned Doctor</div>
-          <div className="w-48">Status</div>
-          <div className="w-48 text-right">Actions</div>
-        </div>
+            <select className="flex h-9 w-[130px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+              <option value="all-status">All Statuses</option>
+              <option value="waiting">Waiting</option>
+              <option value="called">Called</option>
+              <option value="with-doctor">With Doctor</option>
+            </select>
+          </>
+        }
+      />
 
-        {/* List Body */}
-        <div className="divide-y divide-slate-100">
-          {filteredQueue.map(item => (
-            <QueueEntry key={item.id} item={item} onAction={handleAction} onView={handleView} canManageClinical={canManageClinical} />
-          ))}
-          {filteredQueue.length === 0 && (
-            <div className="p-8 text-center text-slate-500">No patients found matching your filters.</div>
-          )}
-        </div>
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
+
+        <DataTable 
+          columns={columns} 
+          data={filteredQueue}
+          emptyState={
+            search !== '' ? (
+              <DataTableEmpty 
+                icon={Search} 
+                title="No patients found" 
+                description={`There are no queue entries matching "${search}".`}
+              />
+            ) : (
+              <DataTableEmpty 
+                icon={Users}
+                title="Queue is empty" 
+                description="No patients are currently in the queue." 
+              />
+            )
+          }
+        />
       </div>
 
-      {/* Reused Patient Drawer Implementation */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
-          {selectedPatient && (
-            <>
-              <PatientProfileHeader 
-                name={selectedPatient.name}
-                patientId={selectedPatient.patientId}
-                phone={selectedPatient.phone}
-                statusElement={getStatusBadge(selectedPatient.status)}
-                modeText="Patient Workspace"
-              />
-              <SheetScrollArea className="p-0 bg-slate-50 flex-1">
-                <div className="px-6 sm:px-8 py-8 space-y-10">
-                  <DrawerSection title="Queue Details">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
-                      {!canManageClinical ? (
-                        <>
-                          <ReadOnlyField label="Doctor" value={selectedPatient.doctor} />
-                          <ReadOnlyField label="Arrival Time" value={selectedPatient.arrivalTime} />
-                          <ReadOnlyField label="Wait Time" value={`${selectedPatient.waitTimeMin} minutes`} />
-                        </>
-                      ) : (
-                        <>
-                          <ReadOnlyField label="Queue Number" value={`#${selectedPatient.queueNumber}`} isMono />
-                          <ReadOnlyField label="Priority" value={selectedPatient.priority} />
-                          <ReadOnlyField label="Wait Time" value={`${selectedPatient.waitTimeMin} minutes`} />
-                          <ReadOnlyField label="Arrival Time" value={selectedPatient.arrivalTime} />
-                        </>
-                      )}
-                    </div>
-                  </DrawerSection>
-                  <DrawerSection title="Basic Information">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
-                      <ReadOnlyField label="Full Name" value={selectedPatient.name} />
-                      <ReadOnlyField label="Patient ID" value={selectedPatient.patientId} isMono />
-                      <ReadOnlyField label="Phone" value={selectedPatient.phone} />
-                      <ReadOnlyField label="Age" value="Unknown (Demo)" />
-                    </div>
-                  </DrawerSection>
-                </div>
-              </SheetScrollArea>
-              <DrawerFooterActions>
-                <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto font-medium bg-white shadow-sm">Close</Button>
-              </DrawerFooterActions>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
-
+      {/* Call Patient Modal */}
+      <Dialog open={callModalOpen} onOpenChange={setCallModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle>Call Patient</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-600">
+              Are you sure you want to call <span className="font-semibold text-slate-900">{callTarget?.name}</span> to the consultation room?
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setCallModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleConfirmCall} className="bg-indigo-600 hover:bg-indigo-700 text-white">Call Patient</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -47,16 +47,22 @@ export function PatientClinicalSummary({
 }
 
 export function PatientVisitHistory({
-  visits
+  visits,
+  onView
 }: {
-  visits: { date: string, title: string, status?: string }[]
+  visits: { id: string, date: string, title: string, status?: string }[]
+  onView?: (visitId: string) => void
 }) {
   return (
     <div className="bg-white border rounded-xl shadow-sm p-5">
       <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider mb-4">Previous Visits</h3>
       <div className="space-y-4">
         {visits.map((v, i) => (
-          <div key={i} className="flex gap-3">
+          <div 
+            key={v.id} 
+            className={`flex gap-3 ${onView ? 'cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-lg transition-colors' : ''}`}
+            onClick={() => onView && onView(v.id)}
+          >
             <div className="flex flex-col items-center">
               <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5" />
               {i !== visits.length - 1 && <div className="w-px h-full bg-slate-200 my-1" />}

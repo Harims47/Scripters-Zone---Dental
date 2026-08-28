@@ -1,14 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, CheckCircle2 } from 'lucide-react'
+import { Search, CheckCircle2, AlertCircle } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
-import { PatientProfileHeader, DrawerFooterActions } from '../components/ui/drawer-patterns'
-import { PaymentSummaryBlock, PaymentMethodSelector } from '../components/payment/payment-components'
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
+import { DataTableEmpty } from '../components/data-table/data-table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
+import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components'
 import { useClinicContext } from '../context/ClinicContext'
 
@@ -36,7 +36,9 @@ export function PaymentPage() {
         patientId: p?.id || 'Unknown',
         patientName: p?.name || 'Unknown',
         patientPhone: p?.phone || '-',
-        amount: v.amountDue,
+        amount: v.amountDue || 0,
+        consultationFee: v.consultationFee || 0,
+        medicineCost: v.medicineCost || 0,
         method: payRecord?.method || null,
         status: payRecord ? 'Paid' : 'Pending'
       }
@@ -101,19 +103,9 @@ export function PaymentPage() {
       )
     },
     {
-      header: "Visit ID",
-      accessorKey: "visitId",
-      cell: ({ row }) => <span className="text-slate-600 font-mono text-sm">{row.original.visitId}</span>
-    },
-    {
-      header: "Amount",
+      header: "Amount Due",
       accessorKey: "amount",
       cell: ({ row }) => <span className="font-semibold text-slate-900">₹{row.original.amount.toLocaleString('en-IN')}</span>
-    },
-    {
-      header: "Method",
-      accessorKey: "method",
-      cell: ({ row }) => <span className="text-slate-600">{row.original.method || '-'}</span>
     },
     {
       header: "Status",
@@ -134,9 +126,9 @@ export function PaymentPage() {
             variant="outline" 
             size="sm"
             onClick={() => handleOpenDrawer(row.original)}
-            className="font-medium shadow-sm"
+            className={`font-medium shadow-sm ${row.original.status === 'Paid' ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700'}`}
           >
-            {row.original.status === 'Paid' ? 'View' : 'Mark Paid'}
+            {row.original.status === 'Paid' ? 'View' : 'Collect Payment'}
           </Button>
         </div>
       )
@@ -152,121 +144,144 @@ export function PaymentPage() {
         <p className="text-slate-500 mt-1">Collect payment for visits ready for payment.</p>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input 
-            placeholder="Search patient, ID or visit..." 
-            className="pl-9 bg-white"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-      </div>
+      <DataTableToolbar
+        searchQuery={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search patient, ID or visit..."
+        exportOptions={{ pdf: true, excel: true, csv: true }}
+      />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
-        <DataTable columns={columns} data={filteredData} />
+        <DataTable 
+          columns={columns} 
+          data={filteredData}
+          onRowClick={handleOpenDrawer}
+          emptyState={
+            search !== '' ? (
+              <DataTableEmpty 
+                icon={Search} 
+                title="No payments found" 
+                description={`There are no payment records matching "${search}".`}
+              />
+            ) : (
+              <DataTableEmpty 
+                title="No pending payments" 
+                description="All visits are settled." 
+              />
+            )
+          }
+        />
       </div>
 
-      {/* Collect Payment Drawer */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
+      {/* Collect Payment Dialog */}
+      <Dialog open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white">
           {selectedRow && (
             <>
               {paymentState === 'completed' ? (
                 // COMPLETION STATE
-                <div className="flex-1 flex flex-col p-10 justify-center text-center space-y-6">
-                  <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-10 h-10" />
+                <div className="flex flex-col p-8 justify-center text-center space-y-5">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-8 h-8" />
                   </div>
                   <div>
-                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Payment Recorded</h2>
-                    <p className="text-lg text-emerald-600 mt-2 font-medium">Visit Settled & Completed</p>
+                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Payment Received</h2>
+                    <p className="text-emerald-600 mt-1 font-medium">Visit completed.</p>
                   </div>
-                  <div className="bg-slate-50 p-6 rounded-xl inline-block mx-auto text-left min-w-[300px] space-y-3">
-                    <div className="flex justify-between items-center pb-3 border-b">
+                  <div className="bg-slate-50 p-4 rounded-xl text-left space-y-2 mt-4">
+                    <div className="flex justify-between items-center text-sm">
                       <span className="text-slate-500">Patient</span>
                       <span className="font-semibold text-slate-900">{selectedRow.patientName}</span>
                     </div>
-                    <div className="flex justify-between items-center pb-3 border-b">
-                      <span className="text-slate-500">Amount</span>
-                      <span className="font-semibold text-slate-900">₹{selectedRow.amount.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex justify-between items-center pb-3 border-b">
-                      <span className="text-slate-500">Method</span>
-                      <span className="font-semibold text-slate-900">{activeMethod || selectedRow.method}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Status</span>
-                      <Badge variant="statusActive">PAID</Badge>
+                    {selectedRow.consultationFee > 0 && (
+                      <div className="flex justify-between items-center text-sm text-slate-600">
+                        <span>Consultation Fee</span>
+                        <span>₹{selectedRow.consultationFee.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    {selectedRow.medicineCost > 0 && (
+                      <div className="flex justify-between items-center text-sm text-slate-600">
+                        <span>Pharmacy / Medicines</span>
+                        <span>₹{selectedRow.medicineCost.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-200">
+                      <span className="text-slate-500">Total Amount</span>
+                      <span className="font-semibold text-emerald-600">₹{selectedRow.amount.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
-                  <div className="pt-8 flex flex-col gap-3 max-w-sm mx-auto w-full">
-                    <Button variant="outline" onClick={() => setDrawerOpen(false)}>
-                      Close & Return to List
+                  <div className="pt-4 flex flex-col gap-2">
+                    <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full">
+                      Close
                     </Button>
                   </div>
                 </div>
               ) : (
                 // PAYMENT WORKSPACE
                 <>
-                  <PatientProfileHeader 
-                    name={selectedRow.patientName}
-                    patientId={selectedRow.patientId}
-                    phone={selectedRow.patientPhone}
-                    statusElement={<Badge variant="statusWaiting">Pending</Badge>}
-                    modeText={`Visit ${selectedRow.visitId}`}
-                  />
-                  <SheetScrollArea className="p-0 bg-white flex-1">
-                    <div className="px-6 sm:px-8 py-8 space-y-8">
-                      
-                      {errorMsg && (
-                        <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm font-medium mb-4">
-                          {errorMsg}
+                  <DialogHeader className="px-6 py-5 border-b bg-slate-50">
+                    <DialogTitle className="text-xl flex justify-between items-center">
+                      Collect Payment
+                      <Badge variant="statusWaiting">Pending</Badge>
+                    </DialogTitle>
+                    <div className="text-sm text-slate-500 mt-1">
+                      <span className="font-medium text-slate-900">{selectedRow.patientName}</span> • Amount Due: <span className="font-bold text-slate-900">₹{selectedRow.amount.toLocaleString('en-IN')}</span>
+                    </div>
+                  </DialogHeader>
+                  
+                  <div className="p-6 space-y-6">
+                    {errorMsg && (
+                      <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{errorMsg}</span>
+                      </div>
+                    )}
+
+                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-2">
+                      <h4 className="text-sm font-semibold text-slate-900 mb-3">Bill Breakdown</h4>
+                      {selectedRow.consultationFee > 0 && (
+                        <div className="flex justify-between text-sm text-slate-600">
+                          <span>Consultation Fee</span>
+                          <span>₹{selectedRow.consultationFee.toLocaleString('en-IN')}</span>
                         </div>
                       )}
+                      {selectedRow.medicineCost > 0 && (
+                        <div className="flex justify-between text-sm text-slate-600">
+                          <span>Pharmacy / Medicines</span>
+                          <span>₹{selectedRow.medicineCost.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-semibold text-slate-900 pt-2 border-t border-slate-200 mt-2">
+                        <span>Total Due</span>
+                        <span>₹{selectedRow.amount.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
 
-                      <PaymentSummaryBlock amount={selectedRow.amount} />
-                      
+                    <div className="space-y-3">
                       <PaymentMethodSelector 
                         value={activeMethod} 
                         onChange={setActiveMethod} 
                       />
-
                     </div>
-                  </SheetScrollArea>
-                  
-                  {/* Fixed Footer */}
-                  <div className="bg-slate-50 border-t px-6 py-4 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm">
-                        <span className="text-slate-500 block">Total Amount Due</span>
-                        <span className="text-lg font-bold text-slate-900">₹{selectedRow.amount.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="text-sm text-right">
-                        <span className="text-slate-500 block">Method</span>
-                        <span className="font-semibold text-slate-900">{activeMethod || 'None Selected'}</span>
-                      </div>
-                    </div>
-                    <DrawerFooterActions>
-                      <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white">Cancel</Button>
-                      <Button 
-                        className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700" 
-                        onClick={handleMarkAsPaid}
-                        disabled={!activeMethod}
-                      >
-                        Mark as Paid
-                      </Button>
-                    </DrawerFooterActions>
                   </div>
+                  
+                  <DialogFooter className="px-6 py-4 border-t bg-slate-50 gap-2 sm:gap-0">
+                    <Button variant="outline" onClick={() => setDrawerOpen(false)} className="bg-white">Cancel</Button>
+                    <Button 
+                      className="bg-indigo-600 hover:bg-indigo-700" 
+                      onClick={handleMarkAsPaid}
+                      disabled={!activeMethod}
+                    >
+                      Payment Received
+                    </Button>
+                  </DialogFooter>
                 </>
               )}
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

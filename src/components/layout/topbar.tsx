@@ -1,4 +1,4 @@
-import { Menu, Bell, ChevronDown, Globe, Search } from "lucide-react"
+import { Menu, ChevronDown, Globe, Search } from "lucide-react"
 import { Button } from "../ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet"
 import { Sidebar } from "./sidebar"
@@ -60,26 +60,7 @@ export function Topbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-10 w-10 text-slate-500 hover:bg-slate-50 rounded-full relative">
-              <Bell className="h-[18px] w-[18px]" />
-              <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-white" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="flex flex-col items-start gap-1 p-3">
-              <span className="font-medium text-sm text-slate-900">New patient waiting</span>
-              <span className="text-xs text-slate-500">2 mins ago in Reception</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex flex-col items-start gap-1 p-3">
-              <span className="font-medium text-sm text-slate-900">Appointment approaching</span>
-              <span className="text-xs text-slate-500">Dr. Smith at 10:30 AM</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
 
         <div className="h-6 w-[1px] bg-slate-200 hidden sm:block mx-2" />
 

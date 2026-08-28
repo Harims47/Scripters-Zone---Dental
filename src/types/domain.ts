@@ -7,6 +7,7 @@ export interface Patient {
   age: number
   gender: 'Male' | 'Female' | 'Other'
   status: 'Active' | 'Inactive'
+  photoUrl?: string
   // Notice: No visit-specific state (like queue status or current doctor)
 }
 
@@ -16,8 +17,10 @@ export interface Appointment {
   providerId: string
   date: string // e.g. "2026-08-27"
   time: string // e.g. "10:30 AM"
-  type: string // e.g. "Consultation", "Surgery"
-  status: 'Scheduled' | 'Completed' | 'Cancelled' | 'No Show'
+  type: 'Consultation' | 'Surgery' | 'Follow-up' | 'Routine Checkup' | 'Emergency'
+  status: 'Scheduled' | 'Confirmed' | 'Checked In' | 'Completed' | 'Cancelled' | 'No Show'
+  notes?: string
+  photoUrl?: string // Optional capture during appointment booking
 }
 
 export interface Visit {
@@ -27,6 +30,9 @@ export interface Visit {
   appointmentId?: string // Optional, as patients can be walk-ins
   status: VisitStatus
   amountDue: number
+  consultationFee?: number
+  medicineCost?: number
+  reasonForVisit?: string
   
   // Workflow linkages (populated as the visit progresses)
   queueEntryId?: string
@@ -53,6 +59,7 @@ export interface Consultation {
   doctorId: string
   reasonForVisit: string
   clinicalNotes: string
+  consultationFee: number
   status: 'In Progress' | 'Completed'
 }
 
@@ -60,6 +67,9 @@ export interface PrescriptionItem {
   id: string
   medicineId: string
   quantity: number
+  dosage?: string
+  frequency?: string
+  duration?: string
   instructions: string
 }
 
