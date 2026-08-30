@@ -3,10 +3,39 @@ import { prisma } from '../db';
 
 export const getPatients = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const patients = await prisma.patient.findMany({
-      orderBy: { createdAt: 'desc' }
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+        { id: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const [patients, totalRecords] = await Promise.all([
+      prisma.patient.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.patient.count({ where })
+    ]);
+
+    return res.json({
+      data: patients,
+      meta: {
+        currentPage: page,
+        pageSize: limit,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / limit)
+      }
     });
-    return res.json(patients);
   } catch (error) {
     next(error);
   }
@@ -62,6 +91,59 @@ export const updatePatient = async (req: Request, res: Response, next: NextFunct
       data
     });
     return res.json(patient);
+  } catch (error) {
+    next(error);
+  }
+};
+
+import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
+
+export const exportPatients = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search as string;
+    const format = req.query.format as string;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+        { id: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const patients = await prisma.patient.findMany({
+      where,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const columns: ExportColumn[] = [
+      { key: 'id', label: 'Patient ID' },
+      { key: 'name', label: 'Name' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'age', label: 'Age' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'status', label: 'Status' }
+    ];
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, patients);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('patients_export.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, patients, 'Patients');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('patients_export.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, patients, 'Patients Report', `Total Records: ${patients.length}`);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('patients_export.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format' });
+    }
   } catch (error) {
     next(error);
   }

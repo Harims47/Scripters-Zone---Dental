@@ -5,7 +5,7 @@ export const getQueue = async (req: Request, res: Response, next: NextFunction) 
   try {
     const queue = await prisma.queueEntry.findMany({
       orderBy: { position: 'asc' },
-      include: { visit: true }
+      include: { visit: { include: { patient: true } } }
     });
     return res.json(queue);
   } catch (error) {
@@ -77,7 +77,7 @@ export const transitionQueue = async (req: Request, res: Response, next: NextFun
       targetQueueStatus = 'Called';
     } else if (action === 'START_CONSULTATION') {
       targetVisitStatus = 'WITH_DOCTOR';
-      targetQueueStatus = 'In Progress';
+      targetQueueStatus = 'With Doctor';
     }
 
     if (!allowedTransitions[visit.status]?.includes(targetVisitStatus)) {
@@ -100,6 +100,68 @@ export const transitionQueue = async (req: Request, res: Response, next: NextFun
     });
 
     return res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
+
+export const exportQueue = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search as string;
+    const format = req.query.format as string;
+
+    const queue = await prisma.queueEntry.findMany({
+      orderBy: { position: 'asc' },
+      include: { visit: { include: { patient: true } } }
+    });
+
+    const flatData = queue.map(q => ({
+      queueId: q.id,
+      patientName: q.visit?.patient?.name || 'Unknown',
+      position: q.position,
+      status: q.status,
+      priority: q.priority ? 'Yes' : 'No',
+      arrivalTime: q.arrivalTime
+    }));
+
+    let filteredData = flatData;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredData = flatData.filter(d => 
+        d.patientName.toLowerCase().includes(searchLower) ||
+        d.queueId.toLowerCase().includes(searchLower)
+      );
+    }
+
+    const columns: ExportColumn[] = [
+      { key: 'queueId', label: 'Queue ID' },
+      { key: 'patientName', label: 'Patient Name' },
+      { key: 'position', label: 'Position' },
+      { key: 'status', label: 'Status' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'arrivalTime', label: 'Arrival Time' }
+    ];
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, filteredData);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('queue_export.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, filteredData, 'Queue');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('queue_export.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, filteredData, 'Queue Report', `Total Patients in Queue: ${filteredData.length}`);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('queue_export.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format' });
+    }
   } catch (error) {
     next(error);
   }

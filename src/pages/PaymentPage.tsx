@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search, CheckCircle2, AlertCircle } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef, PaginationState } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
@@ -11,25 +11,68 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components'
 import { useClinicContext } from '../context/ClinicContext'
+import { api } from '../lib/api'
+import type { PaginationMeta } from '../types/domain'
 
 export function PaymentPage() {
   const [searchParams] = useSearchParams()
   const urlPatientId = searchParams.get('patientId')
   
-  const { visits, patients, payments, recordPayment } = useClinicContext()
+  const { recordPayment } = useClinicContext()
+
+  const [paymentVisits, setPaymentVisits] = useState<any[]>([])
+  const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
+  const [isLoading, setIsLoading] = useState(false)
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  const [selectedRow, setSelectedRow] = useState<any | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [activeMethod, setActiveMethod] = useState<PaymentMethod>(null)
+  const [paymentState, setPaymentState] = useState<'pending' | 'completed'>('pending')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (urlPatientId) setSearch(urlPatientId)
+  }, [urlPatientId])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }))
+  }, [debouncedSearch])
+
+  const fetchPayments = useCallback(async (page: number, limit: number, query: string) => {
+    setIsLoading(true)
+    try {
+      const res = await api.get<any>(`/api/billing?status=READY_FOR_PAYMENT,COMPLETED&page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
+      if (res.data && res.meta) {
+        setPaymentVisits(res.data)
+        setMeta(res.meta)
+      } else {
+        setPaymentVisits(res)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchPayments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, fetchPayments])
 
   const paymentData = useMemo(() => {
-    const eligibleVisits = visits.filter(v => 
-      v.status === 'READY_FOR_PAYMENT' || v.status === 'COMPLETED'
-    )
-    
-    return eligibleVisits.map(v => {
-      const p = patients.find(pt => pt.id === v.patientId)
-      const payRecord = payments.find(pay => pay.visitId === v.id)
+    return paymentVisits.map(v => {
+      const p = v.patient
+      const payRecord = v.payment
       
-      // If completed but no payment record, it's an anomaly in the data, skip or mock
-      if (v.status === 'COMPLETED' && !payRecord) return null
-
       return {
         paymentId: payRecord?.id || '',
         visitId: v.id,
@@ -42,22 +85,8 @@ export function PaymentPage() {
         method: payRecord?.method || null,
         status: payRecord ? 'Paid' : 'Pending'
       }
-    }).filter(Boolean) as any[]
-  }, [visits, patients, payments])
-
-  const [search, setSearch] = useState('')
-  const [selectedRow, setSelectedRow] = useState<any | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [activeMethod, setActiveMethod] = useState<PaymentMethod>(null)
-  const [paymentState, setPaymentState] = useState<'pending' | 'completed'>('pending')
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
-  useEffect(() => {
-    // If navigated from dispensing with a specific patient, auto-search or filter.
-    if (urlPatientId) {
-      setSearch(urlPatientId)
-    }
-  }, [urlPatientId])
+    })
+  }, [paymentVisits])
 
   const handleOpenDrawer = (row: any) => {
     setSelectedRow(row)
@@ -74,6 +103,7 @@ export function PaymentPage() {
       
       if (result.success) {
         setPaymentState('completed')
+        fetchPayments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
       } else {
         setErrorMsg(result.error || 'Failed to record payment')
       }
@@ -81,15 +111,6 @@ export function PaymentPage() {
        setErrorMsg('Please select a valid payment method.')
     }
   }
-
-  const filteredData = useMemo(() => {
-    return paymentData.filter(d => 
-      (search ? true : d.status !== 'Paid') &&
-      (d.patientName.toLowerCase().includes(search.toLowerCase()) || 
-       d.patientId.toLowerCase().includes(search.toLowerCase()) ||
-       d.visitId.toLowerCase().includes(search.toLowerCase()))
-    )
-  }, [paymentData, search])
 
   const columns: ColumnDef<any>[] = [
     {
@@ -148,15 +169,37 @@ export function PaymentPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient, ID or visit..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(search ? { search } : {})
+            }).toString();
+            api.download(`/api/payments/export?${query}`, `payments_export.${format}`);
+          }
+        }}
       />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
         <DataTable 
           columns={columns} 
-          data={filteredData}
+          data={paymentData}
           onRowClick={handleOpenDrawer}
+          loading={isLoading}
+          manualPagination={true}
+          pageCount={meta.totalPages}
+          state={{ pagination }}
+          onStateChange={(updater: any) => {
+            if (typeof updater === 'function') {
+              setPagination(updater(pagination));
+            } else if (updater.pagination) {
+              setPagination(updater.pagination);
+            }
+          }}
           emptyState={
             search !== '' ? (
               <DataTableEmpty 

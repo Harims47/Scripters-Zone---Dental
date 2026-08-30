@@ -6,7 +6,8 @@ import {
   getPatients,
   getPatientById,
   createPatient,
-  updatePatient
+  updatePatient,
+  exportPatients
 } from '../controllers/patientController';
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 // All patient endpoints require authentication
 router.use(requireAuth);
 
+router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportPatients);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getPatients);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getPatientById);
 router.post('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), validateRequest(createPatientSchema), createPatient);

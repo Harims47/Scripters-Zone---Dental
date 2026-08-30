@@ -6,7 +6,8 @@ import {
   getAppointments,
   getAppointmentById,
   createAppointment,
-  updateAppointment
+  updateAppointment,
+  exportAppointments
 } from '../controllers/appointmentController';
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 router.use(requireAuth);
 
 // Duty Doctor does not have the "Appointments" module in the frontend role configuration.
+router.get('/export', requireRole('Head Doctor', 'Receptionist'), exportAppointments);
 router.get('/', requireRole('Head Doctor', 'Receptionist'), getAppointments);
 router.get('/:id', requireRole('Head Doctor', 'Receptionist'), getAppointmentById);
 router.post('/', requireRole('Head Doctor', 'Receptionist'), validateRequest(createAppointmentSchema), createAppointment);

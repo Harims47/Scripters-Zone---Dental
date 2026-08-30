@@ -5,13 +5,15 @@ import { transitionQueueSchema } from '../schemas/queueSchema';
 import {
   getQueue,
   getQueueEntryById,
-  transitionQueue
+  transitionQueue,
+  exportQueue
 } from '../controllers/queueController';
 
 const router = Router();
 
 router.use(requireAuth);
 
+router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportQueue);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getQueue);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getQueueEntryById);
 

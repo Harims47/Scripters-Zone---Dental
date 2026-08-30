@@ -6,6 +6,7 @@ import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableColumnHeader } from '../components/data-table/data-table-column-header'
 import type { ColumnDef } from '@tanstack/react-table'
+import { api } from '../lib/api'
 
 export function ReportsPage() {
   const { visits, appointments, payments, dispensings, medicines } = useClinicContext()
@@ -137,7 +138,18 @@ export function ReportsPage() {
             searchQuery={dispensingSearch} 
             onSearchChange={setDispensingSearch} 
             searchPlaceholder="Search medicine..."
-            exportOptions={{ pdf: true, excel: true, csv: true }}
+            exportOptions={{ 
+              pdf: true, 
+              excel: true, 
+              csv: true,
+              onExport: (format) => {
+                const query = new URLSearchParams({
+                  format,
+                  ...(dispensingSearch ? { search: dispensingSearch } : {})
+                }).toString();
+                api.download(`/api/dispensing/export?${query}`, `dispensing_export.${format}`);
+              }
+            }}
           />
           <div className="mt-4 border rounded-lg overflow-hidden">
             <DataTable 

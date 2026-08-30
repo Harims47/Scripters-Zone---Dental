@@ -3,11 +3,39 @@ import { prisma } from '../db';
 
 export const getPayments = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payments = await prisma.payment.findMany({
-      include: { patient: true, visit: true },
-      orderBy: { createdAt: 'desc' }
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { patient: { name: { contains: search, mode: 'insensitive' } } }
+      ];
+    }
+
+    const [payments, totalRecords] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        skip,
+        take: limit,
+        include: { patient: true, visit: true },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.payment.count({ where })
+    ]);
+
+    return res.json({
+      data: payments,
+      meta: {
+        currentPage: page,
+        pageSize: limit,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / limit)
+      }
     });
-    return res.json(payments);
   } catch (error) {
     next(error);
   }
@@ -90,6 +118,68 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
     if (error.status) {
       return res.status(error.status).json({ error: error.message });
     }
+    next(error);
+  }
+};
+
+import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
+
+export const exportPayments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search as string;
+    const format = req.query.format as string;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { patient: { name: { contains: search, mode: 'insensitive' } } }
+      ];
+    }
+
+    const payments = await prisma.payment.findMany({
+      where,
+      include: { patient: true },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const formattedData = payments.map(p => ({
+      id: p.id,
+      patientName: p.patient?.name || 'Unknown',
+      amount: p.amount,
+      method: p.method,
+      status: p.status,
+      date: p.date
+    }));
+
+    const columns: ExportColumn[] = [
+      { key: 'id', label: 'Payment ID' },
+      { key: 'patientName', label: 'Patient Name' },
+      { key: 'amount', label: 'Amount' },
+      { key: 'method', label: 'Method' },
+      { key: 'status', label: 'Status' },
+      { key: 'date', label: 'Date' }
+    ];
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, formattedData);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('payments_export.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, formattedData, 'Payments');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('payments_export.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, formattedData, 'Payments Report', `Total Records: ${formattedData.length}`);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('payments_export.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format' });
+    }
+  } catch (error) {
     next(error);
   }
 };

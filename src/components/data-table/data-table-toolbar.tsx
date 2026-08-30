@@ -20,6 +20,7 @@ interface DataTableToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
     pdf?: boolean
     excel?: boolean
     csv?: boolean
+    onExport?: (format: 'pdf' | 'xlsx' | 'csv') => void
   }
 }
 
@@ -64,19 +65,19 @@ export function DataTableToolbar({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[150px]">
                 {exportOptions.pdf && (
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportOptions.onExport?.('pdf')}>
                     <FileText className="mr-2 h-4 w-4 text-red-500/80" />
                     <span>PDF</span>
                   </DropdownMenuItem>
                 )}
                 {exportOptions.excel && (
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportOptions.onExport?.('xlsx')}>
                     <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600/80" />
                     <span>Excel</span>
                   </DropdownMenuItem>
                 )}
                 {exportOptions.csv && (
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportOptions.onExport?.('csv')}>
                     <File className="mr-2 h-4 w-4 text-slate-400" />
                     <span>CSV</span>
                   </DropdownMenuItem>

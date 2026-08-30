@@ -105,3 +105,16 @@ export interface Payment {
   status: 'Pending' | 'Paid'
   // Strictly no card, gateway, partial payments, installments, or transaction IDs.
 }
+
+export interface PaginationMeta {
+  currentPage: number;
+  pageSize: number;
+  totalRecords: number;
+  totalPages: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: PaginationMeta;
+}
+

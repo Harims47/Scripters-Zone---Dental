@@ -14,6 +14,7 @@ import { DEMO_STAFF } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
 import { canAccessRoute } from '../lib/route-permissions'
+import { api } from '../lib/api'
 
 export function QueuePage() {
   const { queue, patients, visits, callPatient, startConsultationFlow } = useClinicContext()
@@ -56,7 +57,7 @@ export function QueuePage() {
       waitTimeMin: isNaN(diffMin) ? 0 : diffMin,
       doctor: d?.name || 'Unassigned',
       assignedDoctorId: q.assignedDoctorId,
-      status: q.status as QueueStatus,
+      status: (q.status === 'In Progress' ? 'With Doctor' : q.status) as QueueStatus,
       priority: q.priority ? 'Urgent' : 'Normal',
       source
     }
@@ -196,7 +197,20 @@ export function QueuePage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient, ID or phone..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(search ? { search } : {}),
+              doctor: doctorFilter,
+              status: statusFilter
+            }).toString();
+            api.download(`/api/queue/export?${query}`, `queue_export.${format}`);
+          }
+        }}
         filterSlot={
           <>
             <select 

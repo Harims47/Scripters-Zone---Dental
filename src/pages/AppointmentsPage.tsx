@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Calendar as CalendarIcon, Clock, Edit2, XCircle, FileText, CheckCircle2 } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef, PaginationState } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
@@ -18,6 +18,8 @@ import {
 import { DEMO_STAFF, type AppointmentStatus } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
+import { api } from '../lib/api'
+import type { PaginationMeta, PaginatedResponse, Appointment } from '../types/domain'
 
 interface AppointmentRow {
   id: string
@@ -33,31 +35,63 @@ interface AppointmentRow {
   photoUrl?: string
 }
 
-
-
 export function AppointmentsPage() {
-  const { appointments, patients, visits, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
+  const { patients, visits, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
   const { currentUser } = useAuth()
   const isReceptionist = currentUser?.role === 'Receptionist'
   const navigate = useNavigate()
 
-  const data: AppointmentRow[] = useMemo(() => appointments.map(a => {
-    const p = patients.find(pt => pt.id === a.patientId)
-    return {
-      id: a.id,
-      patientId: a.patientId,
-      patientName: p?.name || 'Unknown',
-      patientPhone: p?.phone || '-',
-      date: a.date,
-      time: a.time,
-      doctorId: a.providerId,
-      type: a.type,
-      status: a.status as AppointmentStatus,
-      notes: a.notes || ''
-    }
-  }), [appointments, patients])
-
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterDate, setFilterDate] = useState('all-dates')
+  const [filterStatus, setFilterStatus] = useState('all-status')
+  const [filterDoctor, setFilterDoctor] = useState('all-doctors')
+
+  const [data, setData] = useState<AppointmentRow[]>([])
+  const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
+  const [isLoading, setIsLoading] = useState(false)
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }))
+  }, [debouncedSearch, filterDate, filterStatus, filterDoctor])
+
+  const fetchAppointments = useCallback(async (page: number, limit: number, query: string, fDate: string, fStatus: string, fDoctor: string) => {
+    setIsLoading(true)
+    try {
+      const res = await api.get<PaginatedResponse<Appointment & { patient?: any }>>(`/api/appointments?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}&date=${fDate}&status=${fStatus}&doctor=${fDoctor}`)
+      const payload = res as any
+      if (payload.data && payload.meta) {
+        const mappedData: AppointmentRow[] = payload.data.map((a: any) => ({
+          id: a.id,
+          patientId: a.patientId,
+          patientName: a.patient?.name || 'Unknown',
+          patientPhone: a.patient?.phone || '-',
+          date: a.date,
+          time: a.time,
+          doctorId: a.providerId,
+          type: a.type,
+          status: a.status as AppointmentStatus,
+          notes: a.notes || ''
+        }))
+        setData(mappedData)
+        setMeta(payload.meta)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchAppointments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterDate, filterStatus, filterDoctor)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterDate, filterStatus, filterDoctor, fetchAppointments])
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -164,13 +198,7 @@ export function AppointmentsPage() {
     }
   }
 
-  const filteredData = useMemo(() => {
-    return data.filter(d =>
-      d.patientName.toLowerCase().includes(search.toLowerCase()) ||
-      d.patientId.toLowerCase().includes(search.toLowerCase()) ||
-      d.patientPhone.includes(search)
-    )
-  }, [data, search])
+
 
   const columns: ColumnDef<AppointmentRow>[] = [
     {
@@ -270,27 +298,53 @@ export function AppointmentsPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient or phone..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(search ? { search } : {}),
+              date: filterDate,
+              status: filterStatus,
+              doctor: filterDoctor
+            }).toString();
+            api.download(`/api/appointments/export?${query}`, `appointments_export.${format}`);
+          }
+        }}
         filterSlot={
           <>
-            <select className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+            <select 
+              value={filterDate} 
+              onChange={e => setFilterDate(e.target.value)}
+              className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
               <option value="today">Today</option>
               <option value="tomorrow">Tomorrow</option>
               <option value="next-7-days">Next 7 Days</option>
               <option value="all-dates">All Dates</option>
             </select>
-            <select className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+            <select 
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+              className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
               <option value="all-status">All Statuses</option>
               <option value="scheduled">Scheduled</option>
               <option value="confirmed">Confirmed</option>
               <option value="checked-in">Checked In</option>
               <option value="cancelled">Cancelled</option>
             </select>
-            <select className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+            <select 
+              value={filterDoctor}
+              onChange={e => setFilterDoctor(e.target.value)}
+              className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
               <option value="all-doctors">All Doctors</option>
-              <option value="dr-smith">Dr. Smith</option>
-              <option value="dr-adams">Dr. Adams</option>
-              <option value="dr-lee">Dr. Lee</option>
+              {DEMO_STAFF.filter(s => s.role.includes('Doctor')).map(doc => (
+                <option key={doc.id} value={doc.id}>{doc.name}</option>
+              ))}
             </select>
           </>
         }
@@ -300,8 +354,19 @@ export function AppointmentsPage() {
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
         <DataTable
           columns={columns}
-          data={filteredData}
+          data={data}
           onRowClick={handleOpenView}
+          loading={isLoading}
+          manualPagination={true}
+          pageCount={meta.totalPages}
+          state={{ pagination }}
+          onStateChange={(updater: any) => {
+            if (typeof updater === 'function') {
+              setPagination(updater(pagination));
+            } else if (updater.pagination) {
+              setPagination(updater.pagination);
+            }
+          }}
           emptyState={
             search !== '' ? (
               <DataTableEmpty

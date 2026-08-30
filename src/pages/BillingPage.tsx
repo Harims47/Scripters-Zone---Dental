@@ -22,19 +22,42 @@ export function BillingPage() {
   const { medicines, completeDispensing, recordPayment } = useClinicContext()
 
   const [billingVisits, setBillingVisits] = useState<any[]>([])
+  const [meta, setMeta] = useState<any>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
+  const [isLoading, setIsLoading] = useState(false)
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
 
-  const fetchBilling = async () => {
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }))
+  }, [debouncedSearch])
+
+  const fetchBilling = async (page: number, limit: number, query: string) => {
+    setIsLoading(true)
     try {
-      const res = await api.get<{ data: any[] }>('/api/billing')
-      setBillingVisits(res.data || (res as any))
+      const res = await api.get<any>(`/api/billing?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
+      if (res.data && res.meta) {
+        setBillingVisits(res.data)
+        setMeta(res.meta)
+      } else {
+        setBillingVisits(res)
+      }
     } catch (error) {
       console.error(error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchBilling()
-  }, [])
+    fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch])
 
   // 1. Data Aggregation
   const billingData = useMemo(() => {
@@ -89,7 +112,6 @@ export function BillingPage() {
     })
   }, [billingVisits, medicines])
 
-  const [search, setSearch] = useState('')
   const [selectedRow, setSelectedRow] = useState<any | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   
@@ -132,7 +154,7 @@ export function BillingPage() {
       if (result.success) {
         // Optimistically update the selected row state so the UI transitions smoothly
         setSelectedRow((prev: any) => ({ ...prev, dispensingStatus: 'Dispensed', action: 'Collect Payment' }))
-        fetchBilling()
+        fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
       } else {
         setDispenseError(result.error || 'Failed to dispense')
       }
@@ -144,7 +166,7 @@ export function BillingPage() {
       setPaymentError(null)
       const res = await recordPayment(selectedRow.visitId, activeMethod)
       if (res.success) {
-        await fetchBilling()
+        await fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
         setSelectedRow((prev: any) => ({ ...prev, paymentStatus: 'Paid', action: 'View' }))
       } else {
         setPaymentError(res.error || 'Payment failed')
@@ -154,18 +176,7 @@ export function BillingPage() {
     }
   }
 
-  const filteredData = useMemo(() => {
-    return billingData.filter(d => 
-      (d.patientName.toLowerCase().includes(search.toLowerCase()) || 
-       d.patientId.toLowerCase().includes(search.toLowerCase()) ||
-       d.visitId.toLowerCase().includes(search.toLowerCase()))
-    ).sort((a, b) => {
-      // Sort pending actions first
-      if (a.action !== 'View' && b.action === 'View') return -1;
-      if (a.action === 'View' && b.action !== 'View') return 1;
-      return 0;
-    })
-  }, [billingData, search])
+
 
   const columns: ColumnDef<any>[] = [
     {
@@ -242,15 +253,37 @@ export function BillingPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient or ID..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(search ? { search } : {})
+            }).toString();
+            api.download(`/api/billing/export?${query}`, `billing_export.${format}`);
+          }
+        }}
       />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
         <DataTable 
           columns={columns} 
-          data={filteredData}
+          data={billingData}
           onRowClick={handleOpenDrawer}
+          loading={isLoading}
+          manualPagination={true}
+          pageCount={meta.totalPages}
+          state={{ pagination }}
+          onStateChange={(updater: any) => {
+            if (typeof updater === 'function') {
+              setPagination(updater(pagination));
+            } else if (updater.pagination) {
+              setPagination(updater.pagination);
+            }
+          }}
           emptyState={
             search !== '' ? (
               <DataTableEmpty 

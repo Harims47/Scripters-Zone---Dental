@@ -82,5 +82,24 @@ export const api = {
 
   delete<T>(endpoint: string, options?: RequestInit) {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
+  },
+
+  async download(endpoint: string, filename: string) {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, { credentials: 'include' });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   }
 };

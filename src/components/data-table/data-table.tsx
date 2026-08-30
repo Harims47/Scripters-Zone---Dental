@@ -139,6 +139,7 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: onStateChange || setColumnFilters,
     onColumnVisibilityChange: onStateChange || setColumnVisibility,
     onRowSelectionChange: onStateChange || setRowSelection,
+    onPaginationChange: onStateChange || undefined,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),

@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
-import { Play, UserPlus, AlertCircle, Calendar, Camera, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Play, UserPlus, AlertCircle, Calendar, Camera, X, Eye, Pen } from 'lucide-react';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
 import { DataTableEmpty } from '../components/data-table/data-table';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, PaginationState } from '@tanstack/react-table';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
@@ -17,16 +17,51 @@ import {
 import { PatientVisitHistory } from '../components/consultation/consultation-components';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
-import type { Patient } from '../types/domain';
+import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { DEMO_STAFF } from '../lib/mock-data';
+import { api } from '../lib/api';
 
 export function PatientsPage() {
-  const { patients, visits, addPatient, updatePatient, startVisit, normalizePhone } = useClinicContext();
+  const { visits, addPatient, updatePatient, startVisit, normalizePhone } = useClinicContext();
   const { currentUser } = useAuth();
   const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Head Doctor';
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 });
+  const [isLoading, setIsLoading] = useState(false);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+  }, [debouncedSearch]);
+
+  const fetchPatients = useCallback(async (page: number, limit: number, query: string) => {
+    setIsLoading(true);
+    try {
+      const res = await api.get<PaginatedResponse<Patient>>(`/api/patients?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`);
+      const payload = res as any;
+      if (payload.data && payload.meta) {
+        setPatients(payload.data);
+        setMeta(payload.meta);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPatients(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch);
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, fetchPatients]);
   
   // Drawer State
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -173,31 +208,53 @@ export function PatientsPage() {
       )
     },
     {
+      id: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const isReturning = visits.some(v => v.patientId === row.original.id && v.status === 'COMPLETED');
+        return isReturning ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200/60 shadow-sm">
+            Returning
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-sm">
+            New
+          </span>
+        );
+      }
+    },
+    {
       accessorKey: "age",
       header: "Age / Gender",
       cell: ({ row }) => <span className="text-slate-600">{row.original.age} Yrs • {row.original.gender}</span>
     },
     {
       id: "actions",
-      header: "",
+      header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" className="shadow-sm font-medium bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }}>
-            View
+          <Button variant="outline" size="sm" className="shadow-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-100" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }}>
+            <Eye className="h-4 w-4 mr-1.5" /> View
           </Button>
+          <Button variant="outline" size="sm" className="shadow-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-100" onClick={(e) => { 
+            e.stopPropagation(); 
+            setSelectedPatient(row.original);
+            setDrawerMode('edit');
+            const activeVisit = getActiveVisit(row.original.id);
+            setVisitReason(activeVisit?.reasonForVisit || '');
+            setDrawerOpen(true);
+          }}>
+            <Pen className="h-4 w-4 mr-1.5" /> Edit
+          </Button>
+          {!isDoctor && (
+            <Button variant="outline" size="sm" className="shadow-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border-teal-100" onClick={(e) => { e.stopPropagation(); handleOpenStartVisit(row.original); }}>
+              <Play className="h-4 w-4 mr-1.5 fill-current" /> Start
+            </Button>
+          )}
         </div>
       )
     }
   ];
-
-  const filteredData = useMemo(() => {
-    const term = normalizePhone(search.toLowerCase());
-    return patients.filter(d => 
-      d.name.toLowerCase().includes(search.toLowerCase()) || 
-      d.id.toLowerCase().includes(search.toLowerCase()) ||
-      normalizePhone(d.phone).includes(term)
-    );
-  }, [patients, search, normalizePhone]);
 
   return (
     <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
@@ -221,15 +278,37 @@ export function PatientsPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name, ID or phone..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(search ? { search } : {})
+            }).toString();
+            api.download(`/api/patients/export?${query}`, `patients_export.${format}`);
+          }
+        }}
       />
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
         <DataTable 
           columns={columns} 
-          data={filteredData} 
+          data={patients} 
           selectable={false}
           onRowClick={handleRowClick}
+          loading={isLoading}
+          manualPagination={true}
+          pageCount={meta.totalPages}
+          state={{ pagination }}
+          onStateChange={(updater: any) => {
+            if (typeof updater === 'function') {
+              setPagination(updater(pagination));
+            } else if (updater.pagination) {
+              setPagination(updater.pagination);
+            }
+          }}
           emptyState={
             search !== '' ? (
               <DataTableEmpty 

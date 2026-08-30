@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Package, Search, Filter, Eye, Edit2, Trash2, Plus, Minus } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -15,17 +15,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { DrawerSection, DrawerFooterActions, ReadOnlyField } from '../components/ui/drawer-patterns'
 import { MEDICINE_CATEGORIES } from '../lib/medicine-categories'
 import { MedicineCategoryBadge } from '../components/prescription/prescription-components'
-import type { ColumnDef } from "@tanstack/react-table"
+import type { ColumnDef, PaginationState } from "@tanstack/react-table"
 import { cn } from '../lib/utils'
 import { useClinicContext } from '../context/ClinicContext'
 import { type Medicine } from '../lib/mock-data'
+import { api } from '../lib/api'
+import type { PaginationMeta, PaginatedResponse } from '../types/domain'
 
 type InventoryItem = Medicine
 
 export function InventoryPage() {
-  const { medicines, adjustMedicineStock } = useClinicContext()
+  const { adjustMedicineStock } = useClinicContext()
   
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterCategory, setFilterCategory] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all-status')
+
+  const [data, setData] = useState<InventoryItem[]>([])
+  const [meta, setMeta] = useState<PaginationMeta & { stats?: any }>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
+  const [isLoading, setIsLoading] = useState(false)
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'view' | 'edit' | 'create' | 'adjust'>('view')
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
@@ -41,6 +52,35 @@ export function InventoryPage() {
 
   const [adjusting, setAdjusting] = useState(false)
   const [adjustError, setAdjustError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }))
+  }, [debouncedSearch, filterCategory, filterStatus])
+
+  const fetchInventory = useCallback(async (page: number, limit: number, query: string, category: string, status: string) => {
+    setIsLoading(true)
+    try {
+      const res = await api.get<PaginatedResponse<InventoryItem>>(`/api/inventory?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}&category=${category}&status=${status}`)
+      const payload = res as any
+      if (payload.data && payload.meta) {
+        setData(payload.data)
+        setMeta(payload.meta)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, fetchInventory])
 
   const handleConfirmAdjustment = async () => {
     if (selectedItem) {
@@ -122,12 +162,10 @@ export function InventoryPage() {
     },
   ]
 
-  const filteredData = medicines.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-
-  const totalItems = medicines.length
-  const lowStockItems = medicines.filter(i => i.currentStock > 0 && i.currentStock < i.stockWarningLevel).length
-  const outOfStockItems = medicines.filter(i => i.currentStock === 0).length
-  const inStockItems = totalItems - lowStockItems - outOfStockItems
+  const totalItems = meta.stats?.totalItems || 0
+  const lowStockItems = meta.stats?.lowStockItems || 0
+  const outOfStockItems = meta.stats?.outOfStockItems || 0
+  const inStockItems = meta.stats?.inStockItems || 0
 
   return (
     <div className="space-y-6">
@@ -166,10 +204,23 @@ export function InventoryPage() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         searchPlaceholder="Search inventory..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(searchQuery ? { search: searchQuery } : {}),
+              category: filterCategory,
+              status: filterStatus
+            }).toString();
+            api.download(`/api/inventory/export?${query}`, `inventory_export.${format}`);
+          }
+        }}
         filterSlot={
           <>
-            <Select defaultValue="all">
+            <Select value={filterCategory} onValueChange={setFilterCategory}>
               <SelectTrigger className="w-[150px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Category" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
@@ -178,7 +229,7 @@ export function InventoryPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select defaultValue="all-status">
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-[140px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all-status">All Statuses</SelectItem>
@@ -198,8 +249,19 @@ export function InventoryPage() {
         {/* Table */}
         <DataTable 
           columns={columns} 
-          data={filteredData} 
+          data={data} 
           selectable={true}
+          loading={isLoading}
+          manualPagination={true}
+          pageCount={meta.totalPages}
+          state={{ pagination }}
+          onStateChange={(updater: any) => {
+            if (typeof updater === 'function') {
+              setPagination(updater(pagination));
+            } else if (updater.pagination) {
+              setPagination(updater.pagination);
+            }
+          }}
           emptyState={
             searchQuery !== '' ? (
               <DataTableEmpty 

@@ -5,13 +5,15 @@ import { adjustStockSchema } from '../schemas/inventorySchema';
 import {
   getInventory,
   getMedicine,
-  adjustStock
+  adjustStock,
+  exportInventory
 } from '../controllers/inventoryController';
 
 const router = Router();
 
 router.use(requireAuth);
 
+router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportInventory);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getInventory);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getMedicine);
 

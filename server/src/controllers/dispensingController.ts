@@ -110,3 +110,68 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
     next(error);
   }
 };
+
+import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
+
+export const exportDispensing = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search as string;
+    const format = req.query.format as string;
+
+    const dispensings = await prisma.dispensing.findMany({
+      include: {
+        items: {
+          include: {
+            medicine: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const flatData = dispensings.flatMap(d => 
+      d.items.map(item => ({
+        dispensingId: d.id,
+        medicineName: item.medicine.name,
+        prescribedQty: item.prescribedQuantity,
+        dispensedQty: item.dispensedQuantity,
+        status: d.status
+      }))
+    );
+
+    let filteredData = flatData;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredData = flatData.filter(d => d.medicineName.toLowerCase().includes(searchLower));
+    }
+
+    const columns: ExportColumn[] = [
+      { key: 'dispensingId', label: 'Transaction ID' },
+      { key: 'medicineName', label: 'Medicine' },
+      { key: 'prescribedQty', label: 'Prescribed' },
+      { key: 'dispensedQty', label: 'Dispensed' },
+      { key: 'status', label: 'Status' }
+    ];
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, filteredData);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('dispensing_export.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, filteredData, 'Dispensing');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('dispensing_export.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, filteredData, 'Dispensing Report', `Total Items: ${filteredData.length}`);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('dispensing_export.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
