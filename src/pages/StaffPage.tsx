@@ -146,7 +146,6 @@ export function StaffPage() {
           </div>
           <div>
             <div className="font-semibold text-slate-900">{row.original.name}</div>
-            <div className="text-xs font-mono text-slate-500">{row.original.id}</div>
           </div>
         </div>
       )
@@ -288,10 +287,12 @@ export function StaffPage() {
                   {isCreating ? 'Add Staff Member' : activeItem.name}
                 </h2>
                 <p className="text-slate-500 mt-1">
-                  {isCreating ? 'Configure new clinic personnel.' : `ID: ${activeItem.id}`}
+                  {isCreating ? 'Configure new clinic personnel.' : 'Manage staff member details.'}
                 </p>
               </div>
-              {!isCreating && <StaffStatusBadge status={activeItem.status as StaffStatus} />}
+              <div className="mt-1 pr-6">
+                {!isCreating && <StaffStatusBadge status={activeItem.status as StaffStatus} />}
+              </div>
             </div>
           </div>
 

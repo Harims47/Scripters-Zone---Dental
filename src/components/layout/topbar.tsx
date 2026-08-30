@@ -1,4 +1,5 @@
 import { Menu, ChevronDown, Globe, Search } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "../ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet"
 import { Sidebar } from "./sidebar"
@@ -15,6 +16,7 @@ import { t } from "../../lib/i18n"
 
 export function Topbar() {
   const { currentUser, logout } = useAuth()
+  const navigate = useNavigate()
   
   const userName = currentUser?.name || "Unknown"
   const userRole = currentUser?.role || "Unknown Role"
@@ -80,8 +82,7 @@ export function Topbar() {
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Preferences</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/profile')}>Profile</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-rose-600 focus:bg-rose-50 focus:text-rose-700 font-medium">Logout</DropdownMenuItem>
           </DropdownMenuContent>

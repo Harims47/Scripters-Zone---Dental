@@ -204,8 +204,15 @@ export function PatientsPage() {
       accessorKey: "name",
       header: "Patient",
       cell: ({ row }) => (
-        <div>
-          <span className="font-semibold text-slate-900 block">{row.original.name}</span>
+        <div className="flex items-center gap-3">
+          {row.original.photoUrl ? (
+            <img src={row.original.photoUrl} alt={row.original.name} className="w-8 h-8 rounded-full object-cover shadow-sm border border-slate-200" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-100">
+              {row.original.name.substring(0, 2).toUpperCase()}
+            </div>
+          )}
+          <span className="font-semibold text-slate-900">{row.original.name}</span>
         </div>
       )
     },

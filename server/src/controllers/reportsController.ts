@@ -3,16 +3,35 @@ import { prisma } from '../db';
 
 export const getReportsSummary = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { startDate, endDate } = req.query;
+    
+    let dateFilter: any = undefined;
+    if (startDate && endDate) {
+      dateFilter = {
+        createdAt: {
+          gte: new Date(startDate as string),
+          lte: new Date(endDate as string)
+        }
+      };
+    }
+
     // 1. Clinic Summary
-    const visits = await prisma.visit.findMany({ select: { patientId: true, status: true } });
+    const visits = await prisma.visit.findMany({ 
+      where: dateFilter,
+      select: { patientId: true, status: true } 
+    });
     const uniquePatientsSeen = new Set(visits.map(v => v.patientId)).size;
     const completedVisits = visits.filter(v => v.status === 'COMPLETED').length;
     const pendingVisits = visits.filter(v => v.status !== 'COMPLETED' && v.status !== 'CANCELLED').length;
     
-    const totalAppointments = await prisma.appointment.count();
+    const totalAppointments = await prisma.appointment.count({
+      where: dateFilter
+    });
 
     // 2. Payment Summary
-    const payments = await prisma.payment.findMany();
+    const payments = await prisma.payment.findMany({
+      where: dateFilter
+    });
     // Use actual status from DB logic
     const isPaid = (p: any) => p.status === 'Paid' || p.status === 'Completed'; 
     const totalRevenue = payments.reduce((sum, p) => isPaid(p) ? sum + p.amount : sum, 0);
@@ -22,6 +41,7 @@ export const getReportsSummary = async (req: Request, res: Response, next: NextF
 
     // 3. Medicine Dispensing Summary
     const dispensings = await prisma.dispensing.findMany({
+      where: dateFilter,
       include: {
         items: { include: { medicine: true } }
       }
@@ -30,16 +50,6 @@ export const getReportsSummary = async (req: Request, res: Response, next: NextF
     const dispensingTransactions = dispensings.length;
     const totalItemsDispensed = dispensings.reduce((sum, d) => sum + d.items.reduce((itemSum, item) => itemSum + item.dispensedQuantity, 0), 0);
     
-    const dispensingTableData = dispensings.flatMap(d => 
-      d.items.map(item => ({
-        id: `${d.id}-${item.id}`,
-        dispensingId: d.id,
-        medicineName: item.medicine.name,
-        prescribedQty: item.prescribedQuantity,
-        dispensedQty: item.dispensedQuantity,
-        status: d.status
-      }))
-    );
 
     // 4. Inventory Snapshot
     const medicines = await prisma.medicine.findMany();
@@ -62,8 +72,7 @@ export const getReportsSummary = async (req: Request, res: Response, next: NextF
       },
       dispensingSummary: {
         dispensingTransactions,
-        totalItemsDispensed,
-        dispensingTableData
+        totalItemsDispensed
       },
       inventorySnapshot: {
         totalItems,

@@ -28,6 +28,8 @@ type InventoryItem = Medicine
 export function InventoryPage() {
   const { adjustMedicineStock } = useClinicContext()
   
+  const [activeTab, setActiveTab] = useState<'items' | 'categories'>('items')
+
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('all')
@@ -39,8 +41,9 @@ export function InventoryPage() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerMode, setDrawerMode] = useState<'view' | 'edit' | 'create' | 'adjust'>('view')
+  const [drawerMode, setDrawerMode] = useState<'view' | 'edit' | 'create' | 'adjust' | 'viewCategory'>('view')
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<any>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [adjustAmount, setAdjustAmount] = useState(5)
 
@@ -232,12 +235,32 @@ export function InventoryPage() {
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Inventory</h1>
           <p className="text-sm text-slate-500 mt-1">Manage clinic medicines and stock levels.</p>
         </div>
-        <Button className="shadow-sm font-medium" onClick={() => openDrawer(null, 'create')}>
-          <Package className="mr-2 h-4 w-4" /> Add Item
-        </Button>
+        {activeTab === 'items' && (
+          <Button className="shadow-sm font-medium" onClick={() => openDrawer(null, 'create')}>
+            <Package className="mr-2 h-4 w-4" /> Add Item
+          </Button>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Tabs */}
+      <div className="flex items-center gap-6 border-b border-slate-200">
+        <button 
+          onClick={() => setActiveTab('items')} 
+          className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'items' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Inventory Items
+        </button>
+        <button 
+          onClick={() => setActiveTab('categories')} 
+          className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'categories' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Medicine Categories
+        </button>
+      </div>
+
+      {activeTab === 'items' && (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-200">
           <span className="text-xs font-semibold text-slate-500 uppercase">Total Items:</span>
           <span className="text-sm font-bold text-slate-700">{totalItems}</span>
@@ -336,6 +359,30 @@ export function InventoryPage() {
           } 
         />
       </div>
+        </>
+      )}
+
+      {activeTab === 'categories' && (
+        <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden">
+          <div className="p-6 border-b border-slate-100/60">
+            <h2 className="text-xl font-bold text-slate-900">Medicine Categories</h2>
+            <p className="text-slate-500 text-sm mt-1">Global classification for inventory items.</p>
+          </div>
+          <div className="divide-y divide-slate-100/60">
+            {Object.values(MEDICINE_CATEGORIES).map(cat => (
+              <div key={cat.id} className="p-6 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className={`w-3 h-3 rounded-full ${cat.dotClass}`}></div>
+                  <span className="font-semibold text-slate-900">{cat.displayName}</span>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => { setSelectedCategory(cat); setDrawerMode('viewCategory'); setDrawerOpen(true); }} className="shadow-sm bg-white">
+                  View Info
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* DRAWER */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -347,6 +394,7 @@ export function InventoryPage() {
               {drawerMode === 'edit' && 'Edit Item'}
               {drawerMode === 'create' && 'Add New Item'}
               {drawerMode === 'adjust' && 'Adjust Stock'}
+              {drawerMode === 'viewCategory' && 'Category Details'}
             </h2>
           </div>
 
@@ -446,6 +494,21 @@ export function InventoryPage() {
                   </div>
                 </DrawerSection>
               )}
+              {drawerMode === 'viewCategory' && selectedCategory && (
+                <DrawerSection title="Details">
+                  <div className="space-y-6">
+                    <ReadOnlyField label="Category Name" value={selectedCategory.displayName} />
+                    <ReadOnlyField label="System ID" value={selectedCategory.id} isMono />
+                    <div>
+                      <div className="text-[13px] font-semibold text-slate-500 mb-1.5">Color Association</div>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-6 h-6 rounded-md ${selectedCategory.bgClass} ${selectedCategory.borderClass} border`}></div>
+                        <span className="text-[15px] font-medium text-slate-900">{selectedCategory.colorToken}</span>
+                      </div>
+                    </div>
+                  </div>
+                </DrawerSection>
+              )}
 
             </div>
           </SheetScrollArea>
@@ -460,6 +523,8 @@ export function InventoryPage() {
                 <Button variant="outline" onClick={() => setDrawerMode('view')} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50" disabled={adjusting}>Cancel</Button>
                 <Button onClick={handleConfirmAdjustment} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md bg-emerald-600 hover:bg-emerald-700" disabled={adjusting}>Confirm Adjustment</Button>
               </>
+            ) : drawerMode === 'viewCategory' ? (
+              <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Close</Button>
             ) : (
               <>
                 <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Cancel</Button>
