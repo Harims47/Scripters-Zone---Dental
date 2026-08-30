@@ -206,8 +206,7 @@ export function DoctorWorkspacePage() {
             <p className="text-lg text-slate-500 mt-2">Ready for Reception</p>
           </div>
           <div className="bg-slate-50 p-6 rounded-xl inline-block mx-auto text-left min-w-[300px]">
-            <p className="font-semibold text-slate-900 mb-1">Patient: {patient.name}</p>
-            <p className="text-slate-600 font-mono text-sm mb-4">{patient.id} • {visit.id}</p>
+            <h2 className="text-2xl font-bold text-slate-900">{patient.name}</h2>
             <Button className="w-full shadow-sm" variant="outline" onClick={() => navigate('/queue')}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Return to Queue
             </Button>

@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
+import { Badge } from '../components/ui/badge'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { DrawerFooterActions } from '../components/ui/drawer-patterns'
@@ -36,7 +37,7 @@ interface AppointmentRow {
 }
 
 export function AppointmentsPage() {
-  const { patients, visits, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
+  const { patients, visits, appointments, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
   const { currentUser } = useAuth()
   const isReceptionist = currentUser?.role === 'Receptionist'
   const navigate = useNavigate()
@@ -155,9 +156,9 @@ export function AppointmentsPage() {
         })
       }
       setDrawerOpen(false)
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      alert('Failed to save appointment')
+      alert(err.message || 'Failed to save appointment')
     }
   }
 
@@ -173,9 +174,9 @@ export function AppointmentsPage() {
         setCancelModalOpen(false)
         setCancelTarget(null)
         setDrawerOpen(false)
-      } catch (err) {
+      } catch (err: any) {
         console.error(err)
-        alert('Failed to cancel appointment')
+        alert(err.message || 'Failed to cancel appointment')
       }
     }
   }
@@ -191,9 +192,9 @@ export function AppointmentsPage() {
         await confirmAppointmentArrival(checkInTarget.id)
         setCheckInModalOpen(false)
         setCheckInTarget(null)
-      } catch (err) {
+      } catch (err: any) {
         console.error(err)
-        alert('Failed to check in appointment')
+        alert(err.message || 'Failed to check in appointment')
       }
     }
   }
@@ -238,35 +239,48 @@ export function AppointmentsPage() {
     {
       header: "Status",
       accessorKey: "status",
-      cell: ({ row }) => getAppointmentStatusBadge(row.original.status)
+      cell: ({ row }) => {
+        const hasActiveVisit = visits.some(v => v.patientId === row.original.patientId && ['IN_PROGRESS', 'WAITING', 'READY_FOR_PAYMENT'].includes(v.status));
+        if (hasActiveVisit && ['Scheduled', 'Confirmed'].includes(row.original.status)) {
+          return <Badge variant="statusActive">In Clinic</Badge>
+        }
+        return getAppointmentStatusBadge(row.original.status)
+      }
     },
     {
       id: "actions",
-      header: "",
-      cell: ({ row }) => (
-        <div className="flex items-center justify-end gap-2">
-          {['Scheduled', 'Confirmed'].includes(row.original.status) ? (
-            <Button variant="outline" size="sm" className="h-8 shadow-sm text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100" onClick={(e) => { e.stopPropagation(); initiateCheckIn(row.original); }}>
-              Check In
+      header: "Actions",
+      cell: ({ row }) => {
+        const hasActiveVisit = visits.some(v => v.patientId === row.original.patientId && ['IN_PROGRESS', 'WAITING', 'READY_FOR_PAYMENT'].includes(v.status));
+        
+        return (
+          <div className="flex items-center justify-end gap-2">
+            {['Scheduled', 'Confirmed'].includes(row.original.status) && !hasActiveVisit && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8 shadow-sm text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100" 
+                onClick={(e) => { e.stopPropagation(); initiateCheckIn(row.original); }}
+              >
+                Check In
+              </Button>
+            )}
+            {!isReceptionist && ['Scheduled', 'Confirmed'].includes(row.original.status) && !hasActiveVisit && (
+              <>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-900" onClick={(e) => { e.stopPropagation(); handleOpenEdit(row.original); }} aria-label="Edit appointment">
+                  <Edit2 className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={(e) => { e.stopPropagation(); initiateCancel(row.original); }} aria-label="Cancel appointment">
+                  <XCircle className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenView(row.original); }} className="shadow-sm bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700">
+              View
             </Button>
-          ) : row.original.status === 'Checked In' ? (
-            <span className="text-sm text-slate-500 font-medium px-2">Checked In</span>
-          ) : null}
-          {!isReceptionist && ['Scheduled', 'Confirmed'].includes(row.original.status) && (
-            <>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-900" onClick={(e) => { e.stopPropagation(); handleOpenEdit(row.original); }} aria-label="Edit appointment">
-                <Edit2 className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={(e) => { e.stopPropagation(); initiateCancel(row.original); }} aria-label="Cancel appointment">
-                <XCircle className="w-4 h-4" />
-              </Button>
-            </>
-          )}
-          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenView(row.original); }} className="shadow-sm bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700">
-            View
-          </Button>
-        </div>
-      )
+          </div>
+        )
+      }
     }
   ]
 

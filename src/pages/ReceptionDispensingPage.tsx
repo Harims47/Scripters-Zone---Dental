@@ -151,7 +151,7 @@ export function ReceptionDispensingPage() {
     },
     {
       id: "actions",
-      header: "",
+      header: "Actions",
       cell: ({ row }) => (
         <div className="flex justify-end">
           <Button 

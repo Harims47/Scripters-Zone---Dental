@@ -119,7 +119,6 @@ export function PaymentPage() {
       cell: ({ row }) => (
         <div>
           <div className="font-semibold text-slate-900">{row.original.patientName}</div>
-          <div className="text-sm font-mono text-slate-500">{row.original.patientId}</div>
         </div>
       )
     },
@@ -140,7 +139,7 @@ export function PaymentPage() {
     },
     {
       id: "actions",
-      header: "",
+      header: "Actions",
       cell: ({ row }) => (
         <div className="flex justify-end">
           <Button 

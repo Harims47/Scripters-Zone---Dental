@@ -113,7 +113,7 @@ export function StaffPage() {
     },
     {
       id: "actions",
-      header: "",
+      header: "Actions",
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
           {row.original.status === 'Active' && (

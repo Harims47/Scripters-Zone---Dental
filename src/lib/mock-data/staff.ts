@@ -9,7 +9,7 @@ export interface Staff {
 }
 
 export const DEMO_STAFF: Staff[] = [
-  { id: 'STF-101', name: 'Dr. Arun', phone: '+91 98765 43210', role: 'Head Doctor', status: 'Active' },
+  { id: 'STF-001', name: 'Dr. Arun', phone: '+91 98765 43210', role: 'Head Doctor', status: 'Active' },
   { id: 'STF-102', name: 'Dr. Smith', phone: '+91 98765 43211', role: 'Duty Doctor', status: 'Active' },
   { id: 'STF-103', name: 'Dr. Adams', phone: '+91 98765 43212', role: 'Duty Doctor', status: 'Active' },
   { id: 'STF-104', name: 'Dr. Lee', phone: '+91 98765 43213', role: 'Duty Doctor', status: 'Active' },

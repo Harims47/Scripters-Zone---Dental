@@ -50,8 +50,8 @@ export function DoctorSelector({
         onClick={() => setOpen(!open)}
         className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <span className={selected ? 'text-slate-900' : 'text-slate-500'}>
-          {selected ? `${selected.name} (${selected.role})` : 'Select doctor'}
+        <span className={selected || value ? 'text-slate-900' : 'text-slate-500'}>
+          {selected ? `${selected.name} (${selected.role})` : value ? `Provider ID: ${value}` : 'Select doctor'}
         </span>
         <ChevronDown className="h-4 w-4 opacity-50" />
       </button>

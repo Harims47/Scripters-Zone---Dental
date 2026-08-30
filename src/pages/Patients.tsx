@@ -351,7 +351,6 @@ export function PatientsPage() {
                     <DrawerSection title="Basic Information">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
                         <ReadOnlyField label="Full Name" value={selectedPatient.name} />
-                        <ReadOnlyField label="Patient ID" value={selectedPatient.id} isMono />
                         <ReadOnlyField label="Phone" value={selectedPatient.phone} />
                         <ReadOnlyField label="Age" value={`${selectedPatient.age} Yrs`} />
                         <ReadOnlyField label="Gender" value={selectedPatient.gender} />

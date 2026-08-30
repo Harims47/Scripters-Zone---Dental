@@ -292,9 +292,6 @@ export function InventoryPage() {
               {drawerMode === 'create' && 'Add New Item'}
               {drawerMode === 'adjust' && 'Adjust Stock'}
             </h2>
-            {selectedItem && drawerMode !== 'create' && (
-              <div className="text-sm text-slate-500">{selectedItem.id}</div>
-            )}
           </div>
 
           <SheetScrollArea className="p-0 bg-white flex-1">
@@ -404,7 +401,7 @@ export function InventoryPage() {
               </>
             ) : (
               <>
-                <Button variant="outline" onClick={() => drawerMode === 'create' ? setDrawerOpen(false) : setDrawerMode('view')} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Cancel</Button>
+                <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Cancel</Button>
                 <Button onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md">{drawerMode === 'create' ? 'Add Item' : 'Save Changes'}</Button>
               </>
             )}

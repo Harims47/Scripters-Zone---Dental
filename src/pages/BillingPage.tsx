@@ -185,7 +185,6 @@ export function BillingPage() {
       cell: ({ row }) => (
         <div>
           <div className="font-semibold text-slate-900">{row.original.patientName}</div>
-          <div className="text-sm font-mono text-slate-500">{row.original.patientId}</div>
         </div>
       )
     },
@@ -216,7 +215,7 @@ export function BillingPage() {
     },
     {
       id: "actions",
-      header: "",
+      header: "Actions",
       cell: ({ row }) => {
         const isComplete = row.original.action === 'View'
         return (
