@@ -20,9 +20,9 @@ export function Dashboard() {
   const nextPatientQueue = !isReceptionist ? queue.find(q => q.assignedDoctorId === currentUser?.staffId && q.status === 'Called') : null
   const nextPatient = nextPatientQueue ? patients.find(p => p.id === nextPatientQueue.patientId) : null
 
-  const handleStartConsultation = () => {
+  const handleStartConsultation = async () => {
     if (nextPatientQueue) {
-      const success = startConsultationFlow(nextPatientQueue.visitId)
+      const success = await startConsultationFlow(nextPatientQueue.visitId)
       if (success) {
         navigate(`/doctor/patient/${nextPatientQueue.patientId}?visitId=${nextPatientQueue.visitId}`)
       }
@@ -30,7 +30,7 @@ export function Dashboard() {
   }
 
   // Derive real queue data
-  const realQueueData = queue
+  const realQueueData = (queue || [])
     .filter(q => isReceptionist ? q.status === 'Waiting' : (q.assignedDoctorId === currentUser?.staffId && q.status === 'Waiting'))
     .map((q, i) => {
       const p = patients.find(pt => pt.id === q.patientId)
@@ -45,7 +45,7 @@ export function Dashboard() {
     })
     .slice(0, 5) // Show top 5
 
-  const realAppointmentsData = appointments
+  const realAppointmentsData = (appointments || [])
     .filter(a => a.status !== 'Cancelled' && a.status !== 'No Show')
     .map(a => {
       const p = patients.find(pt => pt.id === a.patientId)
@@ -71,12 +71,12 @@ export function Dashboard() {
   const myPatientsTodayCount = visits.filter(v => v.doctorId === currentUser?.staffId && v.status !== 'CANCELLED').length
   const myCompletedTodayCount = visits.filter(v => v.doctorId === currentUser?.staffId && v.status === 'COMPLETED').length
 
-  const handleQueueAction = (item: any) => {
+  const handleQueueAction = async (item: any) => {
     if (isReceptionist) {
-      callPatient(item.visitId)
+      await callPatient(item.visitId)
     } else {
       // Doctor clicks start consultation from the waiting list directly
-      const success = startConsultationFlow(item.visitId)
+      const success = await startConsultationFlow(item.visitId)
       if (success) {
         navigate(`/doctor/patient/${item.patientId}?visitId=${item.visitId}`)
       }

@@ -13,27 +13,39 @@ import type { DispensingItem } from '../components/dispensing/dispensing-compone
 import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components'
 import { useClinicContext } from '../context/ClinicContext'
+import { api } from '../lib/api'
 
 export function BillingPage() {
   const [searchParams] = useSearchParams()
   const urlPatientId = searchParams.get('patientId')
   
-  const { visits, patients, prescriptions, dispensings, payments, medicines, completeDispensing, recordPayment } = useClinicContext()
+  const { medicines, completeDispensing, recordPayment } = useClinicContext()
+
+  const [billingVisits, setBillingVisits] = useState<any[]>([])
+
+  const fetchBilling = async () => {
+    try {
+      const res = await api.get<{ data: any[] }>('/api/billing')
+      setBillingVisits(res.data || (res as any))
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  useEffect(() => {
+    fetchBilling()
+  }, [])
 
   // 1. Data Aggregation
   const billingData = useMemo(() => {
-    const eligibleVisits = visits.filter(v => 
-      v.status === 'READY_FOR_RECEPTION' || v.status === 'READY_FOR_PAYMENT' || v.status === 'COMPLETED'
-    )
-    
-    return eligibleVisits.map(v => {
-      const p = patients.find(pt => pt.id === v.patientId)
-      const rx = prescriptions.find(r => r.visitId === v.id && r.status === 'Finalized')
-      const disp = dispensings.find(d => d.visitId === v.id)
-      const payRecord = payments.find(pay => pay.visitId === v.id)
+    return billingVisits.map(v => {
+      const p = v.patient
+      const rx = v.prescription
+      const disp = v.dispensing
+      const payRecord = v.payment
 
       let dispensingStatus = 'Not Required'
-      if (rx && rx.items.length > 0) {
+      if (rx && rx.items && rx.items.length > 0) {
         dispensingStatus = disp ? 'Dispensed' : 'Pending'
       }
 
@@ -44,9 +56,9 @@ export function BillingPage() {
       else if (paymentStatus === 'Pending') action = 'Collect Payment'
 
       // Build active items for dispensing if prescription exists
-      const items: DispensingItem[] = rx ? rx.items.map((ri, idx) => {
+      const items: DispensingItem[] = rx && rx.items ? rx.items.map((ri: any, idx: number) => {
         const med = medicines.find(m => m.id === ri.medicineId)
-        const dItem = disp?.items.find(di => di.medicineId === ri.medicineId)
+        const dItem = disp?.items?.find((di: any) => di.medicineId === ri.medicineId)
         
         return {
           id: `i${idx}`,
@@ -75,7 +87,7 @@ export function BillingPage() {
         paymentMethod: payRecord?.method || null
       }
     })
-  }, [visits, patients, prescriptions, dispensings, payments, medicines])
+  }, [billingVisits, medicines])
 
   const [search, setSearch] = useState('')
   const [selectedRow, setSelectedRow] = useState<any | null>(null)
@@ -106,7 +118,7 @@ export function BillingPage() {
     setActiveItems(prev => prev.map(item => item.id === id ? { ...item, dispensedQty: qty } : item))
   }
 
-  const handleCompleteDispensing = () => {
+  const handleCompleteDispensing = async () => {
     if (selectedRow) {
       setDispenseError(null)
       const mappedItems = activeItems.map(item => ({
@@ -115,26 +127,27 @@ export function BillingPage() {
         dispensedQuantity: item.dispensedQty
       }))
 
-      const result = completeDispensing(selectedRow.visitId, selectedRow.prescriptionId, mappedItems)
+      const result = await completeDispensing(selectedRow.visitId, selectedRow.prescriptionId, mappedItems)
       
       if (result.success) {
         // Optimistically update the selected row state so the UI transitions smoothly
         setSelectedRow((prev: any) => ({ ...prev, dispensingStatus: 'Dispensed', action: 'Collect Payment' }))
+        fetchBilling()
       } else {
         setDispenseError(result.error || 'Failed to dispense')
       }
     }
   }
 
-  const handleCollectPayment = () => {
-    if (selectedRow && activeMethod && (activeMethod === 'Cash' || activeMethod === 'GPay' || activeMethod === 'Card' || activeMethod === 'UPI')) {
+  const handleCollectPayment = async () => {
+    if (selectedRow && activeMethod) {
       setPaymentError(null)
-      const result = recordPayment(selectedRow.visitId, activeMethod as 'Cash' | 'GPay') // Note: Using the exact method signature expected by the Context
-      
-      if (result.success) {
+      const res = await recordPayment(selectedRow.visitId, activeMethod)
+      if (res.success) {
+        await fetchBilling()
         setSelectedRow((prev: any) => ({ ...prev, paymentStatus: 'Paid', action: 'View' }))
       } else {
-        setPaymentError(result.error || 'Failed to record payment')
+        setPaymentError(res.error || 'Payment failed')
       }
     } else {
        setPaymentError('Please select a valid payment method.')

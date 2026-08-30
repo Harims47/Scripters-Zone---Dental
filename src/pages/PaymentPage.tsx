@@ -67,10 +67,10 @@ export function PaymentPage() {
     setDrawerOpen(true)
   }
 
-  const handleMarkAsPaid = () => {
+  const handleMarkAsPaid = async () => {
     if (selectedRow && activeMethod && (activeMethod === 'Cash' || activeMethod === 'GPay')) {
       setErrorMsg(null)
-      const result = recordPayment(selectedRow.visitId, activeMethod as 'Cash' | 'GPay')
+      const result = await recordPayment(selectedRow.visitId, activeMethod as 'Cash' | 'GPay')
       
       if (result.success) {
         setPaymentState('completed')

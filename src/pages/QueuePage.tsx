@@ -71,15 +71,20 @@ export function QueuePage() {
     setCallModalOpen(true)
   }
 
-  const handleConfirmCall = () => {
+  const handleConfirmCall = async () => {
     if (callTarget) {
-      callPatient(callTarget.visitId)
-      setCallModalOpen(false)
-      setCallTarget(null)
+      try {
+        await callPatient(callTarget.visitId)
+        setCallModalOpen(false)
+        setCallTarget(null)
+      } catch (err) {
+        console.error(err)
+        alert('Failed to call patient')
+      }
     }
   }
 
-  const handleAction = (id: string, action: 'Call' | 'Start' | 'Resume' | 'Cancel') => {
+  const handleAction = async (id: string, action: 'Call' | 'Start' | 'Resume' | 'Cancel') => {
     const row = queueRows.find(q => q.id === id)
     if (!row) return;
 
@@ -88,9 +93,14 @@ export function QueuePage() {
       initiateCall(row)
     } else if (action === 'Start') {
       // Transition CALLED -> WITH_DOCTOR
-      const success = startConsultationFlow(row.visitId)
-      if (success) {
-        navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
+      try {
+        const success = await startConsultationFlow(row.visitId)
+        if (success) {
+          navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
+        }
+      } catch (err) {
+        console.error(err)
+        alert('Failed to start consultation')
       }
     } else if (action === 'Resume') {
       // Re-enter the Doctor Workspace

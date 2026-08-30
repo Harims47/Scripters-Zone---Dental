@@ -1,67 +1,94 @@
-import React, { createContext, useContext, useState } from 'react'
-import { DEMO_USERS, type DemoUser } from '../lib/demo-users'
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { api, ApiError } from '../lib/api';
+import type { ClinicRole } from '../lib/role-config';
 
-interface AuthContextType {
-  currentUser: DemoUser | null
-  isAuthenticated: boolean
-  login: (username: string, password?: string) => boolean
-  logout: () => void
+export interface SafeUser {
+  id: string;
+  username: string;
+  name: string; // added for UI compatibility
+  role: ClinicRole;
+  staffId?: string;
+  staff?: {
+    id: string;
+    name: string;
+  };
 }
 
-const AuthContext = createContext<AuthContextType | null>(null)
+interface AuthContextType {
+  currentUser: SafeUser | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (username: string, password?: string) => Promise<{ success: boolean; error?: string; user?: SafeUser }>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Session persistence using localStorage
-  const [currentUser, setCurrentUser] = useState<DemoUser | null>(() => {
+  const [currentUser, setCurrentUser] = useState<SafeUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Restore session on mount
+  useEffect(() => {
+    async function restoreSession() {
+      try {
+        const data = await api.get<{ user: SafeUser }>('/api/auth/me');
+        const userWithUiName = { ...data.user, name: data.user.staff?.name || data.user.username };
+        setCurrentUser(userWithUiName);
+      } catch (err) {
+        setCurrentUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    restoreSession();
+  }, []);
+
+  // Make sure no localStorage auth remains
+  useEffect(() => {
+    localStorage.removeItem('dc_v2_user');
+  }, []);
+
+  const login = async (username: string, password?: string) => {
     try {
-      const saved = localStorage.getItem('dc_v2_user')
-      if (saved) return JSON.parse(saved)
-    } catch (e) {}
-    return null
-  })
-
-  // Sync to localStorage on change
-  React.useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('dc_v2_user', JSON.stringify(currentUser))
-    } else {
-      localStorage.removeItem('dc_v2_user')
+      const data = await api.post<{ message: string, user: SafeUser }>('/api/auth/login', { username, password });
+      const userWithUiName = { ...data.user, name: data.user.staff?.name || data.user.username };
+      setCurrentUser(userWithUiName);
+      return { success: true, user: userWithUiName };
+    } catch (err) {
+      if (err instanceof ApiError) {
+        return { success: false, error: err.message };
+      }
+      return { success: false, error: 'Network Error' };
     }
-  }, [currentUser])
+  };
 
-  const login = (username: string, _password?: string) => {
-    // For demo purposes, we will support both ID-based login and username-based login
-    const user = DEMO_USERS.find(u => 
-      u.username === username || u.id === username
-    )
-    
-    if (user) {
-      setCurrentUser(user)
-      return true
+  const logout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch (err) {
+      console.error('Logout error', err);
     }
-    return false
-  }
-
-  const logout = () => {
-    setCurrentUser(null)
-  }
+    setCurrentUser(null);
+  };
 
   return (
     <AuthContext.Provider value={{
       currentUser,
       isAuthenticated: !!currentUser,
+      isLoading,
       login,
       logout
     }}>
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context
+  return context;
 }

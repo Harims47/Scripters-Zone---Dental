@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ----------------------------------------------------------------------------
@@ -25,22 +24,26 @@ model User {
 model Staff {
   id        String   @id @default(uuid())
   name      String
+  phone     String
   role      String
+  status    String   @default("Active")
   user      User?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Patient {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
-  phone     String   @unique
+  phone     String    @unique
   age       Int
   gender    String
-  status    String   @default("Active")
+  status    String    @default("Active")
+  photoUrl  String?
   visits    Visit[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  payments  Payment[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 // ----------------------------------------------------------------------------
@@ -55,27 +58,34 @@ model Appointment {
   time       String
   type       String
   status     String   @default("Scheduled")
+  notes      String?
+  photoUrl   String?
   visit      Visit?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
 
 model Visit {
-  id             String        @id @default(uuid())
-  patientId      String
-  doctorId       String
-  appointmentId  String?       @unique
-  status         String
-  amountDue      Float         @default(0)
-  patient        Patient       @relation(fields: [patientId], references: [id])
-  appointment    Appointment?  @relation(fields: [appointmentId], references: [id])
-  queueEntry     QueueEntry?
-  consultation   Consultation?
-  prescription   Prescription?
-  dispensing     Dispensing?
-  payment        Payment?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  patientId       String
+  doctorId        String
+  appointmentId   String?       @unique
+  status          String
+  amountDue       Float         @default(0)
+  consultationFee Float?
+  medicineCost    Float?
+  reasonForVisit  String?
+  
+  patient         Patient       @relation(fields: [patientId], references: [id])
+  appointment     Appointment?  @relation(fields: [appointmentId], references: [id])
+  queueEntry      QueueEntry?
+  consultation    Consultation?
+  prescription    Prescription?
+  dispensing      Dispensing?
+  payment         Payment?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model QueueEntry {
@@ -93,15 +103,16 @@ model QueueEntry {
 }
 
 model Consultation {
-  id             String   @id @default(uuid())
-  visitId        String   @unique
-  doctorId       String
-  reasonForVisit String
-  clinicalNotes  String
-  status         String   @default("In Progress")
-  visit          Visit    @relation(fields: [visitId], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid())
+  visitId         String   @unique
+  doctorId        String
+  reasonForVisit  String
+  clinicalNotes   String
+  consultationFee Float
+  status          String   @default("In Progress")
+  visit           Visit    @relation(fields: [visitId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // ----------------------------------------------------------------------------
@@ -109,16 +120,19 @@ model Consultation {
 // ----------------------------------------------------------------------------
 
 model Medicine {
-  id               String             @id @default(uuid())
-  name             String
-  category         String
-  strength         String
-  currentStock     Int                @default(0)
-  minimumStock     Int                @default(0)
-  prescriptionItems PrescriptionItem[]
-  dispensingItems  DispensingItem[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                 String             @id @default(uuid())
+  name               String
+  genericName        String?
+  categoryId         String
+  form               String
+  unit               String
+  stockWarningLevel  Int
+  currentStock       Int                @default(0)
+  unitPrice          Float
+  prescriptionItems  PrescriptionItem[]
+  dispensingItems    DispensingItem[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 }
 
 model Prescription {
@@ -139,6 +153,9 @@ model PrescriptionItem {
   prescriptionId String
   medicineId     String
   quantity       Int
+  dosage         String?
+  frequency      String?
+  duration       String?
   instructions   String
   prescription   Prescription @relation(fields: [prescriptionId], references: [id])
   medicine       Medicine     @relation(fields: [medicineId], references: [id])
@@ -177,9 +194,12 @@ model DispensingItem {
 model Payment {
   id        String   @id @default(uuid())
   visitId   String   @unique
+  patientId String
   amount    Float
   method    String
   status    String   @default("Pending")
+  date      String
+  patient   Patient  @relation(fields: [patientId], references: [id])
   visit     Visit    @relation(fields: [visitId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

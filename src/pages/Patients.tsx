@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { DEMO_STAFF } from '../lib/mock-data';
 
 export function PatientsPage() {
-  const { patients, visits, addPatient, startVisit, normalizePhone } = useClinicContext();
+  const { patients, visits, addPatient, updatePatient, startVisit, normalizePhone } = useClinicContext();
   const { currentUser } = useAuth();
   const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Head Doctor';
   const [search, setSearch] = useState('');
@@ -75,7 +75,7 @@ export function PatientsPage() {
     setDrawerOpen(true);
   };
 
-  const handleSaveNewPatient = () => {
+  const handleSaveNewPatient = async () => {
     // Duplicate Protection
     const normPhone = normalizePhone(newPatient.phone);
     const existing = patients.find(p => normalizePhone(p.phone) === normPhone);
@@ -86,19 +86,49 @@ export function PatientsPage() {
       return;
     }
 
-    const created = addPatient({
-      name: newPatient.name || 'Unknown Patient',
-      phone: newPatient.phone,
-      age: parseInt(newPatient.age) || 0,
-      gender: newPatient.gender,
-      status: 'Active',
-      photoUrl: newPatient.photoUrl || undefined
-    });
-    
-    setSelectedPatient(created);
-    setDrawerMode('startVisit'); // Immediately flow into start visit
-    setVisitDoctor('');
-    setActiveVisitWarning(false);
+    try {
+      const created = await addPatient({
+        name: newPatient.name || 'Unknown Patient',
+        phone: newPatient.phone,
+        age: parseInt(newPatient.age) || 0,
+        gender: newPatient.gender,
+        status: 'Active',
+        photoUrl: newPatient.photoUrl || undefined
+      });
+      
+      setSelectedPatient(created);
+      setDrawerMode('startVisit'); // Immediately flow into start visit
+      setVisitDoctor('');
+      setActiveVisitWarning(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to register patient');
+    }
+  };
+
+  const handleUpdatePatient = async () => {
+    if (!selectedPatient) return;
+    try {
+      if (updatePatient) {
+        await updatePatient(selectedPatient.id, {
+          name: newPatient.name || selectedPatient.name,
+          phone: newPatient.phone || selectedPatient.phone,
+          age: parseInt(newPatient.age) || selectedPatient.age,
+          gender: newPatient.gender || selectedPatient.gender,
+        });
+        setSelectedPatient(prev => prev ? {
+          ...prev,
+          name: newPatient.name || selectedPatient.name,
+          phone: newPatient.phone || selectedPatient.phone,
+          age: parseInt(newPatient.age) || selectedPatient.age,
+          gender: newPatient.gender || selectedPatient.gender,
+        } : prev);
+      }
+      setDrawerMode('view');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update patient');
+    }
   };
 
   const handleOpenStartVisit = (patient: Patient) => {
@@ -109,10 +139,18 @@ export function PatientsPage() {
     setDrawerOpen(true);
   };
 
-  const handleConfirmVisit = () => {
+  const handleConfirmVisit = async () => {
     if (!selectedPatient || !visitDoctor) return;
-    startVisit(selectedPatient.id, visitDoctor, false, visitReason);
-    setDrawerOpen(false);
+    try {
+      await startVisit(selectedPatient.id, visitDoctor, false, visitReason);
+      setDrawerOpen(false);
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        alert(err.response.data?.error || 'This patient already has an active visit.');
+      } else {
+        alert('Failed to start visit. ' + (err.response?.status || err.message));
+      }
+    }
   };
 
   const columns: ColumnDef<Patient>[] = [
@@ -447,7 +485,7 @@ export function PatientsPage() {
                     <Button variant="outline" onClick={() => setDrawerMode('view')} className="w-full sm:w-auto bg-white shadow-sm">
                       Cancel
                     </Button>
-                    <Button className="w-full sm:w-auto shadow-sm" onClick={() => setDrawerMode('view')}>
+                    <Button className="w-full sm:w-auto shadow-sm" onClick={handleUpdatePatient}>
                       Save Changes
                     </Button>
                   </>

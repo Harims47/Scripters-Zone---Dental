@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "cross-env DATABASE_URL=postgresql://dental:dentalpassword@localhost:5433/dentalcore node server/clean.js && playwright test && cross-env DATABASE_URL=postgresql://dental:dentalpassword@localhost:5433/dentalcore node server/clean.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -38,11 +39,13 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "cross-env": "^10.1.0",
     "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",

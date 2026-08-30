@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
+import { canAccessRoute } from '../lib/route-permissions'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -13,22 +14,47 @@ export function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const from = location.state?.from?.pathname || "/dashboard"
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (login(username, password)) {
-      navigate(from, { replace: true })
+    setIsSubmitting(true)
+    const { success, error: authError, user } = await login(username, password)
+    setIsSubmitting(false)
+    if (success && user) {
+      if (canAccessRoute(user.role, from)) {
+        navigate(from, { replace: true })
+      } else {
+        navigate('/dashboard', { replace: true })
+      }
     } else {
-      setError('Invalid username or password')
+      setError(authError || 'Invalid username or password')
     }
   }
 
-  const handleDemoLogin = (demoUsername: string) => {
-    if (login(demoUsername, 'password123')) {
-      navigate(from, { replace: true })
+  const handleDemoLogin = async (demoUsername: string) => {
+    setError('')
+    setIsSubmitting(true)
+    
+    // Map demo ID to real username
+    let realUsername = demoUsername;
+    if (demoUsername === 'reception') realUsername = 'receptionist';
+    else if (demoUsername === 'doctor') realUsername = 'dutydoctor';
+    else if (demoUsername === 'U-001') realUsername = 'headdoctor';
+
+    const { success, error: authError, user } = await login(realUsername, 'demo123')
+    setIsSubmitting(false)
+    if (success && user) {
+      if (canAccessRoute(user.role, from)) {
+        navigate(from, { replace: true })
+      } else {
+        navigate('/dashboard', { replace: true })
+      }
+    } else {
+      setError(authError || 'Demo login failed')
     }
   }
 
@@ -91,6 +117,7 @@ export function LoginPage() {
                   className="h-11 bg-slate-50 border-slate-200"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  disabled={isSubmitting}
                   required
                 />
               </div>
@@ -103,13 +130,14 @@ export function LoginPage() {
                   className="h-11 bg-slate-50 border-slate-200"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={isSubmitting}
                   required
                 />
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 text-base font-semibold bg-teal-600 hover:bg-teal-700 shadow-md hover:shadow-lg transition-all">
-              Sign In
+            <Button type="submit" disabled={isSubmitting} className="w-full h-11 text-base font-semibold bg-teal-600 hover:bg-teal-700 shadow-md hover:shadow-lg transition-all">
+              {isSubmitting ? 'Signing In...' : 'Sign In'}
             </Button>
           </form>
 
@@ -122,37 +150,40 @@ export function LoginPage() {
             <div className="grid grid-cols-2 gap-3">
               <button 
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => handleDemoLogin('reception')}
-                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-teal-500 hover:bg-teal-50 group transition-all text-left w-full"
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-teal-500 hover:bg-teal-50 group transition-all text-left w-full disabled:opacity-50"
               >
                 <span className="font-semibold text-slate-900 group-hover:text-teal-700 text-sm mb-1">Receptionist</span>
                 <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                  <div>user: reception</div>
-                  <div>pass: password123</div>
+                  <div>user: receptionist</div>
+                  <div>pass: demo123</div>
                 </div>
               </button>
               
               <button 
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => handleDemoLogin('doctor')}
-                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 group transition-all text-left w-full"
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 group transition-all text-left w-full disabled:opacity-50"
               >
                 <span className="font-semibold text-slate-900 group-hover:text-emerald-700 text-sm mb-1">Duty Doctor</span>
                 <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                  <div>user: doctor</div>
-                  <div>pass: password123</div>
+                  <div>user: dutydoctor</div>
+                  <div>pass: demo123</div>
                 </div>
               </button>
 
               <button 
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => handleDemoLogin('U-001')}
-                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 group transition-all text-left w-full"
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 group transition-all text-left w-full disabled:opacity-50"
               >
                 <span className="font-semibold text-slate-900 group-hover:text-indigo-700 text-sm mb-1">Head Doctor</span>
                 <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                  <div>user: U-001</div>
-                  <div>pass: (any)</div>
+                  <div>user: headdoctor</div>
+                  <div>pass: demo123</div>
                 </div>
               </button>
             </div>

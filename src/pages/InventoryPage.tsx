@@ -23,7 +23,7 @@ import { type Medicine } from '../lib/mock-data'
 type InventoryItem = Medicine
 
 export function InventoryPage() {
-  const { medicines, updateMedicine } = useClinicContext()
+  const { medicines, adjustMedicineStock } = useClinicContext()
   
   const [searchQuery, setSearchQuery] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -39,13 +39,23 @@ export function InventoryPage() {
     setAdjustAmount(5)
   }
 
-  const handleConfirmAdjustment = () => {
+  const [adjusting, setAdjusting] = useState(false)
+  const [adjustError, setAdjustError] = useState<string | null>(null)
+
+  const handleConfirmAdjustment = async () => {
     if (selectedItem) {
-      const newStock = Math.max(0, selectedItem.currentStock + adjustAmount)
-      updateMedicine(selectedItem.id, { currentStock: newStock })
-      setSelectedItem({ ...selectedItem, currentStock: newStock })
-      setDrawerMode('view')
-      setAdjustAmount(5)
+      setAdjusting(true)
+      setAdjustError(null)
+      const res = await adjustMedicineStock(selectedItem.id, adjustAmount)
+      
+      if (res.success && res.medicine) {
+        setSelectedItem(res.medicine)
+        setDrawerMode('view')
+        setAdjustAmount(5)
+      } else {
+        setAdjustError(res.error || 'Failed to adjust stock')
+      }
+      setAdjusting(false)
     }
   }
 
@@ -302,10 +312,11 @@ export function InventoryPage() {
                     <div className="space-y-4">
                       <Label className="text-sm font-medium text-slate-700">Adjustment Amount</Label>
                       <div className="flex items-center gap-4">
-                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Decrease stock" onClick={() => setAdjustAmount(a => a - 1)}><Minus className="h-5 w-5" /></Button>
-                        <Input type="number" value={adjustAmount} onChange={e => setAdjustAmount(parseInt(e.target.value) || 0)} className="h-12 text-center text-lg font-bold shadow-sm" />
-                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Increase stock" onClick={() => setAdjustAmount(a => a + 1)}><Plus className="h-5 w-5" /></Button>
+                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Decrease stock" onClick={() => setAdjustAmount(a => a - 1)} disabled={adjusting}><Minus className="h-5 w-5" /></Button>
+                        <Input type="number" value={adjustAmount} onChange={e => setAdjustAmount(parseInt(e.target.value) || 0)} className="h-12 text-center text-lg font-bold shadow-sm" disabled={adjusting} />
+                        <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl text-slate-600 hover:bg-slate-50" aria-label="Increase stock" onClick={() => setAdjustAmount(a => a + 1)} disabled={adjusting}><Plus className="h-5 w-5" /></Button>
                       </div>
+                      {adjustError && <div className="text-sm font-medium text-rose-600">{adjustError}</div>}
                     </div>
 
                     <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
@@ -326,8 +337,8 @@ export function InventoryPage() {
               </Button>
             ) : drawerMode === 'adjust' ? (
               <>
-                <Button variant="outline" onClick={() => setDrawerMode('view')} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Cancel</Button>
-                <Button onClick={handleConfirmAdjustment} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md bg-emerald-600 hover:bg-emerald-700">Confirm Adjustment</Button>
+                <Button variant="outline" onClick={() => setDrawerMode('view')} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50" disabled={adjusting}>Cancel</Button>
+                <Button onClick={handleConfirmAdjustment} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md bg-emerald-600 hover:bg-emerald-700" disabled={adjusting}>Confirm Adjustment</Button>
               </>
             ) : (
               <>

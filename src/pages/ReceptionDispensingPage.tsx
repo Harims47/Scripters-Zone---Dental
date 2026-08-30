@@ -88,7 +88,7 @@ export function ReceptionDispensingPage() {
     setActiveItems(prev => prev.map(item => item.id === id ? { ...item, dispensedQty: qty } : item))
   }
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (selectedRow) {
       setErrorMsg(null)
       const mappedItems = activeItems.map(item => ({
@@ -97,7 +97,7 @@ export function ReceptionDispensingPage() {
         dispensedQuantity: item.dispensedQty
       }))
 
-      const result = completeDispensing(selectedRow.visitId, selectedRow.prescriptionId, mappedItems)
+      const result = await completeDispensing(selectedRow.visitId, selectedRow.prescriptionId, mappedItems)
       
       if (result.success) {
         setDispenseState('completed')

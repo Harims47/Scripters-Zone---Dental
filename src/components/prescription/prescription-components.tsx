@@ -41,14 +41,14 @@ export function DraggableMedicineItem({ medicine, onAdd }: { medicine: Medicine,
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
       className={cn(
         "flex items-start p-3 bg-white border rounded-lg cursor-grab hover:border-primary/50 transition-colors shadow-sm select-none",
         isDragging && "opacity-50 border-primary ring-2 ring-primary/20 cursor-grabbing z-50"
       )}
     >
-      <GripVertical className="h-4 w-4 text-slate-300 mt-1 mr-2 shrink-0" />
+      <div {...listeners} {...attributes} className="cursor-grab hover:text-slate-500 mr-2 shrink-0 flex items-center justify-center p-1 -ml-1">
+        <GripVertical className="h-4 w-4 text-slate-300 mt-1" />
+      </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-slate-900 text-sm leading-tight mb-1">{medicine.name}</div>
         <div className="text-xs text-slate-500 mb-2">{medicine.unit}</div>

@@ -6,11 +6,11 @@ services:
     container_name: dentalcore_db
     restart: always
     environment:
-      POSTGRES_USER: dental
-      POSTGRES_PASSWORD: dentalpassword
-      POSTGRES_DB: dentalcore
+      POSTGRES_USER: ${DATABASE_USER:-dental}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-dentalpassword}
+      POSTGRES_DB: ${DATABASE_NAME:-dentalcore}
     ports:
-      - "5432:5432"
+      - "${DATABASE_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

@@ -43,6 +43,7 @@ export function DoctorWorkspacePage() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
   const [selectedHistoryVisitId, setSelectedHistoryVisitId] = useState<string | null>(null)
   const [consultationFee, setConsultationFee] = useState<number>(500)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   // Prescription State
   const [activePrescription, setActivePrescription] = useState<PrescriptionLineItem[]>([])
@@ -141,17 +142,25 @@ export function DoctorWorkspacePage() {
   }
 
   // --- COMBINED ACTIONS ---
-  const _saveBoth = (isComplete: boolean) => {
+  const _saveBoth = async (isComplete: boolean) => {
     if (visit && assignedDoctor) {
-      // 1. Save Consultation
-      saveConsultation(visit.id, assignedDoctor.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, isComplete)
+      setErrorMsg(null)
       
-      // 2. Save Prescription (Only if there are items or existing prescription)
+      // 1. Save Consultation (Draft)
+      // We always save the draft first, even if completing, to ensure data is saved before the state transition locks it.
+      const consultRes = await saveConsultation(visit.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, false)
+      
+      if (!consultRes.success) {
+        setErrorMsg(consultRes.error || 'Failed to save consultation draft.')
+        return
+      }
+
+      // 2. Save Prescription
       if (activePrescription.length > 0 || prescription) {
-        savePrescription({
+        const rxRes = await savePrescription({
           visitId: visit.id,
           doctorId: assignedDoctor.id,
-          status: isComplete ? 'Finalized' : 'Draft',
+          status: 'Draft',
           notes: prescriptionNotes,
           items: activePrescription.map(p => ({
             id: `RXI-${Math.random().toString(36).substring(2, 9)}`,
@@ -163,6 +172,20 @@ export function DoctorWorkspacePage() {
             instructions: p.instructions || ''
           }))
         })
+        
+        if (!rxRes.success) {
+           setErrorMsg(rxRes.error || 'Failed to save prescription.')
+           return
+        }
+      }
+
+      // 3. Complete if requested
+      if (isComplete) {
+         const completeRes = await saveConsultation(visit.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, true)
+         if (!completeRes.success) {
+            setErrorMsg(completeRes.error || 'Failed to complete consultation.')
+            return
+         }
       }
     }
   }
@@ -229,6 +252,11 @@ export function DoctorWorkspacePage() {
         </div>
 
         {/* Main Workspace */}
+        {errorMsg && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm font-medium mb-4">
+            {errorMsg}
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* LEFT COLUMN: Patient Context */}

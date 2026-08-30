@@ -96,30 +96,35 @@ export function AppointmentsPage() {
     setDrawerOpen(true)
   }
 
-  const handleSave = () => {
-    if (drawerMode === 'create') {
-      addAppointment({
-        patientId: activeItem.patientId || '',
-        providerId: activeItem.doctorId || '',
-        date: activeItem.date || '',
-        time: activeItem.time || '',
-        type: (activeItem.type as any) || 'Consultation',
-        status: (activeItem.status as AppointmentStatus) || 'Scheduled',
-        notes: activeItem.notes || ''
-      })
-    } else if (drawerMode === 'edit') {
-      updateAppointment({
-        id: activeItem.id,
-        patientId: activeItem.patientId,
-        providerId: activeItem.doctorId,
-        date: activeItem.date,
-        time: activeItem.time,
-        type: activeItem.type as any,
-        status: activeItem.status as AppointmentStatus,
-        notes: activeItem.notes
-      })
+  const handleSave = async () => {
+    try {
+      if (drawerMode === 'create') {
+        await addAppointment({
+          patientId: activeItem.patientId || '',
+          providerId: activeItem.doctorId || '',
+          date: activeItem.date || '',
+          time: activeItem.time || '',
+          type: (activeItem.type as any) || 'Consultation',
+          status: (activeItem.status as AppointmentStatus) || 'Scheduled',
+          notes: activeItem.notes || ''
+        })
+      } else if (drawerMode === 'edit') {
+        await updateAppointment({
+          id: activeItem.id,
+          patientId: activeItem.patientId,
+          providerId: activeItem.doctorId,
+          date: activeItem.date,
+          time: activeItem.time,
+          type: activeItem.type as any,
+          status: activeItem.status as AppointmentStatus,
+          notes: activeItem.notes
+        })
+      }
+      setDrawerOpen(false)
+    } catch (err) {
+      console.error(err)
+      alert('Failed to save appointment')
     }
-    setDrawerOpen(false)
   }
 
   const initiateCancel = (row: Partial<AppointmentRow>) => {
@@ -127,12 +132,17 @@ export function AppointmentsPage() {
     setCancelModalOpen(true)
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (cancelTarget) {
-      updateAppointment({ id: cancelTarget.id, status: 'Cancelled' })
-      setCancelModalOpen(false)
-      setCancelTarget(null)
-      setDrawerOpen(false)
+      try {
+        await updateAppointment({ id: cancelTarget.id, status: 'Cancelled' })
+        setCancelModalOpen(false)
+        setCancelTarget(null)
+        setDrawerOpen(false)
+      } catch (err) {
+        console.error(err)
+        alert('Failed to cancel appointment')
+      }
     }
   }
 
@@ -141,11 +151,16 @@ export function AppointmentsPage() {
     setCheckInModalOpen(true)
   }
 
-  const handleConfirmArrival = () => {
+  const handleConfirmArrival = async () => {
     if (checkInTarget) {
-      confirmAppointmentArrival(checkInTarget.id)
-      setCheckInModalOpen(false)
-      setCheckInTarget(null)
+      try {
+        await confirmAppointmentArrival(checkInTarget.id)
+        setCheckInModalOpen(false)
+        setCheckInTarget(null)
+      } catch (err) {
+        console.error(err)
+        alert('Failed to check in appointment')
+      }
     }
   }
 
