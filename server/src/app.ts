@@ -19,6 +19,7 @@ import paymentRoutes from './routes/paymentRoutes';
 import patientHistoryRoutes from './routes/patientHistoryRoutes';
 import reportsRoutes from './routes/reportsRoutes';
 import staffRoutes from './routes/staffRoutes';
+import documentRoutes from './routes/documentRoutes';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -45,6 +46,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/documents', documentRoutes);
 
 // Minimal Health Endpoint for Phase 2.0
 app.get('/api/health', (req, res) => {

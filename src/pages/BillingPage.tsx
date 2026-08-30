@@ -1,19 +1,19 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, CheckCircle2, FileText, Receipt } from 'lucide-react'
+import { Search, CheckCircle2, FileText, Receipt, Eye } from 'lucide-react'
 import { DataTable, DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
-import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
+import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog'
 import { PatientProfileHeader, DrawerSection } from '../components/ui/drawer-patterns'
 import { DispensingMedicineItem } from '../components/dispensing/dispensing-components'
 import type { DispensingItem } from '../components/dispensing/dispensing-components'
 import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components'
 import { useClinicContext } from '../context/ClinicContext'
-import { api } from '../lib/api'
+import { api, API_BASE_URL } from '../lib/api'
 
 export function BillingPage() {
   const [searchParams] = useSearchParams()
@@ -28,6 +28,7 @@ export function BillingPage() {
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -36,12 +37,18 @@ export function BillingPage() {
 
   useEffect(() => {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-  }, [debouncedSearch])
+  }, [debouncedSearch, statusFilter])
 
-  const fetchBilling = async (page: number, limit: number, query: string) => {
+  const fetchBilling = async (page: number, limit: number, query: string, statusFilterVal: string) => {
     setIsLoading(true)
     try {
-      const res = await api.get<any>(`/api/billing?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
+      let statusQuery = '';
+      if (statusFilterVal === 'pending') {
+        statusQuery = '&status=READY_FOR_RECEPTION,READY_FOR_PAYMENT';
+      } else if (statusFilterVal === 'completed') {
+        statusQuery = '&status=COMPLETED';
+      }
+      const res = await api.get<any>(`/api/billing?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}${statusQuery}`)
       if (res.data && res.meta) {
         setBillingVisits(res.data)
         setMeta(res.meta)
@@ -56,8 +63,8 @@ export function BillingPage() {
   }
 
   useEffect(() => {
-    fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
-  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch])
+    fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, statusFilter)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, statusFilter])
 
   // 1. Data Aggregation
   const billingData = useMemo(() => {
@@ -91,7 +98,8 @@ export function BillingPage() {
           categoryId: med?.categoryId || 'cat1',
           prescribedQty: ri.quantity,
           dispensedQty: dItem ? dItem.dispensedQuantity : ri.quantity,
-          availableStock: med?.currentStock || 0
+          availableStock: med?.currentStock || 0,
+          unitPrice: med?.unitPrice || 0
         }
       }) : []
 
@@ -154,7 +162,7 @@ export function BillingPage() {
       if (result.success) {
         // Optimistically update the selected row state so the UI transitions smoothly
         setSelectedRow((prev: any) => ({ ...prev, dispensingStatus: 'Dispensed', action: 'Collect Payment' }))
-        fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+        fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, statusFilter)
       } else {
         setDispenseError(result.error || 'Failed to dispense')
       }
@@ -166,7 +174,7 @@ export function BillingPage() {
       setPaymentError(null)
       const res = await recordPayment(selectedRow.visitId, activeMethod)
       if (res.success) {
-        await fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+        await fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, statusFilter)
         setSelectedRow((prev: any) => ({ ...prev, paymentStatus: 'Paid', action: 'View' }))
       } else {
         setPaymentError(res.error || 'Payment failed')
@@ -175,6 +183,25 @@ export function BillingPage() {
        setPaymentError('Please select a valid payment method.')
     }
   }
+
+  const handlePrintDocument = async (type: 'prescription' | 'receipt') => {
+    if (!selectedRow) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${selectedRow.visitId}`, {
+        method: 'GET',
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error(`Failed to print ${type}`);
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to load ${type} document. Please ensure you are authorized.`);
+    }
+  };
 
 
 
@@ -193,16 +220,7 @@ export function BillingPage() {
       accessorKey: "amount",
       cell: ({ row }) => <span className="font-medium text-slate-900">₹{row.original.amount}</span>
     },
-    {
-      header: "Dispensing",
-      accessorKey: "dispensingStatus",
-      cell: ({ row }) => {
-        const s = row.original.dispensingStatus
-        if (s === 'Pending') return <Badge variant="statusWaiting">{s}</Badge>
-        if (s === 'Dispensed') return <Badge variant="statusInactive">{s}</Badge>
-        return <span className="text-sm text-slate-400">{s}</span>
-      }
-    },
+
     {
       header: "Payment",
       accessorKey: "paymentStatus",
@@ -214,20 +232,40 @@ export function BillingPage() {
       }
     },
     {
+      header: "Method",
+      accessorKey: "paymentMethod",
+      cell: ({ row }) => {
+        const m = row.original.paymentMethod
+        if (!m) return <span className="text-sm text-slate-400">-</span>
+        return <span className="text-sm font-medium text-slate-700 capitalize">{m}</span>
+      }
+    },
+    {
       id: "actions",
-      header: "Actions",
+      header: () => <div className="text-right pr-4">Actions</div>,
       cell: ({ row }) => {
         const isComplete = row.original.action === 'View'
         return (
-          <div className="flex justify-end">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => handleOpenDrawer(row.original)}
-              className={`font-medium shadow-sm ${isComplete ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'}`}
-            >
-              {row.original.action}
-            </Button>
+          <div className="flex justify-end pr-4 gap-2">
+            {isComplete ? (
+              <Button 
+                size="icon"
+                onClick={(e) => { e.stopPropagation(); handleOpenDrawer(row.original); }}
+                className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg"
+                aria-label="View"
+              >
+                <Eye className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button 
+                variant="default" 
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); handleOpenDrawer(row.original); }}
+                className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 shadow-sm"
+              >
+                Collect
+              </Button>
+            )}
           </div>
         )
       }
@@ -252,6 +290,17 @@ export function BillingPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient or ID..."
+        filterSlot={
+          <select 
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="flex h-9 w-[150px] items-center justify-between rounded-xl border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-teal-500"
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+          </select>
+        }
         exportOptions={{ 
           pdf: true, 
           excel: true, 
@@ -302,9 +351,10 @@ export function BillingPage() {
         />
       </div>
 
-      {/* Unified Billing Drawer */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
+      {/* Unified Billing Modal */}
+      <Dialog open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] bg-white shadow-2xl p-0 flex flex-col gap-0 overflow-hidden">
+          <DialogTitle className="sr-only">Billing Workflow</DialogTitle>
           {selectedRow && (
             <>
               {isFullyComplete ? (
@@ -332,6 +382,16 @@ export function BillingPage() {
                     </div>
                   </div>
                   <div className="pt-8 flex flex-col gap-3 max-w-sm mx-auto w-full">
+                    <Button variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handlePrintDocument('receipt')}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Print Receipt
+                    </Button>
+                    {selectedRow.prescriptionId && (
+                      <Button variant="outline" onClick={() => handlePrintDocument('prescription')}>
+                        <FileText className="w-4 h-4 mr-2 text-indigo-500" />
+                        Print Prescription
+                      </Button>
+                    )}
                     <Button variant="ghost" onClick={() => setDrawerOpen(false)}>Close</Button>
                   </div>
                 </div>
@@ -345,7 +405,7 @@ export function BillingPage() {
                     statusElement={<Badge variant="statusWaiting">{selectedRow.action}</Badge>}
                     modeText="Billing Workflow"
                   />
-                  <SheetScrollArea className="p-0 bg-slate-50 flex-1">
+                  <div className="overflow-y-auto p-0 bg-slate-50 flex-1">
                     <div className="px-6 sm:px-8 py-8 space-y-6">
 
                       {/* Step 1: Dispensing */}
@@ -354,7 +414,7 @@ export function BillingPage() {
                           <div className="flex items-center gap-2 mb-4">
                             <FileText className="w-5 h-5 text-indigo-500" />
                             <h3 className="text-sm font-semibold text-slate-900">
-                              Prescription <span className="font-mono text-slate-500 ml-1">{selectedRow.prescriptionId}</span>
+                              Prescription
                             </h3>
                           </div>
                           
@@ -394,14 +454,26 @@ export function BillingPage() {
 
                       {/* Step 2: Payment */}
                       <DrawerSection title={selectedRow.dispensingStatus !== 'Not Required' ? '2. Payment' : 'Payment'}>
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 mb-4 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-slate-500 font-medium mb-1">Total Due</p>
-                            <div className="text-3xl font-bold text-slate-900">₹{selectedRow.amount}</div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 mb-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <p className="text-sm text-slate-500 font-medium mb-1">Total Due</p>
+                              <div className="text-3xl font-bold text-slate-900">₹{selectedRow.amount}</div>
+                            </div>
+                            <Badge variant={selectedRow.paymentStatus === 'Paid' ? "statusInactive" : "statusWaiting"}>
+                              {selectedRow.paymentStatus}
+                            </Badge>
                           </div>
-                          <Badge variant={selectedRow.paymentStatus === 'Paid' ? "statusInactive" : "statusWaiting"}>
-                            {selectedRow.paymentStatus}
-                          </Badge>
+                          <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-500">Consultation Fees</span>
+                              <span className="font-medium text-slate-700">₹{Math.max(0, selectedRow.amount - activeItems.reduce((acc, item) => acc + (item.dispensedQty * (item.unitPrice || 0)), 0))}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-500">Medicine Cost</span>
+                              <span className="font-medium text-slate-700">₹{activeItems.reduce((acc, item) => acc + (item.dispensedQty * (item.unitPrice || 0)), 0)}</span>
+                            </div>
+                          </div>
                         </div>
 
                         {paymentError && (
@@ -430,7 +502,7 @@ export function BillingPage() {
                       </DrawerSection>
 
                     </div>
-                  </SheetScrollArea>
+                  </div>
                   
                   {/* Fixed Footer */}
                   <div className="bg-white border-t px-6 py-4 flex justify-end">
@@ -440,8 +512,8 @@ export function BillingPage() {
               )}
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

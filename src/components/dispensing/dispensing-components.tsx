@@ -11,6 +11,7 @@ export interface DispensingItem {
   prescribedQty: number
   dispensedQty: number
   availableStock: number
+  unitPrice: number
 }
 
 export function DispensingMedicineItem({

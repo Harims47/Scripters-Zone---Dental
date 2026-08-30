@@ -133,12 +133,9 @@ export function QueuePage() {
     },
     {
       accessorKey: "name",
-      header: "Patient & Time",
+      header: "Patient",
       cell: ({ row }) => (
-        <div>
-          <span className="font-semibold text-slate-900 block">{row.original.name}</span>
-          <span className="text-xs text-amber-600 font-medium mt-0.5 inline-block">Waiting {row.original.waitTimeMin}m</span>
-        </div>
+        <span className="font-semibold text-slate-900 block">{row.original.name}</span>
       )
     },
     ...(doctorFilter === 'all' ? [{

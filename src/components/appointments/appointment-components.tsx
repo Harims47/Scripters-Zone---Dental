@@ -14,8 +14,19 @@ export function getAppointmentStatusBadge(status: AppointmentStatus) {
   }
 }
 
+import { 
+  Calendar as CalendarIcon, 
+  Clock, 
+  User, 
+  FileText, 
+  CheckCircle2, 
+  XCircle,
+  Stethoscope,
+  Phone
+} from "lucide-react"
+
 import { useState, useRef, useEffect } from 'react'
-import { Search, ChevronDown, Check } from 'lucide-react'
+import { ChevronDown, Check } from 'lucide-react'
 
 export function DoctorSelector({
   value,

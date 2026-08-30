@@ -37,7 +37,7 @@ interface AppointmentRow {
 }
 
 export function AppointmentsPage() {
-  const { patients, visits, appointments, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
+  const { patients, visits, addAppointment, updateAppointment, confirmAppointmentArrival, startConsultationFlow } = useClinicContext()
   const { currentUser } = useAuth()
   const isReceptionist = currentUser?.role === 'Receptionist'
   const navigate = useNavigate()

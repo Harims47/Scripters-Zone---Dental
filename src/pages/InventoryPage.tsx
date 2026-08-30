@@ -150,13 +150,22 @@ export function InventoryPage() {
       cell: ({ row }) => getStatusBadge(getStockStatus(row.original.currentStock, row.original.stockWarningLevel))
     },
     {
-      id: "actions", header: "Actions",
+      id: "actions", 
+      header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" aria-label="View item" onClick={() => openDrawer(row.original, 'view')}><Eye className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>View</TooltipContent></Tooltip></TooltipProvider>
-          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-blue-500" aria-label="Edit item" onClick={() => openDrawer(row.original, 'edit')}><Edit2 className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Edit</TooltipContent></Tooltip></TooltipProvider>
-          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-amber-600 hover:bg-amber-50" aria-label="Adjust stock" onClick={() => openDrawer(row.original, 'adjust')}><Plus className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Adjust Stock</TooltipContent></Tooltip></TooltipProvider>
-          <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10" aria-label="Delete item" onClick={() => { setSelectedItem(row.original); setDeleteDialogOpen(true); }}><Trash2 className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Delete</TooltipContent></Tooltip></TooltipProvider>
+        <div className="flex items-center justify-end gap-2">
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" aria-label="View item" onClick={() => openDrawer(row.original, 'view')}>
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg" aria-label="Edit item" onClick={() => openDrawer(row.original, 'edit')}>
+            <Edit2 className="h-4 w-4" />
+          </Button>
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg" aria-label="Adjust stock" onClick={() => openDrawer(row.original, 'adjust')}>
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-rose-500 hover:bg-rose-600 text-white rounded-lg" aria-label="Delete item" onClick={() => { setSelectedItem(row.original); setDeleteDialogOpen(true); }}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       )
     },
@@ -238,7 +247,6 @@ export function InventoryPage() {
                 <SelectItem value="out-of-stock">Out of Stock</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" className="h-9 shadow-sm"><Filter className="mr-2 h-4 w-4 text-slate-400" />More Filters</Button>
           </>
         }
       />

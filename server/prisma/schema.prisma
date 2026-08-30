@@ -6,19 +6,15 @@ datasource db {
   provider = "postgresql"
 }
 
-// ----------------------------------------------------------------------------
-// Core User & Identity
-// ----------------------------------------------------------------------------
-
 model User {
   id           String   @id @default(uuid())
   username     String   @unique
   passwordHash String
   role         String
-  staff        Staff?   @relation(fields: [staffId], references: [id])
   staffId      String?  @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  staff        Staff?   @relation(fields: [staffId], references: [id])
 }
 
 model Staff {
@@ -27,9 +23,9 @@ model Staff {
   phone     String
   role      String
   status    String   @default("Active")
-  user      User?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User?
 }
 
 model Patient {
@@ -40,15 +36,11 @@ model Patient {
   gender    String
   status    String    @default("Active")
   photoUrl  String?
-  visits    Visit[]
-  payments  Payment[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  payments  Payment[]
+  visits    Visit[]
 }
-
-// ----------------------------------------------------------------------------
-// Workflow Entities
-// ----------------------------------------------------------------------------
 
 model Appointment {
   id         String   @id @default(uuid())
@@ -60,9 +52,9 @@ model Appointment {
   status     String   @default("Scheduled")
   notes      String?
   photoUrl   String?
-  visit      Visit?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  visit      Visit?
 }
 
 model Visit {
@@ -75,17 +67,15 @@ model Visit {
   consultationFee Float?
   medicineCost    Float?
   reasonForVisit  String?
-  
-  patient         Patient       @relation(fields: [patientId], references: [id])
-  appointment     Appointment?  @relation(fields: [appointmentId], references: [id])
-  queueEntry      QueueEntry?
-  consultation    Consultation?
-  prescription    Prescription?
-  dispensing      Dispensing?
-  payment         Payment?
-  
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  consultation    Consultation?
+  dispensing      Dispensing?
+  payment         Payment?
+  prescription    Prescription?
+  queueEntry      QueueEntry?
+  appointment     Appointment?  @relation(fields: [appointmentId], references: [id])
+  patient         Patient       @relation(fields: [patientId], references: [id])
 }
 
 model QueueEntry {
@@ -97,9 +87,9 @@ model QueueEntry {
   status           String
   priority         Boolean  @default(false)
   arrivalTime      String
-  visit            Visit    @relation(fields: [visitId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  visit            Visit    @relation(fields: [visitId], references: [id])
 }
 
 model Consultation {
@@ -110,42 +100,38 @@ model Consultation {
   clinicalNotes   String
   consultationFee Float
   status          String   @default("In Progress")
-  visit           Visit    @relation(fields: [visitId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  visit           Visit    @relation(fields: [visitId], references: [id])
 }
 
-// ----------------------------------------------------------------------------
-// Pharmacy & Dispensing
-// ----------------------------------------------------------------------------
-
 model Medicine {
-  id                 String             @id @default(uuid())
-  name               String
-  genericName        String?
-  categoryId         String
-  form               String
-  unit               String
-  stockWarningLevel  Int
-  currentStock       Int                @default(0)
-  unitPrice          Float
-  prescriptionItems  PrescriptionItem[]
-  dispensingItems    DispensingItem[]
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                String             @id @default(uuid())
+  name              String
+  genericName       String?
+  categoryId        String
+  form              String
+  unit              String
+  stockWarningLevel Int
+  currentStock      Int                @default(0)
+  unitPrice         Float
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  dispensingItems   DispensingItem[]
+  prescriptionItems PrescriptionItem[]
 }
 
 model Prescription {
-  id          String             @id @default(uuid())
-  visitId     String             @unique
-  doctorId    String
-  status      String             @default("Draft")
-  notes       String
-  visit       Visit              @relation(fields: [visitId], references: [id])
-  items       PrescriptionItem[]
-  dispensing  Dispensing?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id         String             @id @default(uuid())
+  visitId    String             @unique
+  doctorId   String
+  status     String             @default("Draft")
+  notes      String
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  dispensing Dispensing?
+  visit      Visit              @relation(fields: [visitId], references: [id])
+  items      PrescriptionItem[]
 }
 
 model PrescriptionItem {
@@ -157,10 +143,10 @@ model PrescriptionItem {
   frequency      String?
   duration       String?
   instructions   String
-  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
-  medicine       Medicine     @relation(fields: [medicineId], references: [id])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  medicine       Medicine     @relation(fields: [medicineId], references: [id])
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
 }
 
 model Dispensing {
@@ -168,11 +154,11 @@ model Dispensing {
   visitId        String           @unique
   prescriptionId String           @unique
   status         String           @default("Pending")
-  visit          Visit            @relation(fields: [visitId], references: [id])
-  prescription   Prescription     @relation(fields: [prescriptionId], references: [id])
-  items          DispensingItem[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  prescription   Prescription     @relation(fields: [prescriptionId], references: [id])
+  visit          Visit            @relation(fields: [visitId], references: [id])
+  items          DispensingItem[]
 }
 
 model DispensingItem {
@@ -181,15 +167,11 @@ model DispensingItem {
   medicineId         String
   prescribedQuantity Int
   dispensedQuantity  Int        @default(0)
-  dispensing         Dispensing @relation(fields: [dispensingId], references: [id])
-  medicine           Medicine   @relation(fields: [medicineId], references: [id])
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
+  dispensing         Dispensing @relation(fields: [dispensingId], references: [id])
+  medicine           Medicine   @relation(fields: [medicineId], references: [id])
 }
-
-// ----------------------------------------------------------------------------
-// Finance
-// ----------------------------------------------------------------------------
 
 model Payment {
   id        String   @id @default(uuid())
@@ -199,8 +181,8 @@ model Payment {
   method    String
   status    String   @default("Pending")
   date      String
-  patient   Patient  @relation(fields: [patientId], references: [id])
-  visit     Visit    @relation(fields: [visitId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  visit     Visit    @relation(fields: [visitId], references: [id])
 }

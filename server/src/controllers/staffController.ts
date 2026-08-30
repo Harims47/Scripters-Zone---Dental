@@ -53,7 +53,7 @@ export const createStaff = async (req: Request, res: Response, next: NextFunctio
 
 export const updateStaff = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { name, phone, role } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
@@ -82,7 +82,7 @@ export const updateStaff = async (req: Request, res: Response, next: NextFunctio
 
 export const updateStaffStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { status } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {

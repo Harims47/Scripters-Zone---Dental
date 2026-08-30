@@ -1,6 +1,9 @@
 import { useClinicContext } from '../../context/ClinicContext'
 import { DEMO_STAFF } from '../../lib/mock-data'
 import { ReadOnlyField, DrawerSection } from '../ui/drawer-patterns'
+import { Button } from '../ui/button'
+import { FileText } from 'lucide-react'
+import { API_BASE_URL } from '../../lib/api'
 
 export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
   const { visits, consultations, prescriptions, dispensings, payments, medicines } = useClinicContext()
@@ -15,6 +18,24 @@ export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
   if (!visit) {
     return <div className="p-4 text-slate-500">Visit not found.</div>
   }
+
+  const handlePrintDocument = async (type: 'prescription' | 'receipt') => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${visitId}`, {
+        method: 'GET',
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error(`Failed to print ${type}`);
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to load ${type} document. Please ensure you are authorized.`);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-8">
@@ -33,6 +54,12 @@ export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
 
       {prescription && (
         <DrawerSection title="Prescription">
+          <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" onClick={() => handlePrintDocument('prescription')}>
+              <FileText className="w-4 h-4 mr-2 text-indigo-500" />
+              Print Prescription
+            </Button>
+          </div>
           {prescription.items.length > 0 ? (
             <div className="border rounded-md overflow-hidden bg-white">
               <table className="w-full text-sm">
@@ -107,6 +134,12 @@ export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
 
       {payment && (
         <DrawerSection title="Payment">
+          <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')}>
+              <FileText className="w-4 h-4 mr-2 text-emerald-600" />
+              Print Receipt
+            </Button>
+          </div>
           <ReadOnlyField label="Amount Paid" value={`₹${payment.amount}`} />
           <ReadOnlyField label="Payment Method" value={payment.method} />
           <ReadOnlyField label="Payment Status" value={payment.status} />
