@@ -5,6 +5,8 @@ import { adjustStockSchema } from '../schemas/inventorySchema';
 import {
   getInventory,
   getMedicine,
+  createMedicine,
+  updateMedicine,
   adjustStock,
   exportInventory
 } from '../controllers/inventoryController';
@@ -21,5 +23,10 @@ router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), ge
 // Head Doctor and Duty Doctor have 'view-inventory' (and implicit adjust) 
 // Let's grant Head Doctor & Duty Doctor access to adjustments. Receptionist usually doesn't adjust inventory.
 router.patch('/:id/adjust', requireRole('Head Doctor', 'Duty Doctor'), validateRequest(adjustStockSchema), adjustStock);
+
+import { createMedicineSchema, updateMedicineSchema } from '../schemas/inventorySchema';
+
+router.post('/', requireRole('Head Doctor', 'Duty Doctor'), validateRequest(createMedicineSchema), createMedicine);
+router.put('/:id', requireRole('Head Doctor', 'Duty Doctor'), validateRequest(updateMedicineSchema), updateMedicine);
 
 export default router;

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, Search, Filter, Eye, Edit2, Trash2, Plus, Minus } from 'lucide-react'
+import { toast } from 'react-hot-toast'
+import { Package, Search, Eye, Edit2, Trash2, Plus, Minus } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip'
+
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
@@ -43,15 +44,61 @@ export function InventoryPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [adjustAmount, setAdjustAmount] = useState(5)
 
+  const [adjusting, setAdjusting] = useState(false)
+  const [adjustError, setAdjustError] = useState<string | null>(null)
+
+  const [formData, setFormData] = useState({
+    name: '',
+    categoryId: 'cat1',
+    unit: '',
+    currentStock: 0,
+    stockWarningLevel: 10,
+    unitPrice: 0,
+    form: 'Tablet'
+  })
+
   const openDrawer = (item: InventoryItem | null, mode: 'view' | 'edit' | 'create' | 'adjust') => {
     setSelectedItem(item)
     setDrawerMode(mode)
+    if (mode === 'create') {
+      setFormData({
+        name: '', categoryId: 'cat1', unit: '', currentStock: 0, stockWarningLevel: 10, unitPrice: 0, form: 'Tablet'
+      })
+    } else if (item) {
+      setFormData({
+        name: item.name,
+        categoryId: item.categoryId,
+        unit: item.unit,
+        currentStock: item.currentStock,
+        stockWarningLevel: item.stockWarningLevel,
+        unitPrice: item.unitPrice || 0,
+        form: item.form || 'Tablet'
+      })
+    }
     setDrawerOpen(true)
     setAdjustAmount(5)
   }
 
-  const [adjusting, setAdjusting] = useState(false)
-  const [adjustError, setAdjustError] = useState<string | null>(null)
+  const handleSaveItem = async () => {
+    if (!formData.name.trim() || !formData.categoryId || !formData.unit.trim()) {
+      toast.error('Please fill out all mandatory fields.');
+      return;
+    }
+    try {
+      if (drawerMode === 'create') {
+        await api.post('/api/inventory', formData);
+        toast.success('Item added successfully');
+      } else if (drawerMode === 'edit' && selectedItem) {
+        await api.put(`/api/inventory/${selectedItem.id}`, formData);
+        toast.success('Item updated successfully');
+      }
+      setDrawerOpen(false);
+      fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.response?.data?.error || 'Failed to save item');
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -316,16 +363,17 @@ export function InventoryPage() {
                         <div><MedicineCategoryBadge categoryId={selectedItem.categoryId} /></div>
                       </div>
                       <ReadOnlyField label="Strength / Unit" value={selectedItem.unit} />
+                      <ReadOnlyField label="Unit Price" value={`₹${(selectedItem.unitPrice || 0).toFixed(2)}`} />
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="sm:col-span-2 space-y-2.5">
-                        <Label className="text-[13px] text-slate-600 font-medium">Item Name</Label>
-                        <Input defaultValue={selectedItem?.name} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
+                        <Label className="text-[13px] text-slate-600 font-medium">Item Name <span className="text-rose-500">*</span></Label>
+                        <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
                       </div>
                       <div className="space-y-2.5">
-                        <Label className="text-[13px] text-slate-600 font-medium">Category</Label>
-                        <Select defaultValue={selectedItem?.categoryId || "cat1"}>
+                        <Label className="text-[13px] text-slate-600 font-medium">Category <span className="text-rose-500">*</span></Label>
+                        <Select value={formData.categoryId} onValueChange={v => setFormData({ ...formData, categoryId: v })}>
                           <SelectTrigger className="shadow-xs bg-white transition-all focus:ring-primary/20"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {Object.values(MEDICINE_CATEGORIES).map(cat => (
@@ -335,8 +383,12 @@ export function InventoryPage() {
                         </Select>
                       </div>
                       <div className="space-y-2.5">
-                        <Label className="text-[13px] text-slate-600 font-medium">Strength / Unit</Label>
-                        <Input defaultValue={selectedItem?.unit} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
+                        <Label className="text-[13px] text-slate-600 font-medium">Strength / Unit <span className="text-rose-500">*</span></Label>
+                        <Input value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
+                      </div>
+                      <div className="space-y-2.5">
+                        <Label className="text-[13px] text-slate-600 font-medium">Unit Price (₹) <span className="text-rose-500">*</span></Label>
+                        <Input type="number" step="0.01" value={formData.unitPrice} onChange={e => setFormData({ ...formData, unitPrice: parseFloat(e.target.value) || 0 })} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
                       </div>
                     </div>
                   )}
@@ -358,11 +410,11 @@ export function InventoryPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="space-y-2.5">
                         <Label className="text-[13px] text-slate-600 font-medium">Current Stock</Label>
-                        <Input type="number" defaultValue={selectedItem?.currentStock || 0} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
+                        <Input type="number" value={formData.currentStock} onChange={e => setFormData({ ...formData, currentStock: parseInt(e.target.value) || 0 })} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
                       </div>
                       <div className="space-y-2.5">
                         <Label className="text-[13px] text-slate-600 font-medium">Minimum Stock</Label>
-                        <Input type="number" defaultValue={selectedItem?.stockWarningLevel || 10} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
+                        <Input type="number" value={formData.stockWarningLevel} onChange={e => setFormData({ ...formData, stockWarningLevel: parseInt(e.target.value) || 0 })} className="shadow-xs bg-white transition-all focus:ring-primary/20" />
                       </div>
                     </div>
                   )}
@@ -411,7 +463,7 @@ export function InventoryPage() {
             ) : (
               <>
                 <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto font-medium transition-all hover:bg-slate-50">Cancel</Button>
-                <Button onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md">{drawerMode === 'create' ? 'Add Item' : 'Save Changes'}</Button>
+                <Button onClick={handleSaveItem} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md">{drawerMode === 'create' ? 'Add Item' : 'Save Changes'}</Button>
               </>
             )}
           </DrawerFooterActions>

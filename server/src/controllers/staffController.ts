@@ -2,12 +2,97 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
 import bcrypt from 'bcryptjs';
 
+import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
+
 export const getStaff = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const staff = await prisma.staff.findMany({
-      orderBy: { createdAt: 'desc' }
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = req.query.search as string;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const [staff, totalRecords] = await Promise.all([
+      prisma.staff.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.staff.count({ where })
+    ]);
+
+    return res.json({
+      data: staff,
+      meta: {
+        currentPage: page,
+        pageSize: limit,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / limit)
+      }
     });
-    return res.json({ data: staff });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportStaff = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search as string;
+    const format = req.query.format as string;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const staffData = await prisma.staff.findMany({
+      where,
+      orderBy: { name: 'asc' }
+    });
+
+    const exportData = staffData.map(s => ({
+      name: s.name,
+      role: s.role,
+      phone: s.phone,
+      status: s.status
+    }));
+
+    const columns: ExportColumn[] = [
+      { label: 'Name', key: 'name' },
+      { label: 'Role', key: 'role' },
+      { label: 'Phone', key: 'phone' },
+      { label: 'Status', key: 'status' }
+    ];
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, exportData);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('staff_export.csv');
+      return res.send(csv);
+    } else if (format === 'excel') {
+      const xlsx = await generateXLSX(columns, exportData, 'Staff');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('staff_export.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, exportData, 'Staff Export');
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('staff_export.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format' });
+    }
   } catch (error) {
     next(error);
   }

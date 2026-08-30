@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, Search, FileText } from 'lucide-react'
+import { CheckCircle2, Search, FileText, Eye } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
@@ -46,7 +46,8 @@ export function ReceptionDispensingPage() {
           categoryId: med?.categoryId || 'cat1',
           prescribedQty: ri.quantity,
           dispensedQty: dItem ? dItem.dispensedQuantity : ri.quantity,
-          availableStock: med?.currentStock || 0
+          availableStock: med?.currentStock || 0,
+          unitPrice: med?.unitPrice || 0
         }
       })
 

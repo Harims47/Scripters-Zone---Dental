@@ -15,8 +15,7 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { manufacturer: { contains: search, mode: 'insensitive' } },
-        { batchNumber: { contains: search, mode: 'insensitive' } }
+        { genericName: { contains: search, mode: 'insensitive' } }
       ];
     }
     if (category && category !== 'all') {
@@ -99,6 +98,39 @@ export const getMedicine = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const createMedicine = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const medicine = await prisma.medicine.create({
+      data: {
+        ...req.body
+      }
+    });
+    return res.status(201).json(medicine);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateMedicine = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    
+    // verify exists
+    const existing = await prisma.medicine.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Medicine not found' });
+
+    const updated = await prisma.medicine.update({
+      where: { id },
+      data: {
+        ...req.body
+      }
+    });
+    return res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const adjustStock = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
@@ -142,8 +174,7 @@ export const exportInventory = async (req: Request, res: Response, next: NextFun
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { manufacturer: { contains: search, mode: 'insensitive' } },
-        { batchNumber: { contains: search, mode: 'insensitive' } }
+        { genericName: { contains: search, mode: 'insensitive' } }
       ];
     }
     if (category && category !== 'all') {

@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { toast } from 'react-hot-toast'
 import { Plus, Search, User, Phone, Edit2, ShieldOff, Eye } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef, PaginationState } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
@@ -13,31 +14,49 @@ import { StaffStatusBadge, RoleAccessPreview } from '../components/staff/staff-c
 import { type ClinicRole, ROLE_CONFIG } from '../lib/role-config'
 import { DEMO_STAFF, type Staff } from '../lib/mock-data'
 import { api } from '../lib/api'
-import { useEffect } from 'react'
-import { toast } from 'react-hot-toast'
+import type { PaginationMeta, PaginatedResponse } from '../types/domain'
 
 type StaffStatus = 'Active' | 'Inactive'
 
 export function StaffPage() {
   const [data, setData] = useState<Staff[]>([])
+  const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
   const [isLoading, setIsLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
 
-  const fetchStaff = async () => {
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, pageIndex: 0 }))
+  }, [debouncedSearch])
+
+  const fetchStaff = useCallback(async (page: number, limit: number, query: string) => {
     setIsLoading(true)
     try {
-      const res = await api.get<{data: Staff[]}>('/api/staff')
-      setData(res.data)
+      const res = await api.get<PaginatedResponse<Staff>>(`/api/staff?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
+      const payload = res as any
+      if (payload.data && payload.meta) {
+        setData(payload.data)
+        setMeta(payload.meta)
+      } else {
+        // Fallback for old controller if server not restarted
+        setData((res as any).data || [])
+      }
     } catch (e) {
       console.error(e)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchStaff()
-  }, [])
+    fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, fetchStaff])
   
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -92,7 +111,7 @@ export function StaffPage() {
         await api.put(`/api/staff/${activeItem.id}`, activeItem)
         toast.success('Staff member updated successfully.')
       }
-      await fetchStaff()
+      await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
       setDrawerOpen(false)
     } catch (error: any) {
       console.error(error)
@@ -104,7 +123,7 @@ export function StaffPage() {
     if (deactivateId) {
       try {
         await api.put(`/api/staff/${deactivateId}/status`, { status: 'Inactive' })
-        await fetchStaff()
+        await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
         setDeactivateId(null)
         toast.success('Staff member deactivated.')
       } catch (error: any) {
@@ -114,12 +133,7 @@ export function StaffPage() {
     }
   }
 
-  const filteredData = useMemo(() => {
-    return data.filter(d => 
-      d.name.toLowerCase().includes(search.toLowerCase()) || 
-      d.phone.includes(search)
-    )
-  }, [data, search])
+  // Remove filteredData since search is on backend
 
   const columns: ColumnDef<Staff>[] = [
     {
@@ -197,14 +211,36 @@ export function StaffPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name or phone..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(debouncedSearch ? { search: debouncedSearch } : {})
+            }).toString();
+            api.download(`/api/staff/export?${query}`, `staff_export.${format}`);
+          }
+        }}
       />
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
         <DataTable 
           columns={columns} 
-          data={filteredData} 
+          data={data}
+          manualPagination={true}
+          pageCount={meta.totalPages}
+          totalRecords={meta.totalRecords}
+          state={{ pagination }}
+          onStateChange={(updater: any) => {
+            if (typeof updater === 'function') {
+              setPagination(updater(pagination));
+            } else if (updater.pagination) {
+              setPagination(updater.pagination);
+            }
+          }}
           emptyState={
             search !== '' ? (
               <DataTableEmpty 
