@@ -153,15 +153,25 @@ export function ReceptionDispensingPage() {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div className="flex justify-end">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => handleOpenDrawer(row.original)}
-            className={`font-medium shadow-sm ${row.original.status === 'Dispensed' ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'}`}
-          >
-            {row.original.status === 'Dispensed' ? 'View' : 'Dispense'}
-          </Button>
+        <div className="flex justify-end gap-2">
+          {row.original.status === 'Dispensed' ? (
+            <Button 
+              size="icon"
+              onClick={() => handleOpenDrawer(row.original)}
+              className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg"
+              aria-label="View dispensing"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button 
+              size="sm"
+              onClick={() => handleOpenDrawer(row.original)}
+              className="h-8 px-3 text-xs font-medium shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+            >
+              Dispense
+            </Button>
+          )}
         </div>
       )
     }

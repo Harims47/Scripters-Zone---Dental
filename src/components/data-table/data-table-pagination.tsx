@@ -18,11 +18,13 @@ import {
 interface DataTablePaginationProps<TData> {
   table: Table<TData>
   showSelection?: boolean
+  totalRecords?: number
 }
 
 export function DataTablePagination<TData>({
   table,
   showSelection = false,
+  totalRecords,
 }: DataTablePaginationProps<TData>) {
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between px-2 py-4 gap-4">
@@ -30,10 +32,10 @@ export function DataTablePagination<TData>({
         {showSelection ? (
           <>
             {table.getFilteredSelectedRowModel().rows.length} of{" "}
-            {table.getFilteredRowModel().rows.length} row(s) selected.
+            {totalRecords ?? table.getFilteredRowModel().rows.length} row(s) selected.
           </>
         ) : (
-          <>Total {table.getFilteredRowModel().rows.length} record(s)</>
+          <>Total {totalRecords ?? table.getFilteredRowModel().rows.length} record(s)</>
         )}
       </div>
       <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 space-x-0 sm:space-x-6 lg:space-x-8 w-full sm:w-auto justify-center">

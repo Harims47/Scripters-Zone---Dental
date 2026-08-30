@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Play, UserPlus, AlertCircle, Calendar, Camera, X, Eye, Pen } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
 import { DataTableEmpty } from '../components/data-table/data-table';
@@ -111,19 +112,26 @@ export function PatientsPage() {
   };
 
   const handleSaveNewPatient = async () => {
+    if (!newPatient.name || !newPatient.phone || !newPatient.age || !newPatient.gender) {
+      toast.error('Please fill out all mandatory fields.');
+      return;
+    }
+    if (newPatient.phone.length !== 10) {
+      toast.error('Phone number must be exactly 10 digits.');
+      return;
+    }
+
     // Duplicate Protection
     const normPhone = normalizePhone(newPatient.phone);
     const existing = patients.find(p => normalizePhone(p.phone) === normPhone);
     if (existing) {
-      // Force them to use the existing patient
-      setSelectedPatient(existing);
-      setDrawerMode('view');
+      toast.error(`Patient with phone number ${newPatient.phone} is already registered (${existing.name}).`);
       return;
     }
 
     try {
       const created = await addPatient({
-        name: newPatient.name || 'Unknown Patient',
+        name: newPatient.name,
         phone: newPatient.phone,
         age: parseInt(newPatient.age) || 0,
         gender: newPatient.gender,
@@ -132,12 +140,13 @@ export function PatientsPage() {
       });
       
       setSelectedPatient(created);
+      toast.success('Patient registered successfully.');
       setDrawerMode('startVisit'); // Immediately flow into start visit
       setVisitDoctor('');
       setActiveVisitWarning(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to register patient');
+      toast.error(err.response?.data?.error || 'Failed to register patient');
     }
   };
 
@@ -159,10 +168,11 @@ export function PatientsPage() {
           gender: newPatient.gender || selectedPatient.gender,
         } : prev);
       }
+      toast.success('Patient details updated.');
       setDrawerMode('view');
     } catch (err) {
       console.error(err);
-      alert('Failed to update patient');
+      toast.error('Failed to update patient');
     }
   };
 
@@ -178,12 +188,13 @@ export function PatientsPage() {
     if (!selectedPatient || !visitDoctor) return;
     try {
       await startVisit(selectedPatient.id, visitDoctor, false, visitReason);
+      toast.success(`Visit started for ${selectedPatient.name}.`);
       setDrawerOpen(false);
     } catch (err: any) {
       if (err.response?.status === 409) {
-        alert(err.response.data?.error || 'This patient already has an active visit.');
+        toast.error(err.response.data?.error || 'This patient already has an active visit.');
       } else {
-        alert('Failed to start visit. ' + (err.response?.status || err.message));
+        toast.error('Failed to start visit. ' + (err.response?.status || err.message));
       }
     }
   };
@@ -233,22 +244,22 @@ export function PatientsPage() {
       header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" className="shadow-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-100" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }}>
-            <Eye className="h-4 w-4 mr-1.5" /> View
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }} aria-label="View patient">
+            <Eye className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="sm" className="shadow-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-100" onClick={(e) => { 
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg" onClick={(e) => { 
             e.stopPropagation(); 
             setSelectedPatient(row.original);
             setDrawerMode('edit');
             const activeVisit = getActiveVisit(row.original.id);
             setVisitReason(activeVisit?.reasonForVisit || '');
             setDrawerOpen(true);
-          }}>
-            <Pen className="h-4 w-4 mr-1.5" /> Edit
+          }} aria-label="Edit patient">
+            <Pen className="h-4 w-4" />
           </Button>
           {!isDoctor && (
-            <Button variant="outline" size="sm" className="shadow-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border-teal-100" onClick={(e) => { e.stopPropagation(); handleOpenStartVisit(row.original); }}>
-              <Play className="h-4 w-4 mr-1.5 fill-current" /> Start
+            <Button size="icon" className="h-8 w-8 shadow-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); handleOpenStartVisit(row.original); }} aria-label="Start visit">
+              <Play className="h-4 w-4 ml-0.5 fill-current" />
             </Button>
           )}
         </div>
@@ -266,12 +277,10 @@ export function PatientsPage() {
             {isDoctor ? "Doctor workflow: search patients and view clinical history." : "Reception workflow: search patients, register new arrivals, and begin visits."}
           </p>
         </div>
-        {!isDoctor && (
-          <Button onClick={handleNewPatient} className="shrink-0 shadow-sm gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-            <UserPlus className="w-4 h-4" />
-            Register Patient
-          </Button>
-        )}
+        <Button onClick={handleNewPatient} className="shrink-0 shadow-sm gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+          <UserPlus className="w-4 h-4" />
+          Register Patient
+        </Button>
       </div>
 
       <DataTableToolbar
@@ -301,6 +310,7 @@ export function PatientsPage() {
           loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
+          totalRecords={meta.totalRecords}
           state={{ pagination }}
           onStateChange={(updater: any) => {
             if (typeof updater === 'function') {
@@ -423,39 +433,46 @@ export function PatientsPage() {
                         )}
 
                         <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">Full Name</label>
+                          <label className="text-sm font-semibold text-slate-700">Full Name <span className="text-red-500">*</span></label>
                           <Input 
                             value={drawerMode === 'create' ? newPatient.name : selectedPatient?.name} 
                             onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, name: e.target.value})}
                             className="bg-white" 
+                            placeholder="e.g. John Doe"
                             autoFocus={drawerMode === 'create'}
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <label className="text-sm font-semibold text-slate-700">Phone</label>
+                            <label className="text-sm font-semibold text-slate-700">Phone <span className="text-red-500">*</span></label>
                             <Input 
                               value={drawerMode === 'create' ? newPatient.phone : selectedPatient?.phone} 
-                              onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, phone: e.target.value})}
+                              onChange={e => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                drawerMode === 'create' && setNewPatient({...newPatient, phone: val})
+                              }}
                               className="bg-white" 
+                              placeholder="10 digit number"
+                              maxLength={10}
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-semibold text-slate-700">Age</label>
+                            <label className="text-sm font-semibold text-slate-700">Age <span className="text-red-500">*</span></label>
                             <Input 
                               value={drawerMode === 'create' ? newPatient.age : selectedPatient?.age} 
                               onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, age: e.target.value})}
                               type="number" 
+                              placeholder="e.g. 35"
                               className="bg-white" 
                             />
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">Gender</label>
+                          <label className="text-sm font-semibold text-slate-700">Gender <span className="text-red-500">*</span></label>
                           <select 
                             value={drawerMode === 'create' ? newPatient.gender : selectedPatient?.gender}
                             onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, gender: e.target.value as any})}
-                            className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:opacity-50"
+                            className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                           >
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
@@ -468,7 +485,7 @@ export function PatientsPage() {
                             value={visitReason}
                             onChange={e => setVisitReason(e.target.value)}
                             placeholder="e.g. Routine Checkup, Toothache, Cleaning..."
-                            className="flex min-h-[80px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                            className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
                           />
                         </div>
                       </div>
@@ -493,7 +510,7 @@ export function PatientsPage() {
                           <select 
                             value={visitDoctor}
                             onChange={e => setVisitDoctor(e.target.value)}
-                            className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:opacity-50"
+                            className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                           >
                             <option value="" disabled>Select a doctor...</option>
                             {doctors.map(d => (
@@ -532,12 +549,10 @@ export function PatientsPage() {
                     >
                       Edit Patient
                     </Button>
-                    {!isDoctor && (
-                      <Button className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 shadow-sm" onClick={() => selectedPatient && handleOpenStartVisit(selectedPatient)}>
-                        <Play className="w-4 h-4 mr-2" />
-                        Start Visit
-                      </Button>
-                    )}
+                    <Button className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 shadow-sm" onClick={() => selectedPatient && handleOpenStartVisit(selectedPatient)}>
+                      <Play className="w-4 h-4 mr-2" />
+                      Start Visit
+                    </Button>
                   </>
                 ) : drawerMode === 'startVisit' ? (
                   <>
@@ -560,7 +575,7 @@ export function PatientsPage() {
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" onClick={() => setDrawerMode('view')} className="w-full sm:w-auto bg-white shadow-sm">
+                    <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white shadow-sm">
                       Cancel
                     </Button>
                     <Button className="w-full sm:w-auto shadow-sm" onClick={handleUpdatePatient}>
@@ -588,3 +603,4 @@ export function PatientsPage() {
     </div>
   );
 }
+

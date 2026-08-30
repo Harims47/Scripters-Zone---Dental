@@ -1,6 +1,6 @@
 
 export type AppointmentType = 'Consultation' | 'Surgery' | 'Follow-up' | 'Routine Checkup' | 'Emergency';
-export type AppointmentStatus = 'Scheduled' | 'Confirmed' | 'Checked In' | 'Completed' | 'Cancelled' | 'No Show';
+export type AppointmentStatus = 'Scheduled' | 'Checked In' | 'Completed' | 'Cancelled' | 'No Show';
 export interface Appointment {
   id: string;
   patientId: string;

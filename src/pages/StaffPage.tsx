@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, User, Phone, Edit2, ShieldOff } from 'lucide-react'
+import { Plus, Search, User, Phone, Edit2, ShieldOff, Eye } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
@@ -12,12 +12,32 @@ import { DrawerFooterActions } from '../components/ui/drawer-patterns'
 import { StaffStatusBadge, RoleAccessPreview } from '../components/staff/staff-components'
 import { type ClinicRole, ROLE_CONFIG } from '../lib/role-config'
 import { DEMO_STAFF, type Staff } from '../lib/mock-data'
+import { api } from '../lib/api'
+import { useEffect } from 'react'
+import { toast } from 'react-hot-toast'
 
 type StaffStatus = 'Active' | 'Inactive'
 
 export function StaffPage() {
-  const [data, setData] = useState<Staff[]>(DEMO_STAFF)
+  const [data, setData] = useState<Staff[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const [search, setSearch] = useState('')
+
+  const fetchStaff = async () => {
+    setIsLoading(true)
+    try {
+      const res = await api.get<{data: Staff[]}>('/api/staff')
+      setData(res.data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchStaff()
+  }, [])
   
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -50,26 +70,47 @@ export function StaffPage() {
     setDrawerOpen(true)
   }
 
-  const handleSave = () => {
-    if (drawerMode === 'create') {
-      const newItem: Staff = {
-        id: `STF-${Math.floor(Math.random() * 900) + 200}`,
-        name: activeItem.name || '',
-        phone: activeItem.phone || '',
-        role: activeItem.role as ClinicRole || 'Duty Doctor',
-        status: activeItem.status as StaffStatus || 'Active'
-      }
-      setData(prev => [newItem, ...prev])
-    } else if (drawerMode === 'edit') {
-      setData(prev => prev.map(r => r.id === activeItem.id ? { ...r, ...activeItem } as Staff : r))
+  const handleSave = async () => {
+    if (!activeItem.name || !activeItem.phone || !activeItem.role) {
+      toast.error('Please fill out all mandatory fields.');
+      return;
     }
-    setDrawerOpen(false)
+    if (activeItem.phone.length !== 10) {
+      toast.error('Phone number must be exactly 10 digits.');
+      return;
+    }
+    if ((activeItem as any).hasAccess && (!(activeItem as any).username || !(activeItem as any).password)) {
+      toast.error('System Username and Password are required when granting system access.');
+      return;
+    }
+
+    try {
+      if (drawerMode === 'create') {
+        await api.post('/api/staff', activeItem)
+        toast.success('Staff member created successfully.')
+      } else if (drawerMode === 'edit') {
+        await api.put(`/api/staff/${activeItem.id}`, activeItem)
+        toast.success('Staff member updated successfully.')
+      }
+      await fetchStaff()
+      setDrawerOpen(false)
+    } catch (error: any) {
+      console.error(error)
+      toast.error(error.message || "Failed to save staff member")
+    }
   }
 
-  const handleConfirmDeactivate = () => {
+  const handleConfirmDeactivate = async () => {
     if (deactivateId) {
-      setData(prev => prev.map(r => r.id === deactivateId ? { ...r, status: 'Inactive' } : r))
-      setDeactivateId(null)
+      try {
+        await api.put(`/api/staff/${deactivateId}/status`, { status: 'Inactive' })
+        await fetchStaff()
+        setDeactivateId(null)
+        toast.success('Staff member deactivated.')
+      } catch (error: any) {
+        console.error(error)
+        toast.error(error.message || "Failed to deactivate staff")
+      }
     }
   }
 
@@ -118,16 +159,16 @@ export function StaffPage() {
         <div className="flex items-center justify-end gap-2">
           {row.original.status === 'Active' && (
             <>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-900" aria-label="Edit staff" onClick={() => handleOpenEdit(row.original)}>
+              <Button size="icon" className="h-8 w-8 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg" aria-label="Edit staff" onClick={() => handleOpenEdit(row.original)}>
                 <Edit2 className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" aria-label="Deactivate staff" onClick={() => setDeactivateId(row.original.id)}>
+              <Button size="icon" className="h-8 w-8 shadow-sm bg-rose-500 hover:bg-rose-600 text-white rounded-lg" aria-label="Deactivate staff" onClick={() => setDeactivateId(row.original.id)}>
                 <ShieldOff className="w-4 h-4" />
               </Button>
             </>
           )}
-          <Button variant="outline" size="sm" onClick={() => handleOpenView(row.original)} className="shadow-sm">
-            View
+          <Button size="icon" onClick={() => handleOpenView(row.original)} className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" aria-label="View staff">
+            <Eye className="w-4 h-4" />
           </Button>
         </div>
       )
@@ -157,12 +198,6 @@ export function StaffPage() {
         onSearchChange={setSearch}
         searchPlaceholder="Search name or phone..."
         exportOptions={{ pdf: true, excel: true, csv: true }}
-        filterSlot={
-          <>
-            <Button variant="outline" className="h-9 shadow-sm">Role</Button>
-            <Button variant="outline" className="h-9 shadow-sm">Status</Button>
-          </>
-        }
       />
 
       {/* Data Table */}
@@ -210,13 +245,13 @@ export function StaffPage() {
         <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
           
           {/* Drawer Header */}
-          <div className="px-6 py-6 bg-slate-900 border-b border-slate-800">
+          <div className="px-6 py-6 bg-white border-b border-slate-100">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-xl font-bold tracking-tight text-white">
+                <h2 className="text-xl font-bold tracking-tight text-slate-900">
                   {isCreating ? 'Add Staff Member' : activeItem.name}
                 </h2>
-                <p className="text-slate-400 mt-1">
+                <p className="text-slate-500 mt-1">
                   {isCreating ? 'Configure new clinic personnel.' : `ID: ${activeItem.id}`}
                 </p>
               </div>
@@ -232,7 +267,7 @@ export function StaffPage() {
               <div className="space-y-6">
                 
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Full Name</label>
+                  <label className="text-sm font-semibold text-slate-700">Full Name <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <Input 
@@ -246,23 +281,66 @@ export function StaffPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Phone Number</label>
+                  <label className="text-sm font-semibold text-slate-700">Phone Number <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <Input 
                       className="pl-9 bg-slate-50" 
-                      placeholder="+91 XXXXX XXXXX"
+                      placeholder="10 digit number"
                       value={activeItem.phone || ''}
-                      onChange={e => setActiveItem(prev => ({ ...prev, phone: e.target.value }))}
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setActiveItem(prev => ({ ...prev, phone: val }))
+                      }}
+                      maxLength={10}
                       readOnly={drawerMode === 'view'}
                     />
                   </div>
                 </div>
 
+                {isCreating && (
+                  <div className="pt-2 pb-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                        checked={(activeItem as any).hasAccess || false}
+                        onChange={e => setActiveItem(prev => ({ ...prev, hasAccess: e.target.checked }))}
+                      />
+                      <span className="text-sm font-semibold text-slate-700">Grant System Access</span>
+                    </label>
+                    <p className="text-xs text-slate-500 mt-1 ml-6">Allow this staff member to log in to the DentalCore system.</p>
+                  </div>
+                )}
+
+                {isCreating && (activeItem as any).hasAccess && (
+                  <div className="grid grid-cols-2 gap-4 ml-6 pl-4 border-l-2 border-indigo-100">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">System Username <span className="text-red-500">*</span></label>
+                      <Input 
+                        className="bg-white border-slate-200" 
+                        placeholder="e.g. jdoe"
+                        value={(activeItem as any).username || ''}
+                        onChange={e => setActiveItem(prev => ({ ...prev, username: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">Initial Password <span className="text-red-500">*</span></label>
+                      <Input 
+                        type="password"
+                        className="bg-white border-slate-200" 
+                        placeholder="Enter password"
+                        value={(activeItem as any).password || ''}
+                        onChange={e => setActiveItem(prev => ({ ...prev, password: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Assigned Role</label>
+                  <label className="text-sm font-semibold text-slate-700">Assigned Role <span className="text-red-500">*</span></label>
                   <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-slate-50 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                    className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                     value={activeItem.role || ''}
                     onChange={e => setActiveItem(prev => ({ ...prev, role: e.target.value as ClinicRole }))}
                     disabled={drawerMode === 'view'}
@@ -277,7 +355,7 @@ export function StaffPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Account Status</label>
                     <select 
-                      className="flex h-10 w-full rounded-md border border-input bg-slate-50 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                       value={activeItem.status || 'Active'}
                       onChange={e => setActiveItem(prev => ({ ...prev, status: e.target.value as StaffStatus }))}
                     >

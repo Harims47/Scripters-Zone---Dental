@@ -53,7 +53,7 @@ export function PatientVisitHistory({
   return (
     <div className="bg-white border rounded-xl shadow-sm p-5">
       <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider mb-4">Previous Visits</h3>
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[250px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
         {visits.map((v, i) => (
           <div 
             key={v.id} 
@@ -62,7 +62,7 @@ export function PatientVisitHistory({
           >
             <div className="flex flex-col items-center">
               <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5" />
-              {i !== visits.length - 1 && <div className="w-px h-full bg-slate-200 my-1" />}
+              {i !== visits.length - 1 && <div className="w-px h-full bg-slate-200 my-1 min-h-[24px]" />}
             </div>
             <div className="pb-2">
               <div className="flex items-center gap-2 mb-0.5">

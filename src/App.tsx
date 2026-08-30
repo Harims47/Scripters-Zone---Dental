@@ -20,6 +20,8 @@ import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import Showcase from './pages/showcase/Showcase';
 import { PremiumReferencePage } from './pages/PremiumReferencePage';
 
+import { Toaster } from 'react-hot-toast';
+
 function App() {
   return (
     <AuthProvider>
@@ -38,22 +40,23 @@ function App() {
             <Route path="patients" element={<PatientsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="queue" element={<QueuePage />} />
-            <Route path="doctor/patient/:patientId" element={<DoctorWorkspacePage />} />
-            <Route path="reception/dispensing" element={<ReceptionDispensingPage />} />
-            <Route path="billing" element={<BillingPage />} />
             <Route path="inventory" element={<InventoryPage />} />
-            <Route path="payments" element={<PaymentPage />} />
+            <Route path="billing" element={<BillingPage />} />
             <Route path="staff" element={<StaffPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="premium-reference" element={<PremiumReferencePage />} />
+            
+            {/* Action Routes */}
+            <Route path="doctor/patient/:id" element={<DoctorWorkspacePage />} />
+            <Route path="reception/dispensing/:visitId" element={<ReceptionDispensingPage />} />
+            <Route path="reception/payment/:visitId" element={<PaymentPage />} />
           </Route>
           
-          {/* Standalone Showcase Route (Not in AppShell) */}
+          {/* Standalone Showcase */}
           <Route path="/showcase" element={<Showcase />} />
-          
-          {/* Premium UI Reference Route */}
-          <Route path="/reference" element={<PremiumReferencePage />} />
         </Routes>
       </BrowserRouter>
+      <Toaster position="top-right" toastOptions={{ className: 'font-medium' }} />
     </ClinicProvider>
     </AuthProvider>
   );

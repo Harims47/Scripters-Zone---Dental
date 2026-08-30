@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Calendar as CalendarIcon, Clock, Edit2, XCircle, FileText, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Calendar as CalendarIcon, Clock, Edit2, XCircle, FileText, CheckCircle2, Eye } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import type { ColumnDef, PaginationState } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
@@ -241,7 +241,7 @@ export function AppointmentsPage() {
       accessorKey: "status",
       cell: ({ row }) => {
         const hasActiveVisit = visits.some(v => v.patientId === row.original.patientId && ['IN_PROGRESS', 'WAITING', 'READY_FOR_PAYMENT'].includes(v.status));
-        if (hasActiveVisit && ['Scheduled', 'Confirmed'].includes(row.original.status)) {
+        if (hasActiveVisit && ['Scheduled'].includes(row.original.status)) {
           return <Badge variant="statusActive">In Clinic</Badge>
         }
         return getAppointmentStatusBadge(row.original.status)
@@ -255,28 +255,27 @@ export function AppointmentsPage() {
         
         return (
           <div className="flex items-center justify-end gap-2">
-            {['Scheduled', 'Confirmed'].includes(row.original.status) && !hasActiveVisit && (
+            {['Scheduled'].includes(row.original.status) && !hasActiveVisit && (
               <Button 
-                variant="outline" 
                 size="sm" 
-                className="h-8 shadow-sm text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100" 
+                className="h-8 px-3 text-xs shadow-sm bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg" 
                 onClick={(e) => { e.stopPropagation(); initiateCheckIn(row.original); }}
               >
                 Check In
               </Button>
             )}
-            {!isReceptionist && ['Scheduled', 'Confirmed'].includes(row.original.status) && !hasActiveVisit && (
+            {!isReceptionist && ['Scheduled'].includes(row.original.status) && (
               <>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-900" onClick={(e) => { e.stopPropagation(); handleOpenEdit(row.original); }} aria-label="Edit appointment">
+                <Button size="icon" className="h-8 w-8 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); handleOpenEdit(row.original); }} aria-label="Edit appointment">
                   <Edit2 className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={(e) => { e.stopPropagation(); initiateCancel(row.original); }} aria-label="Cancel appointment">
+                <Button size="icon" className="h-8 w-8 shadow-sm bg-rose-500 hover:bg-rose-600 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); initiateCancel(row.original); }} aria-label="Cancel appointment">
                   <XCircle className="w-4 h-4" />
                 </Button>
               </>
             )}
-            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenView(row.original); }} className="shadow-sm bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700">
-              View
+            <Button size="icon" onClick={(e) => { e.stopPropagation(); handleOpenView(row.original); }} className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" aria-label="View appointment">
+              <Eye className="w-4 h-4" />
             </Button>
           </div>
         )
@@ -346,7 +345,7 @@ export function AppointmentsPage() {
             >
               <option value="all-status">All Statuses</option>
               <option value="scheduled">Scheduled</option>
-              <option value="confirmed">Confirmed</option>
+              
               <option value="checked-in">Checked In</option>
               <option value="cancelled">Cancelled</option>
             </select>
@@ -373,6 +372,7 @@ export function AppointmentsPage() {
           loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
+          totalRecords={meta.totalRecords}
           state={{ pagination }}
           onStateChange={(updater: any) => {
             if (typeof updater === 'function') {
@@ -409,9 +409,9 @@ export function AppointmentsPage() {
               <h2 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mt-1">New Appointment</h2>
             </div>
           ) : (
-            <div className="px-6 py-5 bg-white border-b border-slate-100/60 relative z-10 flex flex-col gap-2 flex-shrink-0">
+            <div className="px-6 pr-12 py-5 bg-white border-b border-slate-100/60 relative z-10 flex flex-col gap-2 flex-shrink-0">
               <div className="flex justify-between items-start">
-                <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{isEditing ? 'Reschedule / Edit' : `Appointment: ${activeItem.id}`}</h2>
+                <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{isEditing ? 'Reschedule / Edit' : 'Appointment Details'}</h2>
                 {getAppointmentStatusBadge(activeItem.status as AppointmentStatus)}
               </div>
               <div className="flex items-center gap-3">
@@ -444,99 +444,7 @@ export function AppointmentsPage() {
               {/* Form Fields */}
               <div className="space-y-6">
 
-                {/* Patient Selection (Only in Create Mode) */}
-                {isCreating && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Patient</label>
-                    <PatientSelector
-                      value={activeItem.patientId || ''}
-                      onChange={(val) => setActiveItem(prev => ({ ...prev, patientId: val }))}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Doctor</label>
-                  <DoctorSelector
-                    value={activeItem.doctorId || ''}
-                    onChange={(val) => setActiveItem(prev => ({ ...prev, doctorId: val }))}
-                    disabled={drawerMode === 'view'}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Date</label>
-                    <div className="relative">
-                      <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input
-                        type="date"
-                        className="pl-9 bg-white"
-                        value={activeItem.date || ''}
-                        onChange={e => setActiveItem(prev => ({ ...prev, date: e.target.value }))}
-                        readOnly={drawerMode === 'view'}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Time</label>
-                    <div className="relative">
-                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input
-                        type="time"
-                        className="pl-9 bg-white"
-                        value={activeItem.time ? activeItem.time.replace(/ (AM|PM)/, '') : ''} // basic mock time handling
-                        onChange={e => setActiveItem(prev => ({ ...prev, time: e.target.value }))}
-                        readOnly={drawerMode === 'view'}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Appointment Type</label>
-                  <Input
-                    value={activeItem.type || ''}
-                    placeholder="e.g. Consultation, Surgery"
-                    onChange={e => setActiveItem(prev => ({ ...prev, type: e.target.value }))}
-                    readOnly={drawerMode === 'view'}
-                    className="bg-white"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Notes / Reason</label>
-                  <div className="relative">
-                    <FileText className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <textarea
-                      className="flex min-h-[100px] w-full rounded-md border border-input bg-white px-3 py-2 pl-9 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={activeItem.notes || ''}
-                      placeholder="Enter appointment notes..."
-                      onChange={e => setActiveItem(prev => ({ ...prev, notes: e.target.value }))}
-                      readOnly={drawerMode === 'view'}
-                    />
-                  </div>
-                </div>
-
-                {isEditing && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Status</label>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      value={activeItem.status || 'Scheduled'}
-                      onChange={e => setActiveItem(prev => ({ ...prev, status: e.target.value as AppointmentStatus }))}
-                    >
-                      <option value="Scheduled">Scheduled</option>
-                      <option value="Confirmed">Confirmed</option>
-                      <option value="Checked In">Checked In</option>
-                      <option value="Completed">Completed</option>
-                      <option value="Cancelled">Cancelled</option>
-                      <option value="No Show">No Show</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* Camera Capture Section for Appointments */}
+                {/* Camera Capture Section for Appointments (Moved to top) */}
                 {(isCreating || isEditing) && (
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Attachment / Photo (Optional)</label>
@@ -550,7 +458,7 @@ export function AppointmentsPage() {
                           >
                             <XCircle className="w-4 h-4" />
                           </button>
-                          <Button variant="outline" size="sm" className="mt-4 shadow-sm w-full" onClick={() => setActiveItem(prev => ({ ...prev, photoUrl: '' }))}>
+                          <Button variant="outline" size="sm" className="mt-4 shadow-sm w-full rounded-xl" onClick={() => setActiveItem(prev => ({ ...prev, photoUrl: '' }))}>
                             Retake Photo
                           </Button>
                         </div>
@@ -562,7 +470,7 @@ export function AppointmentsPage() {
                           <Button
                             variant="secondary"
                             size="sm"
-                            className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm"
+                            className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 shadow-sm rounded-xl"
                             onClick={() => setActiveItem(prev => ({ ...prev, photoUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop' }))}
                           >
                             Take Photo
@@ -570,6 +478,105 @@ export function AppointmentsPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Patient Selection (Only in Create Mode) */}
+                {isCreating && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Patient<span className="text-rose-500 ml-1">*</span></label>
+                    <PatientSelector
+                      value={activeItem.patientId || ''}
+                      onChange={(val) => setActiveItem(prev => ({ ...prev, patientId: val }))}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Doctor<span className="text-rose-500 ml-1">*</span></label>
+                  <DoctorSelector
+                    value={activeItem.doctorId || ''}
+                    onChange={(val) => setActiveItem(prev => ({ ...prev, doctorId: val }))}
+                    disabled={drawerMode === 'view'}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Date<span className="text-rose-500 ml-1">*</span></label>
+                    <div className="relative">
+                      <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        type="date"
+                        className="pl-9 bg-white rounded-xl focus-visible:ring-teal-500"
+                        value={activeItem.date || ''}
+                        onChange={e => setActiveItem(prev => ({ ...prev, date: e.target.value }))}
+                        readOnly={drawerMode === 'view'}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Time<span className="text-rose-500 ml-1">*</span></label>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        type="time"
+                        className="pl-9 bg-white rounded-xl focus-visible:ring-teal-500"
+                        value={activeItem.time ? activeItem.time.replace(/ (AM|PM)/, '') : ''} // basic mock time handling
+                        onChange={e => setActiveItem(prev => ({ ...prev, time: e.target.value }))}
+                        readOnly={drawerMode === 'view'}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Appointment Type<span className="text-rose-500 ml-1">*</span></label>
+                  <select
+                    className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-50"
+                    value={activeItem.type || ''}
+                    onChange={e => setActiveItem(prev => ({ ...prev, type: e.target.value }))}
+                    disabled={drawerMode === 'view'}
+                  >
+                    <option value="" disabled>Select Type...</option>
+                    <option value="Consultation">Consultation</option>
+                    <option value="General Checkup">General Checkup</option>
+                    <option value="Surgery">Surgery</option>
+                    <option value="Follow-up">Follow-up</option>
+                    <option value="Emergency">Emergency</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Notes / Reason</label>
+                  <div className="relative">
+                    <FileText className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <textarea
+                      className="flex min-h-[100px] w-full rounded-xl border border-input bg-white px-3 py-2 pl-9 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={activeItem.notes || ''}
+                      placeholder="Enter appointment notes..."
+                      onChange={e => setActiveItem(prev => ({ ...prev, notes: e.target.value }))}
+                      readOnly={drawerMode === 'view'}
+                    />
+                  </div>
+                </div>
+
+                {isEditing && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Status<span className="text-rose-500 ml-1">*</span></label>
+                    <select
+                      className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                      value={activeItem.status || 'Scheduled'}
+                      onChange={e => setActiveItem(prev => ({ ...prev, status: e.target.value as AppointmentStatus }))}
+                    >
+                      <option value="Scheduled">Scheduled</option>
+                      
+                      <option value="Checked In">Checked In</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Cancelled">Cancelled</option>
+                      <option value="No Show">No Show</option>
+                    </select>
                   </div>
                 )}
 
@@ -588,7 +595,7 @@ export function AppointmentsPage() {
                     View in Queue
                   </Button>
                 )}
-                {['Scheduled', 'Confirmed'].includes(activeItem.status || '') && (
+                {['Scheduled'].includes(activeItem.status || '') && (
                   <>
                     <Button className="w-full sm:w-auto border-teal-600 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => { initiateCheckIn(activeItem as AppointmentRow); }}>
                       Check In

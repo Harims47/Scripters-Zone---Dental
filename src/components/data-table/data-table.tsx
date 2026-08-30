@@ -65,6 +65,7 @@ export interface DataTableProps<TData, TValue> {
   error?: Error | null
   emptyState?: React.ReactNode
   onRowClick?: (row: TData) => void
+  totalRecords?: number
 }
 
 export function DataTable<TData, TValue>({
@@ -81,6 +82,7 @@ export function DataTable<TData, TValue>({
   error = null,
   emptyState,
   onRowClick,
+  totalRecords,
 }: DataTableProps<TData, TValue>) {
   // Internal state for demo/client-side mode
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -217,7 +219,7 @@ export function DataTable<TData, TValue>({
         </div>
       </div>
 
-      <DataTablePagination table={table} showSelection={selectable} />
+      <DataTablePagination table={table} showSelection={selectable} totalRecords={totalRecords} />
     </div>
   )
 }

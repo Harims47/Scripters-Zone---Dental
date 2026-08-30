@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Search, CheckCircle2, AlertCircle, Eye } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import type { ColumnDef, PaginationState } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
@@ -141,15 +141,25 @@ export function PaymentPage() {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div className="flex justify-end">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => handleOpenDrawer(row.original)}
-            className={`font-medium shadow-sm ${row.original.status === 'Paid' ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700'}`}
-          >
-            {row.original.status === 'Paid' ? 'View' : 'Collect Payment'}
-          </Button>
+        <div className="flex justify-end gap-2">
+          {row.original.status === 'Paid' ? (
+            <Button 
+              size="icon"
+              onClick={() => handleOpenDrawer(row.original)}
+              className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg"
+              aria-label="View payment"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button 
+              size="sm"
+              onClick={() => handleOpenDrawer(row.original)}
+              className="h-8 px-3 text-xs font-medium shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
+            >
+              Collect Payment
+            </Button>
+          )}
         </div>
       )
     }
@@ -191,6 +201,7 @@ export function PaymentPage() {
           loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
+          totalRecords={meta.totalRecords}
           state={{ pagination }}
           onStateChange={(updater: any) => {
             if (typeof updater === 'function') {
@@ -328,3 +339,4 @@ export function PaymentPage() {
     </div>
   )
 }
+

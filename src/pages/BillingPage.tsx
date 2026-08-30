@@ -275,6 +275,7 @@ export function BillingPage() {
           loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
+          totalRecords={meta.totalRecords}
           state={{ pagination }}
           onStateChange={(updater: any) => {
             if (typeof updater === 'function') {
@@ -445,3 +446,4 @@ export function BillingPage() {
     </div>
   )
 }
+
