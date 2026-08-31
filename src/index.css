@@ -92,3 +92,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide Google Translate UI Elements */
+.skiptranslate iframe,
+.goog-te-banner-frame.skiptranslate,
+#goog-gt-tt {
+  display: none !important;
+}
+
+body {
+  top: 0px !important; 
+}
+.VIpgJd-ZVi9od-aZ2wEe-wOHMyf {
+  display: none !important;
+}

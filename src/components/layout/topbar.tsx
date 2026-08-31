@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu"
-import { t } from "../../lib/i18n"
+
 
 export function Topbar() {
   const { currentUser, logout } = useAuth()
@@ -20,6 +20,22 @@ export function Topbar() {
   
   const userName = currentUser?.name || "Unknown"
   const userRole = currentUser?.role || "Unknown Role"
+
+  const changeLanguage = (langCode: string) => {
+    const combo = document.querySelector('.goog-te-combo') as HTMLSelectElement;
+    if (combo) {
+      combo.value = langCode;
+      combo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    // Fallback if combo is not immediately available, or to enforce English reset
+    if (langCode === 'en') {
+      // To force reset to original English when Google Translate sometimes fails to switch back cleanly
+      const iframe = document.querySelector('iframe.goog-te-menu-frame') as HTMLIFrameElement;
+      if (!combo && !iframe) {
+         // Google translate might not be active, which is fine, it's already English
+      }
+    }
+  };
 
   return (
     <header className="h-[72px] bg-white/80 backdrop-blur-md border-b border-slate-100 px-8 flex items-center justify-between shrink-0 z-10 sticky top-0">
@@ -55,10 +71,10 @@ export function Topbar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{t('topbar.language', 'Language')}</DropdownMenuLabel>
+            <DropdownMenuLabel>Language</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="bg-slate-50 font-medium">English</DropdownMenuItem>
-            <DropdownMenuItem>العربية</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => changeLanguage('en')} className="font-medium cursor-pointer">English</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => changeLanguage('ta')} className="cursor-pointer">தமிழ்</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
