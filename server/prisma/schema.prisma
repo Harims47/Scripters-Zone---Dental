@@ -38,8 +38,9 @@ model Patient {
   photoUrl  String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  payments  Payment[]
-  visits    Visit[]
+  payments      Payment[]
+  visits        Visit[]
+  treatmentPlan TreatmentPlan?
 }
 
 model Appointment {
@@ -65,6 +66,7 @@ model Visit {
   status          String
   amountDue       Float         @default(0)
   consultationFee Float?
+  treatmentFee    Float?
   medicineCost    Float?
   reasonForVisit  String?
   createdAt       DateTime      @default(now())
@@ -74,8 +76,9 @@ model Visit {
   payment         Payment?
   prescription    Prescription?
   queueEntry      QueueEntry?
-  appointment     Appointment?  @relation(fields: [appointmentId], references: [id])
-  patient         Patient       @relation(fields: [patientId], references: [id])
+  appointment             Appointment?        @relation(fields: [appointmentId], references: [id])
+  patient                 Patient             @relation(fields: [patientId], references: [id])
+  completedTreatmentItems TreatmentPlanItem[]
 }
 
 model QueueEntry {
@@ -99,6 +102,7 @@ model Consultation {
   reasonForVisit  String
   clinicalNotes   String
   consultationFee Float
+  treatmentFee    Float?
   status          String   @default("In Progress")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -185,4 +189,39 @@ model Payment {
   updatedAt DateTime @updatedAt
   patient   Patient  @relation(fields: [patientId], references: [id])
   visit     Visit    @relation(fields: [visitId], references: [id])
+}
+
+model TreatmentCatalog {
+  id          String              @id @default(uuid())
+  category    String
+  name        String
+  variant     String?
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  planItems   TreatmentPlanItem[]
+}
+
+model TreatmentPlan {
+  id        String              @id @default(uuid())
+  patientId String              @unique
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  patient   Patient             @relation(fields: [patientId], references: [id])
+  items     TreatmentPlanItem[]
+}
+
+model TreatmentPlanItem {
+  id                 String           @id @default(uuid())
+  treatmentPlanId    String
+  treatmentCatalogId String
+  status             String           @default("Planned") // "Planned" | "Completed"
+  notes              String?
+  completedVisitId   String?
+  completedAt        DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  treatmentPlan      TreatmentPlan    @relation(fields: [treatmentPlanId], references: [id])
+  catalogItem        TreatmentCatalog @relation(fields: [treatmentCatalogId], references: [id])
+  completedVisit     Visit?           @relation(fields: [completedVisitId], references: [id])
 }

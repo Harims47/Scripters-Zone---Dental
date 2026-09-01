@@ -118,3 +118,27 @@ export interface PaginatedResponse<T> {
   meta: PaginationMeta;
 }
 
+export interface TreatmentCatalog {
+  id: string
+  category: string
+  name: string
+  variant: string | null
+  isActive: boolean
+}
+
+export interface TreatmentPlanItem {
+  id: string
+  treatmentPlanId: string
+  treatmentCatalogId: string
+  status: 'Planned' | 'Completed'
+  notes: string | null
+  completedVisitId: string | null
+  completedAt: string | null
+  catalogItem?: TreatmentCatalog
+}
+
+export interface TreatmentPlan {
+  id: string
+  patientId: string
+  items: TreatmentPlanItem[]
+}

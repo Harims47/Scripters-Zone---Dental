@@ -15,8 +15,9 @@ import {
   DrawerFooterActions,
   ReadOnlyField
 } from '../components/ui/drawer-patterns';
-import { PatientVisitHistory } from '../components/consultation/consultation-components';
+import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
+import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
@@ -381,7 +382,8 @@ export function PatientsPage() {
                   )}
 
                   {drawerMode === 'view' && selectedPatient && (
-                    <div className="mt-8">
+                    <div className="mt-8 space-y-8">
+                      <TreatmentPlanUI patientId={selectedPatient.id} />
                       <PatientVisitHistory 
                         visits={visits
                           .filter(v => v.patientId === selectedPatient.id && v.status === 'COMPLETED')

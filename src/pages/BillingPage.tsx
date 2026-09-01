@@ -111,6 +111,9 @@ export function BillingPage() {
         patientName: p?.name || 'Unknown',
         patientPhone: p?.phone || '-',
         amount: v.amountDue || 0,
+        consultationFee: v.consultationFee || 0,
+        treatmentFee: v.treatmentFee || 0,
+        medicineCost: v.medicineCost || 0,
         dispensingStatus,
         paymentStatus,
         action,
@@ -467,11 +470,15 @@ export function BillingPage() {
                           <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
                             <div className="flex justify-between items-center text-sm">
                               <span className="text-slate-500">Consultation Fees</span>
-                              <span className="font-medium text-slate-700">₹{Math.max(0, selectedRow.amount - activeItems.reduce((acc, item) => acc + (item.dispensedQty * (item.unitPrice || 0)), 0))}</span>
+                              <span className="font-medium text-slate-700">₹{selectedRow.consultationFee}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-500">Treatment Fees</span>
+                              <span className="font-medium text-slate-700">₹{selectedRow.treatmentFee}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm">
                               <span className="text-slate-500">Medicine Cost</span>
-                              <span className="font-medium text-slate-700">₹{activeItems.reduce((acc, item) => acc + (item.dispensedQty * (item.unitPrice || 0)), 0)}</span>
+                              <span className="font-medium text-slate-700">₹{selectedRow.medicineCost}</span>
                             </div>
                           </div>
                         </div>

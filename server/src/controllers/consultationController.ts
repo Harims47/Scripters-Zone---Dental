@@ -16,7 +16,7 @@ export const getConsultationByVisitId = async (req: Request, res: Response, next
 
 export const createConsultation = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { visitId, reasonForVisit, clinicalNotes, consultationFee } = req.body;
+    const { visitId, reasonForVisit, clinicalNotes, consultationFee, treatmentFee } = req.body;
     const doctorId = (req as any).user.staffId;
 
     if (!doctorId) {
@@ -28,6 +28,13 @@ export const createConsultation = async (req: Request, res: Response, next: Next
 
     if (visit.status !== 'WITH_DOCTOR') {
       return res.status(409).json({ error: 'Visit is not in WITH_DOCTOR state' });
+    }
+
+    if (consultationFee !== undefined && consultationFee < 0) {
+      return res.status(400).json({ error: 'Consultation fee cannot be negative' });
+    }
+    if (treatmentFee !== undefined && treatmentFee < 0) {
+      return res.status(400).json({ error: 'Treatment fee cannot be negative' });
     }
 
     // Check for duplicate consultation
@@ -44,6 +51,7 @@ export const createConsultation = async (req: Request, res: Response, next: Next
           reasonForVisit,
           clinicalNotes,
           consultationFee: consultationFee || 0,
+          treatmentFee: treatmentFee || 0,
           status: 'In Progress'
         }
       });
@@ -53,7 +61,8 @@ export const createConsultation = async (req: Request, res: Response, next: Next
         where: { id: visitId },
         data: { 
           consultationFee: consultationFee || 0,
-          amountDue: (consultationFee || 0) + (visit.medicineCost || 0)
+          treatmentFee: treatmentFee || 0,
+          amountDue: (consultationFee || 0) + (treatmentFee || 0) + (visit.medicineCost || 0)
         }
       });
 
@@ -69,7 +78,7 @@ export const createConsultation = async (req: Request, res: Response, next: Next
 export const updateConsultation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { reasonForVisit, clinicalNotes, consultationFee } = req.body;
+    const { reasonForVisit, clinicalNotes, consultationFee, treatmentFee } = req.body;
     const doctorId = (req as any).user.staffId;
 
     const existing = await prisma.consultation.findUnique({ where: { id }, include: { visit: true } });
@@ -83,18 +92,29 @@ export const updateConsultation = async (req: Request, res: Response, next: Next
       return res.status(409).json({ error: 'Cannot edit a completed consultation' });
     }
 
+    if (consultationFee !== undefined && consultationFee < 0) {
+      return res.status(400).json({ error: 'Consultation fee cannot be negative' });
+    }
+    if (treatmentFee !== undefined && treatmentFee < 0) {
+      return res.status(400).json({ error: 'Treatment fee cannot be negative' });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const consultation = await tx.consultation.update({
         where: { id },
-        data: { reasonForVisit, clinicalNotes, consultationFee }
+        data: { reasonForVisit, clinicalNotes, consultationFee, treatmentFee }
       });
 
-      if (consultationFee !== undefined) {
+      if (consultationFee !== undefined || treatmentFee !== undefined) {
+        const finalConsultationFee = consultationFee !== undefined ? consultationFee : existing.consultationFee;
+        const finalTreatmentFee = treatmentFee !== undefined ? treatmentFee : existing.treatmentFee;
+
         await tx.visit.update({
           where: { id: existing.visitId },
           data: {
-            consultationFee,
-            amountDue: consultationFee + (existing.visit.medicineCost || 0)
+            consultationFee: finalConsultationFee,
+            treatmentFee: finalTreatmentFee,
+            amountDue: finalConsultationFee + (finalTreatmentFee || 0) + (existing.visit.medicineCost || 0)
           }
         });
       }

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components'
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog'
+import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI'
 
 import { DraggableMedicineItem, PrescriptionDropZone, PrescriptionRow } from '../components/prescription/prescription-components'
 import type { PrescriptionLineItem } from '../components/prescription/prescription-components'
@@ -43,6 +44,7 @@ export function DoctorWorkspacePage() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
   const [selectedHistoryVisitId, setSelectedHistoryVisitId] = useState<string | null>(null)
   const [consultationFee, setConsultationFee] = useState<number>(500)
+  const [treatmentFee, setTreatmentFee] = useState<number>(0)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   // Prescription State
@@ -58,6 +60,7 @@ export function DoctorWorkspacePage() {
       setReason(consultation.reasonForVisit)
       setNotes(consultation.clinicalNotes)
       if (consultation.consultationFee !== undefined) setConsultationFee(consultation.consultationFee)
+      if ((consultation as any).treatmentFee !== undefined) setTreatmentFee((consultation as any).treatmentFee)
     }
   }, [consultation])
 
@@ -148,7 +151,7 @@ export function DoctorWorkspacePage() {
       
       // 1. Save Consultation (Draft)
       // We always save the draft first, even if completing, to ensure data is saved before the state transition locks it.
-      const consultRes = await saveConsultation(visit.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, false)
+      const consultRes = await saveConsultation(visit.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee, treatmentFee }, false)
       
       if (!consultRes.success) {
         setErrorMsg(consultRes.error || 'Failed to save consultation draft.')
@@ -181,7 +184,7 @@ export function DoctorWorkspacePage() {
 
       // 3. Complete if requested
       if (isComplete) {
-         const completeRes = await saveConsultation(visit.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee }, true)
+         const completeRes = await saveConsultation(visit.id, { reasonForVisit: reason, clinicalNotes: notes, consultationFee, treatmentFee }, true)
          if (!completeRes.success) {
             setErrorMsg(completeRes.error || 'Failed to complete consultation.')
             return
@@ -287,6 +290,8 @@ export function DoctorWorkspacePage() {
             </div>
 
             {activeStep === 1 && (
+            <div className="space-y-6">
+            <TreatmentPlanUI patientId={patient.id} currentVisitId={visit.id} />
             <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] p-6 sm:p-8 space-y-8">
               <div className="flex items-center gap-2 pb-4 border-b border-slate-100 flex-wrap justify-between">
                 <div className="flex items-center gap-2">
@@ -314,9 +319,15 @@ export function DoctorWorkspacePage() {
                   <Label htmlFor="clinicalNotes" className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
                   <Textarea id="clinicalNotes" placeholder="Enter detailed clinical findings, diagnosis, and treatment plan..." className="min-h-[160px] resize-y bg-slate-50/50 border-slate-200 focus-visible:ring-emerald-500/20" value={notes} onChange={(e) => setNotes(e.target.value)} />
                 </div>
-                <div className="space-y-3 pt-6 border-t border-slate-100 max-w-sm">
-                  <Label htmlFor="consultationFee" className="text-sm font-semibold text-slate-700">Consultation Fee (₹)</Label>
-                  <Input id="consultationFee" type="number" min="0" step="50" className="bg-slate-50/50 border-slate-200 focus-visible:ring-emerald-500/20" value={consultationFee} onChange={(e) => setConsultationFee(Number(e.target.value) || 0)} />
+                <div className="grid grid-cols-2 gap-4 pt-6 border-t border-slate-100 max-w-lg">
+                  <div className="space-y-3">
+                    <Label htmlFor="consultationFee" className="text-sm font-semibold text-slate-700">Consultation Fee (₹)</Label>
+                    <Input id="consultationFee" type="number" min="0" step="50" className="bg-slate-50/50 border-slate-200 focus-visible:ring-emerald-500/20" value={consultationFee} onChange={(e) => setConsultationFee(Number(e.target.value) || 0)} />
+                  </div>
+                  <div className="space-y-3">
+                    <Label htmlFor="treatmentFee" className="text-sm font-semibold text-slate-700">Treatment Fee (₹)</Label>
+                    <Input id="treatmentFee" type="number" min="0" step="50" className="bg-slate-50/50 border-slate-200 focus-visible:ring-emerald-500/20" value={treatmentFee} onChange={(e) => setTreatmentFee(Number(e.target.value) || 0)} />
+                  </div>
                 </div>
               </div>
               {/* Step 1 Actions */}
@@ -332,6 +343,7 @@ export function DoctorWorkspacePage() {
                   Next: Prescription
                 </Button>
               </div>
+            </div>
             </div>
             )}
 

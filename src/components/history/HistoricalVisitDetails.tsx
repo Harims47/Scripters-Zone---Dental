@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { useClinicContext } from '../../context/ClinicContext'
 import { DEMO_STAFF } from '../../lib/mock-data'
 import { ReadOnlyField, DrawerSection } from '../ui/drawer-patterns'
 import { Button } from '../ui/button'
-import { FileText } from 'lucide-react'
-import { API_BASE_URL } from '../../lib/api'
+import { FileText, Loader2, Check } from 'lucide-react'
+import { API_BASE_URL, api } from '../../lib/api'
+import type { TreatmentPlan } from '../../types/domain'
 
 export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
   const { visits, consultations, prescriptions, dispensings, payments, medicines } = useClinicContext()
@@ -14,6 +16,19 @@ export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
   const dispensing = dispensings.find(d => d.visitId === visitId)
   const payment = payments.find(p => p.visitId === visitId)
   const doctor = DEMO_STAFF.find(d => d.id === visit?.doctorId)
+
+  const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
+  const [loadingPlan, setLoadingPlan] = useState(false)
+
+  useEffect(() => {
+    if (visit?.patientId) {
+      setLoadingPlan(true)
+      api.get<TreatmentPlan>(`/api/patients/${visit.patientId}/treatment-plan`)
+        .then(res => setTreatmentPlan(res))
+        .catch(err => console.error(err))
+        .finally(() => setLoadingPlan(false))
+    }
+  }, [visit?.patientId])
 
   if (!visit) {
     return <div className="p-4 text-slate-500">Visit not found.</div>
@@ -49,6 +64,28 @@ export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
           <ReadOnlyField label="Reason for Visit" value={consultation.reasonForVisit || 'Not provided'} />
           <ReadOnlyField label="Clinical Notes" value={consultation.clinicalNotes || 'No notes added'} />
           <ReadOnlyField label="Consultation Fee" value={`₹${consultation.consultationFee}`} />
+        </DrawerSection>
+      )}
+
+      {treatmentPlan && (
+        <DrawerSection title="Treatments Performed">
+          {loadingPlan ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading treatments...</div>
+          ) : (
+            treatmentPlan.items.filter(item => item.completedVisitId === visitId).length > 0 ? (
+              <div className="space-y-2">
+                {treatmentPlan.items.filter(item => item.completedVisitId === visitId).map(item => (
+                  <div key={item.id} className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 p-2 rounded border border-slate-100">
+                    <Check className="w-4 h-4 text-emerald-500" />
+                    <span className="font-medium">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
+                    {item.notes && <span className="text-slate-500">| {item.notes}</span>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">No treatments marked as completed in this visit.</p>
+            )
+          )}
         </DrawerSection>
       )}
 
