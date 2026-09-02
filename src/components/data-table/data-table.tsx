@@ -89,6 +89,7 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
+  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 })
 
   // Inject checkbox column if selectable
   const finalColumns = React.useMemo(() => {
@@ -135,13 +136,14 @@ export function DataTable<TData, TValue>({
       columnFilters,
       columnVisibility,
       rowSelection,
+      pagination,
       ...externalState,
     },
     onSortingChange: onStateChange || setSorting,
     onColumnFiltersChange: onStateChange || setColumnFilters,
     onColumnVisibilityChange: onStateChange || setColumnVisibility,
     onRowSelectionChange: onStateChange || setRowSelection,
-    onPaginationChange: onStateChange || undefined,
+    onPaginationChange: onStateChange || setPagination,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),

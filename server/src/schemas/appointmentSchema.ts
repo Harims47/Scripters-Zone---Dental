@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const createAppointmentSchema = z.object({
   body: z.object({
     patientId: z.string().min(1, 'Invalid patient ID'),
-    providerId: z.string().min(1, 'Invalid provider ID'),
+    providerId: z.string().optional(),
     date: z.string().min(1, 'Date is required'),
     time: z.string().min(1, 'Time is required'),
     type: z.enum(['Consultation', 'Surgery', 'Follow-up', 'Routine Checkup', 'Emergency']),

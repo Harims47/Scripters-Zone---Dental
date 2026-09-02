@@ -5,6 +5,7 @@ import type { ClinicRole, ClinicModule } from './role-config'
 // This directly maps a URL path prefix to the Clinical Module permission it requires.
 export const ROUTE_MODULE_MAP: Record<string, ClinicModule> = {
   '/dashboard': 'Dashboard',
+  '/reception-desk': 'Reception Desk',
   '/patients': 'Patients',
   '/appointments': 'Appointments',
   '/queue': 'Queue',

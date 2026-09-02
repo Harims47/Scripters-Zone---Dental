@@ -2,10 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
 
 const checkActiveVisit = async (patientId: string) => {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
   const activeVisit = await prisma.visit.findFirst({
     where: {
       patientId,
-      status: { notIn: ['COMPLETED', 'CANCELLED'] }
+      status: { notIn: ['COMPLETED', 'CANCELLED'] },
+      createdAt: { gte: startOfDay }
     }
   });
   return activeVisit !== null;
@@ -19,8 +23,10 @@ export const startWalkInVisit = async (req: Request, res: Response, next: NextFu
     const patient = await prisma.patient.findUnique({ where: { id: patientId } });
     if (!patient) return res.status(400).json({ error: 'Patient does not exist' });
 
-    const doctor = await prisma.staff.findUnique({ where: { id: doctorId } });
-    if (!doctor) return res.status(400).json({ error: 'Doctor does not exist' });
+    if (doctorId) {
+      const doctor = await prisma.staff.findUnique({ where: { id: doctorId } });
+      if (!doctor) return res.status(400).json({ error: 'Doctor does not exist' });
+    }
 
     // Validate duplicate active visit
     const hasActive = await checkActiveVisit(patientId);
@@ -28,21 +34,25 @@ export const startWalkInVisit = async (req: Request, res: Response, next: NextFu
 
     // Atomic transaction
     const result = await prisma.$transaction(async (tx) => {
-      const position = await tx.queueEntry.count() + 1;
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const position = await tx.queueEntry.count({
+        where: { createdAt: { gte: startOfDay } }
+      }) + 1;
       const arrivalTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       // Create Visit
       const visit = await tx.visit.create({
         data: {
           patientId,
-          doctorId,
+          doctorId: doctorId || null,
           status: 'WAITING',
           amountDue: 1500, // Matching frontend mock
           reasonForVisit,
           queueEntry: {
             create: {
               patientId,
-              assignedDoctorId: doctorId,
+              assignedDoctorId: doctorId || null,
               position,
               status: 'Waiting',
               priority: isUrgent || false,
@@ -92,21 +102,25 @@ export const checkInAppointment = async (req: Request, res: Response, next: Next
 
     // Atomic transaction
     const result = await prisma.$transaction(async (tx) => {
-      const position = await tx.queueEntry.count() + 1;
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const position = await tx.queueEntry.count({
+        where: { createdAt: { gte: startOfDay } }
+      }) + 1;
       const arrivalTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       // Create Visit linked to Appointment
       const visit = await tx.visit.create({
         data: {
           patientId: appointment.patientId,
-          doctorId: appointment.providerId,
+          doctorId: null,
           appointmentId: appointment.id,
           status: 'WAITING',
           amountDue: 1500,
           queueEntry: {
             create: {
               patientId: appointment.patientId,
-              assignedDoctorId: appointment.providerId,
+              assignedDoctorId: null,
               position,
               status: 'Waiting',
               priority: false,

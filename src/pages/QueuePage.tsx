@@ -17,7 +17,7 @@ import { canAccessRoute } from '../lib/route-permissions'
 import { api } from '../lib/api'
 
 export function QueuePage() {
-  const { queue, patients, visits, callPatient, startConsultationFlow } = useClinicContext()
+  const { queue, patients, visits, consultations, callPatient, startConsultationFlow } = useClinicContext()
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
@@ -93,18 +93,9 @@ export function QueuePage() {
       // Transition WAITING -> CALLED
       initiateCall(row)
     } else if (action === 'Start') {
-      // Transition CALLED -> WITH_DOCTOR
-      try {
-        const success = await startConsultationFlow(row.visitId)
-        if (success) {
-          navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
-        }
-      } catch (err) {
-        console.error(err)
-        alert('Failed to start consultation')
-      }
+      // In Phase 9, it's already With Doctor. Just navigate to start the consultation.
+      navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
     } else if (action === 'Resume') {
-      // Re-enter the Doctor Workspace
       navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
     }
   }
@@ -169,9 +160,10 @@ export function QueuePage() {
             </Button>
           );
         } else if (item.status === 'With Doctor' && canManageClinical && item.assignedDoctorId === currentUser?.staffId) {
+          const hasStarted = consultations.some(c => c.visitId === item.visitId);
           actionButton = (
-            <Button size="sm" variant="outline" className="h-9 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200 shadow-sm" onClick={() => handleAction(item.id, 'Resume')}>
-              <PlayCircle className="mr-2 h-4 w-4" /> Resume
+            <Button size="sm" variant={hasStarted ? "outline" : "default"} className={`h-9 shadow-sm ${hasStarted ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={() => handleAction(item.id, hasStarted ? 'Resume' : 'Start')}>
+              <PlayCircle className="mr-2 h-4 w-4" /> {hasStarted ? 'Resume' : 'Start Consultation'}
             </Button>
           );
         }

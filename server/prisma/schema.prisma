@@ -46,7 +46,7 @@ model Patient {
 model Appointment {
   id         String   @id @default(uuid())
   patientId  String
-  providerId String
+  providerId String?
   date       String
   time       String
   type       String
@@ -61,7 +61,7 @@ model Appointment {
 model Visit {
   id              String        @id @default(uuid())
   patientId       String
-  doctorId        String
+  doctorId        String?
   appointmentId   String?       @unique
   status          String
   amountDue       Float         @default(0)
@@ -85,7 +85,7 @@ model QueueEntry {
   id               String   @id @default(uuid())
   visitId          String   @unique
   patientId        String
-  assignedDoctorId String
+  assignedDoctorId String?
   position         Int
   status           String
   priority         Boolean  @default(false)

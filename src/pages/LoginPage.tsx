@@ -28,7 +28,8 @@ export function LoginPage() {
       if (canAccessRoute(user.role, from)) {
         navigate(from, { replace: true })
       } else {
-        navigate('/dashboard', { replace: true })
+        const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
+        navigate(defaultRoute, { replace: true })
       }
     } else {
       setError(authError || 'Invalid username or password')
@@ -51,7 +52,8 @@ export function LoginPage() {
       if (canAccessRoute(user.role, from)) {
         navigate(from, { replace: true })
       } else {
-        navigate('/dashboard', { replace: true })
+        const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
+        navigate(defaultRoute, { replace: true })
       }
     } else {
       setError(authError || 'Demo login failed')

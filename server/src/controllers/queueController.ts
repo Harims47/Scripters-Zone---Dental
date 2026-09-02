@@ -3,7 +3,13 @@ import { prisma } from '../db';
 
 export const getQueue = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
     const queue = await prisma.queueEntry.findMany({
+      where: {
+        createdAt: { gte: startOfDay }
+      },
       orderBy: { position: 'asc' },
       include: { visit: { include: { patient: true } } }
     });
@@ -163,6 +169,82 @@ export const exportQueue = async (req: Request, res: Response, next: NextFunctio
       return res.status(400).json({ error: 'Invalid export format' });
     }
   } catch (error) {
+    next(error);
+  }
+};
+
+export const assignDoctor = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const { doctorId } = req.body;
+
+    let doctorName = 'Unknown Doctor';
+    if (doctorId === 'STF-101' || doctorId === 'STF-102') {
+      doctorName = doctorId === 'STF-101' ? 'Dr. Arun' : 'Dr. Carter';
+    } else {
+      const doctor = await prisma.staff.findUnique({ where: { id: doctorId } });
+      if (!doctor || !['Head Doctor', 'Duty Doctor'].includes(doctor.role)) {
+        return res.status(400).json({ error: 'Invalid doctor selection' });
+      }
+      doctorName = doctor.name;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const queueEntry = await tx.queueEntry.findUnique({
+        where: { id },
+        include: { visit: true }
+      });
+
+      if (!queueEntry) {
+        throw new Error('Queue entry not found');
+      }
+
+      if (queueEntry.status !== 'Waiting') {
+        throw new Error('Patient is not waiting');
+      }
+
+      // Check if doctor is available
+      const activePatient = await tx.queueEntry.findFirst({
+        where: {
+          assignedDoctorId: doctorId,
+          status: 'In Progress'
+        }
+      });
+
+      if (activePatient) {
+        throw { status: 409, message: `${doctorName} is no longer available. Please choose another available doctor.` };
+      }
+
+      // Update both Visit and QueueEntry
+      await tx.visit.update({
+        where: { id: queueEntry.visitId },
+        data: { doctorId, status: 'WITH_DOCTOR' }
+      });
+
+      const updatedQueue = await tx.queueEntry.update({
+        where: { id },
+        data: {
+          assignedDoctorId: doctorId,
+          status: 'In Progress'
+        },
+        include: { visit: true }
+      });
+
+      return updatedQueue;
+    });
+
+    return res.json({ data: { queueEntry: result, visit: result.visit } });
+
+  } catch (error: any) {
+    if (error.status === 409) {
+      return res.status(409).json({ error: error.message });
+    }
+    if (error.message === 'Queue entry not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message === 'Patient is not waiting') {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 };

@@ -5,3 +5,9 @@ export const transitionQueueSchema = z.object({
     action: z.enum(['CALL_PATIENT', 'START_CONSULTATION'])
   })
 });
+
+export const assignDoctorSchema = z.object({
+  body: z.object({
+    doctorId: z.string().min(1)
+  })
+});

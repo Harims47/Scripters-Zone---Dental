@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useClinicContext } from '../../context/ClinicContext'
 import { DEMO_STAFF } from '../../lib/mock-data'
-import { ReadOnlyField, DrawerSection } from '../ui/drawer-patterns'
 import { Button } from '../ui/button'
 import { FileText, Loader2, Check } from 'lucide-react'
+import { Badge } from '../ui/badge'
 import { API_BASE_URL, api } from '../../lib/api'
 import type { TreatmentPlan } from '../../types/domain'
 
-export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
+export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: string, onViewHistory?: () => void }) {
   const { visits, consultations, prescriptions, dispensings, payments, medicines } = useClinicContext()
 
   const visit = visits.find(v => v.id === visitId)
@@ -53,135 +53,187 @@ export function HistoricalVisitDetails({ visitId }: { visitId: string }) {
   };
 
   return (
-    <div className="space-y-6 pb-8">
-      <DrawerSection title="Visit Information">
-        <ReadOnlyField label="Visit Status" value={visit.status} />
-        <ReadOnlyField label="Doctor" value={doctor?.name || 'Unknown'} />
-      </DrawerSection>
+    <div className="space-y-6 pb-8 bg-slate-50 min-h-full">
+      <div className="bg-white p-6 border-b border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider">Visit Summary</h3>
+          <p className="text-xl font-semibold text-slate-900 mt-1">{doctor?.name || 'Unassigned Doctor'}</p>
+        </div>
+        <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1 text-sm">{visit.status}</Badge>
+      </div>
 
-      {consultation && (
-        <DrawerSection title="Consultation">
-          <ReadOnlyField label="Reason for Visit" value={consultation.reasonForVisit || 'Not provided'} />
-          <ReadOnlyField label="Clinical Notes" value={consultation.clinicalNotes || 'No notes added'} />
-          <ReadOnlyField label="Consultation Fee" value={`₹${consultation.consultationFee}`} />
-        </DrawerSection>
-      )}
-
-      {treatmentPlan && (
-        <DrawerSection title="Treatments Performed">
-          {loadingPlan ? (
-            <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading treatments...</div>
-          ) : (
-            treatmentPlan.items.filter(item => item.completedVisitId === visitId).length > 0 ? (
-              <div className="space-y-2">
-                {treatmentPlan.items.filter(item => item.completedVisitId === visitId).map(item => (
-                  <div key={item.id} className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 p-2 rounded border border-slate-100">
-                    <Check className="w-4 h-4 text-emerald-500" />
-                    <span className="font-medium">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
-                    {item.notes && <span className="text-slate-500">| {item.notes}</span>}
-                  </div>
-                ))}
+      <div className="px-6 space-y-6">
+        {consultation && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
+              <span>Consultation Details</span>
+              <span className="text-emerald-600 font-semibold bg-emerald-50 px-2 py-1 rounded-md text-sm border border-emerald-100">Fee: ₹{consultation.consultationFee}</span>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Reason for Visit</label>
+                <p className="text-slate-900 font-medium">{consultation.reasonForVisit || 'Not provided'}</p>
               </div>
-            ) : (
-              <p className="text-sm text-slate-500 italic">No treatments marked as completed in this visit.</p>
-            )
-          )}
-        </DrawerSection>
-      )}
-
-      {prescription && (
-        <DrawerSection title="Prescription">
-          <div className="flex justify-end mb-4">
-            <Button variant="outline" size="sm" onClick={() => handlePrintDocument('prescription')}>
-              <FileText className="w-4 h-4 mr-2 text-indigo-500" />
-              Print Prescription
-            </Button>
+              <div className="pt-3 border-t border-slate-100">
+                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Clinical Notes</label>
+                <p className="text-slate-700 text-sm whitespace-pre-wrap">{consultation.clinicalNotes || 'No notes added'}</p>
+              </div>
+            </div>
           </div>
-          {prescription.items.length > 0 ? (
-            <div className="border rounded-md overflow-hidden bg-white">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Medicine</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Dosage</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Qty</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Instructions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {prescription.items.map(item => {
-                    const med = medicines.find(m => m.id === item.medicineId)
-                    return (
-                      <tr key={item.id}>
-                        <td className="px-3 py-2 text-slate-900 font-medium">{med?.name || 'Unknown'}</td>
-                        <td className="px-3 py-2 text-slate-700">{item.dosage || '-'} x {item.frequency || '-'} ({item.duration || '-'})</td>
-                        <td className="px-3 py-2 text-slate-700">{item.quantity}</td>
-                        <td className="px-3 py-2 text-slate-500 text-xs">{item.instructions || '-'}</td>
+        )}
+
+        {treatmentPlan && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700">Treatments Performed</div>
+            <div className="p-4">
+              {loadingPlan ? (
+                <div className="flex items-center gap-2 text-sm text-slate-500 justify-center py-4"><Loader2 className="w-4 h-4 animate-spin" /> Loading treatments...</div>
+              ) : (
+                treatmentPlan.items.filter(item => item.completedVisitId === visitId).length > 0 ? (
+                  <div className="space-y-3">
+                    {treatmentPlan.items.filter(item => item.completedVisitId === visitId).map(item => (
+                      <div key={item.id} className="flex items-start justify-between text-sm text-slate-700 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100/50">
+                        <div className="flex items-start gap-3">
+                          <Check className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold text-slate-900">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
+                            {item.notes && <p className="text-slate-500 mt-1">{item.notes}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic text-center py-2">No treatments were performed during this visit.</p>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
+        {prescription && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
+              <span>Prescription</span>
+              <Button variant="outline" size="sm" onClick={() => handlePrintDocument('prescription')} className="h-7 text-xs bg-white">
+                <FileText className="w-3 h-3 mr-1.5 text-indigo-500" /> Print
+              </Button>
+            </div>
+            
+            <div className="p-4">
+              {prescription.items.length > 0 ? (
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2.5 text-left font-medium text-slate-600">Medicine</th>
+                        <th className="px-3 py-2.5 text-left font-medium text-slate-600">Dosage</th>
+                        <th className="px-3 py-2.5 text-left font-medium text-slate-600">Qty</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {prescription.items.map(item => {
+                        const med = medicines.find(m => m.id === item.medicineId)
+                        return (
+                          <tr key={item.id}>
+                            <td className="px-3 py-2.5">
+                              <p className="text-slate-900 font-medium">{med?.name || 'Unknown'}</p>
+                              {item.instructions && <p className="text-xs text-slate-500 mt-0.5">{item.instructions}</p>}
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-700 align-top">{item.dosage || '-'} x {item.frequency || '-'} <br/><span className="text-xs text-slate-500">({item.duration || '-'})</span></td>
+                            <td className="px-3 py-2.5 text-slate-900 font-medium align-top">{item.quantity}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400 italic text-center py-2">No medicines prescribed.</p>
+              )}
+              {prescription.notes && (
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Prescription Notes</label>
+                  <p className="text-slate-700 text-sm">{prescription.notes}</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-slate-500 italic">No medicines prescribed.</p>
-          )}
-          {prescription.notes && (
-            <div className="mt-4">
-              <ReadOnlyField label="Prescription Notes" value={prescription.notes} />
-            </div>
-          )}
-        </DrawerSection>
-      )}
+          </div>
+        )}
 
-      {dispensing && (
-        <DrawerSection title="Dispensing">
-          {dispensing.items.length > 0 ? (
-            <div className="border rounded-md overflow-hidden bg-white">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Medicine</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Prescribed</th>
-                    <th className="px-3 py-2 text-left font-medium text-slate-500">Dispensed</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {dispensing.items.map(item => {
-                    const med = medicines.find(m => m.id === item.medicineId)
-                    return (
-                      <tr key={item.id}>
-                        <td className="px-3 py-2 text-slate-900 font-medium">{med?.name || 'Unknown'}</td>
-                        <td className="px-3 py-2 text-slate-700">{item.prescribedQuantity}</td>
-                        <td className="px-3 py-2 text-slate-700 font-medium">{item.dispensedQuantity}</td>
+        {dispensing && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700">Dispensing Status</div>
+            <div className="p-4">
+              {dispensing.items.length > 0 ? (
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2.5 text-left font-medium text-slate-600">Medicine</th>
+                        <th className="px-3 py-2.5 text-center font-medium text-slate-600">Prescribed</th>
+                        <th className="px-3 py-2.5 text-center font-medium text-slate-600">Dispensed</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {dispensing.items.map(item => {
+                        const med = medicines.find(m => m.id === item.medicineId)
+                        return (
+                          <tr key={item.id}>
+                            <td className="px-3 py-2.5 text-slate-900 font-medium">{med?.name || 'Unknown'}</td>
+                            <td className="px-3 py-2.5 text-center text-slate-700">{item.prescribedQuantity}</td>
+                            <td className="px-3 py-2.5 text-center font-medium text-emerald-600 bg-emerald-50/50">{item.dispensedQuantity}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400 italic text-center py-2">No items dispensed.</p>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-slate-500 italic">No items dispensed.</p>
-          )}
-          <div className="mt-4">
-            <ReadOnlyField label="Dispensing Status" value={dispensing.status} />
           </div>
-        </DrawerSection>
-      )}
+        )}
 
-      {payment && (
-        <DrawerSection title="Payment">
-          <div className="flex justify-end mb-4">
-            <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')}>
-              <FileText className="w-4 h-4 mr-2 text-emerald-600" />
-              Print Receipt
-            </Button>
+        {payment && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden border-l-4 border-l-teal-500">
+            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
+              <span>Payment Details</span>
+              <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')} className="h-7 text-xs bg-white">
+                <FileText className="w-3 h-3 mr-1.5 text-teal-600" /> Print Receipt
+              </Button>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Total Amount</label>
+                <p className="text-lg font-bold text-slate-900">₹{payment.amount}</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Method</label>
+                <Badge variant="secondary" className="mt-1">{payment.method}</Badge>
+              </div>
+              <div className="col-span-2 pt-3 border-t border-slate-100">
+                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Status</label>
+                <p className="text-sm text-slate-700">{payment.status}</p>
+              </div>
+            </div>
           </div>
-          <ReadOnlyField label="Amount Paid" value={`₹${payment.amount}`} />
-          <ReadOnlyField label="Payment Method" value={payment.method} />
-          <ReadOnlyField label="Payment Status" value={payment.status} />
-        </DrawerSection>
-      )}
+        )}
+      </div>
+      
+      <div className="px-6 pt-2">
+        <Button 
+          variant="outline" 
+          className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+          onClick={() => {
+            if (onViewHistory) onViewHistory();
+            else window.open(`/patients/${visit.patientId}`, '_blank');
+          }}
+        >
+          View Full Patient History
+        </Button>
+      </div>
     </div>
   )
 }

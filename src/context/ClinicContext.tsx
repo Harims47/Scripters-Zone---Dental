@@ -17,19 +17,21 @@ interface ClinicContextType {
   dispensings: Dispensing[]
   payments: Payment[]
   medicines: Medicine[]
+  staff: any[]
   
   addPatient: (patientData: Omit<Patient, 'id'>) => Promise<Patient>
   updatePatient?: (id: string, updates: Partial<Patient>) => Promise<void>
-  addAppointment: (appointment: Omit<Appointment, 'id'>) => Promise<void>
+  addAppointment: (appointment: Omit<Appointment, 'id'>) => Promise<Appointment>
   updateAppointment: (appointment: Partial<Appointment>) => Promise<void>
   confirmAppointmentArrival: (appointmentId: string) => Promise<{ success: boolean, visitId?: string, error?: string }>
-  startVisit: (patientId: string, doctorId: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
+  startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
+  assignDoctor: (queueId: string, doctorId: string) => Promise<{ success: boolean, error?: string }>
   normalizePhone: (phone: string) => string
 
   // Phase 0P.3 Transitions
   callPatient: (visitId: string) => Promise<boolean>
   startConsultationFlow: (visitId: string) => Promise<boolean>
-  saveConsultation: (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number }, isComplete?: boolean) => Promise<{ success: boolean, error?: string }>
+  saveConsultation: (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number }, isComplete?: boolean) => Promise<{ success: boolean, error?: string }>
   savePrescription: (prescription: Omit<Prescription, 'id'>) => Promise<{ success: boolean, error?: string }>
 
   // Phase 0P.5
@@ -71,6 +73,9 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         setPrescriptions(allPrescriptions)
       }).catch(console.error)
       api.get<QueueEntry[]>('/api/queue').then(res => setQueue((res as any).data || res)).catch(console.error)
+      api.get<any>('/api/staff?limit=100').then(res => {
+        setStaff(res.data?.data || res.data || res)
+      }).catch(console.error)
     } else {
       setPatients([])
       setAppointments([])
@@ -85,14 +90,19 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   const [payments, setPayments] = React.useState<Payment[]>([])
   
   const [medicines, setMedicines] = React.useState<Medicine[]>([])
+  const [staff, setStaff] = React.useState<any[]>([])
 
   React.useEffect(() => {
     if (isAuthenticated) {
       api.get<{ data: Medicine[] }>('/api/inventory').then(res => setMedicines(res.data || (res as any))).catch(console.error)
       api.get<Payment[]>('/api/payments').then(res => setPayments((res as any).data || res)).catch(console.error)
+      api.get<any>('/api/staff?limit=100').then(res => {
+        setStaff(res.data?.data || res.data || res)
+      }).catch(console.error)
     } else {
       setMedicines([])
       setPayments([])
+      setStaff([])
     }
   }, [isAuthenticated])
 
@@ -130,6 +140,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     const res = await api.post<Appointment>('/api/appointments', appointmentData)
     const appointment = (res as any).data || res;
     setAppointments(prev => [appointment, ...prev])
+    return appointment
   }
 
   const updateAppointment = async (appointmentData: Partial<Appointment>) => {
@@ -139,9 +150,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   }
 
   const confirmAppointmentArrival = async (appointmentId: string) => {
+    // Try to find locally first, but don't fail immediately if not found because 
+    // it might have just been created in the same render cycle
     const appointment = appointments.find(a => a.id === appointmentId)
-    if (!appointment) return { success: false, error: 'Appointment not found.' }
-    if (appointment.status === 'Cancelled' || appointment.status === 'No Show') {
+    if (appointment && (appointment.status === 'Cancelled' || appointment.status === 'No Show')) {
       return { success: false, error: 'Cannot confirm arrival for a cancelled or no-show appointment.' }
     }
 
@@ -150,17 +162,22 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     
     // Refetch queue and visits to maintain full context, or append directly
     const data = (res as any).data || res;
-    const { visit, queueEntry } = data;
-    setVisits(prev => [visit, ...prev])
-    setQueue(prev => [...prev, queueEntry])
+    // The backend returns the visit object with queueEntry nested inside it
+    const visitObj = data;
+    const queueEntryObj = visitObj.queueEntry;
+    
+    setVisits(prev => [visitObj, ...prev])
+    if (queueEntryObj) {
+      setQueue(prev => [...prev, queueEntryObj])
+    }
     
     // Status update is bundled in the backend transaction, update local appt state
     setAppointments(prev => prev.map(a => a.id === appointmentId ? { ...a, status: 'Checked In' } as Appointment : a))
     
-    return { success: true, visitId: visit.id }
+    return { success: true, visitId: visitObj.id }
   }
 
-  const startVisit = async (patientId: string, doctorId: string, isUrgent = false, reasonForVisit?: string) => {
+  const startVisit = async (patientId: string, doctorId?: string, isUrgent = false, reasonForVisit?: string) => {
     const res = await api.post<Visit & { queueEntry: QueueEntry }>('/api/visits/walk-in', {
       patientId, doctorId, isUrgent, reasonForVisit
     })
@@ -176,6 +193,20 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
 
     return { visit: newVisit as unknown as Visit, queueEntry: newQueueEntry as QueueEntry }
+  }
+
+  const assignDoctor = async (queueId: string, doctorId: string) => {
+    try {
+      const res = await api.patch<{ data: { queueEntry: QueueEntry, visit: Visit } }>(`/api/queue/${queueId}/assign`, {
+        doctorId
+      })
+      const data = (res as any).data || res;
+      setVisits(prev => prev.map(v => v.id === data.visit.id ? data.visit : v))
+      setQueue(prev => prev.map(queueEntry => queueEntry.id === queueId ? data.queueEntry : queueEntry))
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Failed to assign doctor' }
+    }
   }
 
   // --- Phase 0P.3 Handlers ---
@@ -207,7 +238,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return true
   }
 
-  const saveConsultation = async (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number }, isComplete = false) => {
+  const saveConsultation = async (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number }, isComplete = false) => {
     try {
       if (isComplete) {
         await api.post<{ data: { visit: Visit } }>(`/api/consultations/visit/${visitId}/complete`)
@@ -348,8 +379,11 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   return (
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
-      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, normalizePhone,
-      callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, adjustMedicineStock
+      staff,
+      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit,
+        assignDoctor,
+        normalizePhone,
+        callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, adjustMedicineStock
     }}>
       {children}
     </ClinicContext.Provider>

@@ -14,7 +14,7 @@ export interface Patient {
 export interface Appointment {
   id: string
   patientId: string
-  providerId: string
+  providerId?: string
   date: string // e.g. "2026-08-27"
   time: string // e.g. "10:30 AM"
   type: 'Consultation' | 'Surgery' | 'Follow-up' | 'Routine Checkup' | 'Emergency'
@@ -31,6 +31,7 @@ export interface Visit {
   status: VisitStatus
   amountDue: number
   consultationFee?: number
+  treatmentFee?: number
   medicineCost?: number
   reasonForVisit?: string
   

@@ -95,10 +95,12 @@ export const createAppointment = async (req: Request, res: Response, next: NextF
       return res.status(400).json({ error: 'Invalid patient ID: Patient does not exist' });
     }
 
-    // Validate Provider exists (must be a valid staff member)
-    const provider = await prisma.staff.findUnique({ where: { id: data.providerId } });
-    if (!provider) {
-      return res.status(400).json({ error: 'Invalid provider ID: Staff member does not exist' });
+    // Validate Provider exists
+    if (data.providerId) {
+      const provider = await prisma.staff.findUnique({ where: { id: data.providerId } });
+      if (!provider || !provider.role.includes('Doctor')) {
+        return res.status(400).json({ error: 'Provider must be a Doctor' });
+      }
     }
 
     const appointment = await prisma.appointment.create({

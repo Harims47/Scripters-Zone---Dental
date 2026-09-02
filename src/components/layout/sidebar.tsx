@@ -20,6 +20,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Reception Desk", href: "/reception-desk", icon: Users },
   { title: "Patients", href: "/patients", icon: Users },
   { title: "Appointments", href: "/appointments", icon: Calendar },
   { title: "Queue", href: "/queue", icon: Clock },
@@ -44,6 +45,15 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
   // Filter navItems based on the current user's role and the centralized permission map
   const filteredNav = navItems.filter(item => {
     if (!currentUser) return false
+    
+    // Phase 9: Hide modules that are merged into Reception Desk for Receptionist
+    if (currentUser.role === 'Receptionist') {
+      const hiddenForReceptionist = ['/patients', '/appointments', '/queue', '/billing']
+      if (hiddenForReceptionist.includes(item.href)) {
+        return false
+      }
+    }
+    
     return canAccessRoute(currentUser.role, item.href)
   })
 
