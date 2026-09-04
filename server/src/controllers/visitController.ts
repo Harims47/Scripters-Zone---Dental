@@ -179,3 +179,45 @@ export const getVisitById = async (req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
+export const cancelVisit = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const visit = await prisma.visit.findUnique({
+      where: { id },
+      include: { queueEntry: true }
+    });
+
+    if (!visit) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+
+    if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') {
+      return res.status(400).json({ error: `Cannot cancel a visit that is already ${visit.status}` });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.visit.update({
+        where: { id },
+        data: { status: 'CANCELLED' }
+      });
+
+      if (visit.queueEntry) {
+        await tx.queueEntry.update({
+          where: { visitId: id },
+          data: { status: 'Cancelled' }
+        });
+      }
+    });
+
+    const updatedVisit = await prisma.visit.findUnique({
+      where: { id },
+      include: { queueEntry: true, payments: true }
+    });
+
+    return res.json(updatedVisit);
+  } catch (error) {
+    next(error);
+  }
+};

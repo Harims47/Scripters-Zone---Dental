@@ -73,7 +73,7 @@ model Visit {
   updatedAt       DateTime      @updatedAt
   consultation    Consultation?
   dispensing      Dispensing?
-  payment         Payment?
+  payments        Payment[]
   prescription    Prescription?
   queueEntry      QueueEntry?
   appointment             Appointment?        @relation(fields: [appointmentId], references: [id])
@@ -179,7 +179,7 @@ model DispensingItem {
 
 model Payment {
   id        String   @id @default(uuid())
-  visitId   String   @unique
+  visitId   String
   patientId String
   amount    Float
   method    String

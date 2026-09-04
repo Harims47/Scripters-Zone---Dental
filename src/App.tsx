@@ -21,8 +21,15 @@ import { LoginPage } from './pages/LoginPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import Showcase from './pages/showcase/Showcase';
 import { PremiumReferencePage } from './pages/PremiumReferencePage';
+import { useAuth } from './context/AuthContext';
 
 import { Toaster } from 'react-hot-toast';
+
+const RoleBasedRedirect = () => {
+  const { currentUser } = useAuth();
+  if (currentUser?.role === 'Receptionist') return <Navigate to="/reception-desk" replace />;
+  return <Navigate to="/dashboard" replace />;
+};
 
 function App() {
   return (
@@ -36,7 +43,7 @@ function App() {
             
             {/* Main Application Routes inside AppShell (Protected) */}
             <Route path="/" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<RoleBasedRedirect />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="patients" element={<PatientsPage />} />

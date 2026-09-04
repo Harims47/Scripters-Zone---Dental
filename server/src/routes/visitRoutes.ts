@@ -6,7 +6,8 @@ import {
   getVisits,
   getVisitById,
   startWalkInVisit,
-  checkInAppointment
+  checkInAppointment,
+  cancelVisit
 } from '../controllers/visitController';
 
 const router = Router();
@@ -22,5 +23,8 @@ router.post('/walk-in', requireRole('Head Doctor', 'Receptionist'), validateRequ
 
 // Check-in appointment (Receptionist, Head Doctor)
 router.post('/check-in', requireRole('Head Doctor', 'Receptionist'), validateRequest(checkInAppointmentSchema), checkInAppointment);
+
+// Cancel visit
+router.patch('/:id/cancel', requireRole('Head Doctor', 'Receptionist'), cancelVisit);
 
 export default router;

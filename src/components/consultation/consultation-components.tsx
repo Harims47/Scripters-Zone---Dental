@@ -6,26 +6,30 @@ export function PatientClinicalSummary({
   name,
   phone,
   age,
-  status
+  status,
+  hideDetails = false
 }: {
   patientId: string
   name: string
   phone: string
   age: number | string
   status?: string
+  hideDetails?: boolean
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] p-5">
-      <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider">Patient Summary</h3>
+      <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider mb-4">Patient Summary</h3>
       <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
         <div>
           <div className="text-slate-500 font-medium mb-1">Patient Name</div>
           <div className="font-semibold text-slate-900">{name}</div>
         </div>
-        <div>
-          <div className="text-slate-500 font-medium mb-1">Patient ID</div>
-          <div className="font-mono text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border inline-block">{patientId}</div>
-        </div>
+        {!hideDetails && (
+          <div>
+            <div className="text-slate-500 font-medium mb-1">Patient ID</div>
+            <div className="font-mono text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border inline-block">{patientId}</div>
+          </div>
+        )}
         <div>
           <div className="text-slate-500 font-medium mb-1">Phone</div>
           <div className="text-slate-700">{phone}</div>
@@ -34,10 +38,12 @@ export function PatientClinicalSummary({
           <div className="text-slate-500 font-medium mb-1">Age</div>
           <div className="text-slate-700">{age} Years</div>
         </div>
-        <div className="col-span-2 pt-2 border-t mt-1 flex items-center justify-between">
-          <div className="text-slate-500 font-medium">Status</div>
-          <Badge variant="statusWithDoctor"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5" /> {status}</Badge>
-        </div>
+        {!hideDetails && status && (
+          <div className="col-span-2 pt-2 border-t mt-1 flex items-center justify-between">
+            <div className="text-slate-500 font-medium">Status</div>
+            <Badge variant="statusWithDoctor"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5" /> {status}</Badge>
+          </div>
+        )}
       </div>
     </div>
   )

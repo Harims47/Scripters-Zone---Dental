@@ -59,15 +59,21 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
     const { visitId, amount, method } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
+      // Lock the visit row to prevent concurrent partial payment races
+      await tx.$executeRawUnsafe('SELECT 1 FROM "Visit" WHERE id = $1 FOR UPDATE', visitId);
+
       const visit = await tx.visit.findUnique({
         where: { id: visitId },
-        include: { patient: true, payment: true, prescription: true }
+        include: { patient: true, payments: true, prescription: true }
       });
 
       if (!visit) throw { status: 404, message: 'Visit not found' };
 
-      // Ensure no duplicate payment exists
-      if (visit.payment) {
+      const totalPaid = visit.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+      const expectedAmount = visit.amountDue || 0;
+      const balance = expectedAmount - totalPaid;
+
+      if (balance <= 0) {
         throw { status: 409, message: 'Payment already completed for this visit.' };
       }
 
@@ -84,10 +90,12 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
         throw { status: 409, message: `Cannot process payment for visit in status: ${visit.status}` };
       }
 
-      // Validate Amount (Authoritative DB check)
-      const expectedAmount = visit.amountDue || 0;
-      if (amount !== expectedAmount) {
-        throw { status: 400, message: `Incorrect payment amount. Expected ${expectedAmount}, but received ${amount}.` };
+      if (amount <= 0) {
+        throw { status: 400, message: 'Payment amount must be greater than zero.' };
+      }
+
+      if (amount > balance) {
+        throw { status: 400, message: `Payment amount (₹${amount}) exceeds remaining balance (₹${balance}).` };
       }
 
       // Create Payment
@@ -102,11 +110,25 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
         }
       });
 
-      // Update Visit Status
-      const updatedVisit = await tx.visit.update({
-        where: { id: visit.id },
-        data: { status: 'COMPLETED' }
-      });
+      // Update Visit Status ONLY if fully paid
+      let updatedVisit = visit;
+      const newBalance = balance - amount;
+      
+      if (newBalance === 0) {
+        updatedVisit = await tx.visit.update({
+          where: { id: visit.id },
+          data: { status: 'COMPLETED' }
+        });
+        
+        // Also ensure QueueEntry is marked Completed if we auto-completed the visit
+        const qEntry = await tx.queueEntry.findUnique({ where: { visitId: visit.id } });
+        if (qEntry && qEntry.status !== 'Completed') {
+          await tx.queueEntry.update({
+            where: { id: qEntry.id },
+            data: { status: 'Completed' }
+          });
+        }
+      }
 
       // Note: Do NOT touch stock here. It was deducted in Dispensing.
 

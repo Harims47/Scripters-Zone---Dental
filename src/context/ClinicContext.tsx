@@ -25,6 +25,7 @@ interface ClinicContextType {
   updateAppointment: (appointment: Partial<Appointment>) => Promise<void>
   confirmAppointmentArrival: (appointmentId: string) => Promise<{ success: boolean, visitId?: string, error?: string }>
   startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
+  cancelVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
   assignDoctor: (queueId: string, doctorId: string) => Promise<{ success: boolean, error?: string }>
   normalizePhone: (phone: string) => string
 
@@ -36,7 +37,7 @@ interface ClinicContextType {
 
   // Phase 0P.5
   completeDispensing: (visitId: string, prescriptionId: string, items: { medicineId: string, prescribedQuantity: number, dispensedQuantity: number }[]) => Promise<{ success: boolean, error?: string }>
-  recordPayment: (visitId: string, method: 'Cash' | 'GPay') => Promise<{ success: boolean, error?: string }>
+  recordPayment: (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card') => Promise<{ success: boolean, error?: string }>
   adjustMedicineStock: (id: string, adjustmentAmount: number) => Promise<{ success: boolean, error?: string, medicine?: Medicine }>
 }
 
@@ -195,6 +196,24 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return { visit: newVisit as unknown as Visit, queueEntry: newQueueEntry as QueueEntry }
   }
 
+  const cancelVisit = async (visitId: string) => {
+    try {
+      const response = await api.patch(`/api/visits/${visitId}/cancel`);
+      const updatedVisit = (response as any).data || response;
+      if (updatedVisit && updatedVisit.id) {
+        setVisits(prev => prev.map(v => v.id === visitId ? updatedVisit : v));
+        if (updatedVisit.queueEntry) {
+          setQueue(prev => prev.map(q => q.visitId === visitId ? updatedVisit.queueEntry : q));
+        }
+        return { success: true };
+      }
+      return { success: false, error: 'Failed to cancel visit' };
+    } catch (err: any) {
+      console.error('Failed to cancel visit:', err);
+      return { success: false, error: err.response?.data?.error || err.message || 'Error cancelling visit' };
+    }
+  }
+
   const assignDoctor = async (queueId: string, doctorId: string) => {
     try {
       const res = await api.patch<{ data: { queueEntry: QueueEntry, visit: Visit } }>(`/api/queue/${queueId}/assign`, {
@@ -306,7 +325,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       return { success: true }
     } catch (err: any) {
       console.error(err)
-      return { success: false, error: err.response?.data?.error || 'Failed to save prescription' }
+      return { success: false, error: err.response?.data?.error || err.message || 'Failed to save prescription' }
     }
   }
 
@@ -348,7 +367,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const recordPayment = async (visitId: string, method: 'Cash' | 'GPay') => {
+  const recordPayment = async (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card') => {
     const visit = visits.find(v => v.id === visitId)
     if (!visit) return { success: false, error: 'Visit not found.' }
 
@@ -359,7 +378,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.post<{ payment: Payment, visit: Visit }>('/api/payments', {
         visitId,
-        amount: visit.amountDue,
+        amount,
         method
       });
 
@@ -380,7 +399,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
       staff,
-      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit,
+      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, cancelVisit,
         assignDoctor,
         normalizePhone,
         callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, adjustMedicineStock

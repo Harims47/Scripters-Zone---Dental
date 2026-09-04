@@ -1,6 +1,6 @@
-import { Banknote, Smartphone } from 'lucide-react'
+import { Banknote, Smartphone, CreditCard, Wallet } from 'lucide-react'
 
-export type PaymentMethod = 'Cash' | 'GPay' | null
+export type PaymentMethod = 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card' | null
 
 export function PaymentSummaryBlock({ amount }: { amount: number }) {
   return (
@@ -53,6 +53,36 @@ export function PaymentMethodSelector({
             <Smartphone className="w-6 h-6" />
           </div>
           <span className="font-semibold">GPay</span>
+        </button>
+
+        {/* Credit Card Option */}
+        <button
+          onClick={() => onChange('Credit Card')}
+          className={`flex flex-col items-center justify-center gap-3 p-5 border-2 rounded-xl transition-all ${
+            value === 'Credit Card' 
+              ? 'border-indigo-500 bg-indigo-50 text-indigo-700' 
+              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          <div className={`p-3 rounded-full ${value === 'Credit Card' ? 'bg-indigo-100' : 'bg-slate-100'}`}>
+            <CreditCard className="w-6 h-6" />
+          </div>
+          <span className="font-semibold text-sm">Credit Card</span>
+        </button>
+
+        {/* Debit Card Option */}
+        <button
+          onClick={() => onChange('Debit Card')}
+          className={`flex flex-col items-center justify-center gap-3 p-5 border-2 rounded-xl transition-all ${
+            value === 'Debit Card' 
+              ? 'border-violet-500 bg-violet-50 text-violet-700' 
+              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          <div className={`p-3 rounded-full ${value === 'Debit Card' ? 'bg-violet-100' : 'bg-slate-100'}`}>
+            <Wallet className="w-6 h-6" />
+          </div>
+          <span className="font-semibold text-sm">Debit Card</span>
         </button>
 
       </div>

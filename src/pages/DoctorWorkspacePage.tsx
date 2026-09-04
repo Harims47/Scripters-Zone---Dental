@@ -29,14 +29,14 @@ export function DoctorWorkspacePage() {
   const visitId = searchParams.get('visitId')
   const navigate = useNavigate()
   
-  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription } = useClinicContext()
+  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription, staff } = useClinicContext()
 
   // 1. Resolve Canonical Entities
   const visit = visits.find(v => v.id === visitId)
   const patient = patients.find(p => p.id === (visit ? visit.patientId : patientId))
   const consultation = consultations.find(c => c.visitId === visitId)
   const prescription = prescriptions.find(p => p.visitId === visitId)
-  const assignedDoctor = DEMO_STAFF.find(d => d.id === visit?.doctorId)
+  const assignedDoctor = staff?.find(d => d.id === visit?.doctorId) || DEMO_STAFF.find(d => d.id === visit?.doctorId)
 
   // 2. Local State for Form & History
   const [reason, setReason] = useState('')
@@ -146,7 +146,9 @@ export function DoctorWorkspacePage() {
 
   // --- COMBINED ACTIONS ---
   const _saveBoth = async (isComplete: boolean) => {
-    if (visit && assignedDoctor) {
+    // If assignedDoctor isn't explicitly found, we still want to save, so we bypass that strict check if doctorId is present
+    if (visit && (assignedDoctor || visit.doctorId)) {
+      const doctorIdToSave = assignedDoctor?.id || visit.doctorId || ''
       setErrorMsg(null)
       
       // 1. Save Consultation (Draft)
@@ -162,7 +164,7 @@ export function DoctorWorkspacePage() {
       if (activePrescription.length > 0 || prescription) {
         const rxRes = await savePrescription({
           visitId: visit.id,
-          doctorId: assignedDoctor.id,
+          doctorId: doctorIdToSave,
           status: 'Draft',
           notes: prescriptionNotes,
           items: activePrescription.map(p => ({

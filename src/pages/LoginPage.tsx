@@ -25,12 +25,8 @@ export function LoginPage() {
     const { success, error: authError, user } = await login(username, password)
     setIsSubmitting(false)
     if (success && user) {
-      if (canAccessRoute(user.role, from)) {
-        navigate(from, { replace: true })
-      } else {
-        const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
-        navigate(defaultRoute, { replace: true })
-      }
+      const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
+      navigate(defaultRoute, { replace: true })
     } else {
       setError(authError || 'Invalid username or password')
     }
@@ -49,12 +45,8 @@ export function LoginPage() {
     const { success, error: authError, user } = await login(realUsername, 'demo123')
     setIsSubmitting(false)
     if (success && user) {
-      if (canAccessRoute(user.role, from)) {
-        navigate(from, { replace: true })
-      } else {
-        const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
-        navigate(defaultRoute, { replace: true })
-      }
+      const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
+      navigate(defaultRoute, { replace: true })
     } else {
       setError(authError || 'Demo login failed')
     }

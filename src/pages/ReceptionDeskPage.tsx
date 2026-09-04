@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2 } from 'lucide-react';
+import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
@@ -21,18 +21,22 @@ import type { PaymentMethod } from '../components/payment/payment-components';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
 import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components';
 import { API_BASE_URL } from '../lib/api';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+
+const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments } = useClinicContext();
+  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit } = useClinicContext();
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
-  
+
   // Registration Drawer
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isEditPatientOpen, setIsEditPatientOpen] = useState(false);
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
-  
+
   const [regType, setRegType] = useState<'walk-in' | 'appointment'>('walk-in');
   const [regData, setRegData] = useState({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
   const [apptData, setApptData] = useState({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
@@ -40,10 +44,13 @@ export function ReceptionDeskPage() {
   const [isNewPatient, setIsNewPatient] = useState(false);
   const [selectedExistingPatientId, setSelectedExistingPatientId] = useState('');
   const [patientSearch, setPatientSearch] = useState('');
-  
+
+  // Payment States
+  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+
   // Assignment Modal
   const [assignQueueId, setAssignQueueId] = useState<string | null>(null);
-  
+
   // Process Visit Drawer
   const [processVisitId, setProcessVisitId] = useState<string | null>(null);
 
@@ -52,6 +59,11 @@ export function ReceptionDeskPage() {
 
   // Patient History Dialog
   const [historyPatientId, setHistoryPatientId] = useState<string | null>(null);
+
+  // Modals for Phase 9.1
+  const [deleteVisitId, setDeleteVisitId] = useState<string | null>(null);
+  const [registrationSuccessData, setRegistrationSuccessData] = useState<{ patientId: string, name: string } | null>(null);
+  const [confirmAssignData, setConfirmAssignData] = useState<{ queueId: string, doctorId: string, doctorName: string } | null>(null);
 
   // Dispensing State
   const [activeItems, setActiveItems] = useState<any[]>([]);
@@ -90,6 +102,20 @@ export function ReceptionDeskPage() {
       else if (q.status === 'Dispensing' || q.status === 'Payment' || q.status === 'Ready at Reception') stage = 'Ready at Reception';
       else stage = q.status; // fallback to raw status instead of incorrectly showing Waiting
 
+      const visitPayments = payments.filter(pay => pay.visitId === v?.id);
+      const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
+      const amountDue = v?.amountDue || 0;
+      
+      let paymentStatus = '—';
+      if (stage === 'Ready at Reception' || stage === 'Completed') {
+        paymentStatus = 'Unpaid';
+        if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
+        else if (totalPaid > 0) paymentStatus = 'Partial';
+        else if (amountDue === 0 && v) paymentStatus = 'Paid';
+      } else if (totalPaid > 0) {
+        paymentStatus = 'Partial';
+      }
+
       return {
         id: q.id,
         visitId: q.visitId,
@@ -100,6 +126,7 @@ export function ReceptionDeskPage() {
         token: q.position || '-',
         doctor: d?.name || '-',
         stage: stage,
+        paymentStatus,
         rawStatus: q.status, // keep raw for action logic
         arrivalTime: q.arrivalTime,
         rawVisit: v,
@@ -107,14 +134,28 @@ export function ReceptionDeskPage() {
       };
     });
 
-    // Also add completed visits for today that are no longer in active queue
+    // Also add completed and cancelled visits for today that are no longer in active queue
     const activeVisitIds = new Set(queue.map(q => q.visitId));
-    const completedVisits = visits.filter(v => v.status === 'COMPLETED' && !activeVisitIds.has(v.id));
-    
-    completedVisits.forEach(v => {
+    const inactiveVisits = visits.filter(v => (v.status === 'COMPLETED' || v.status === 'CANCELLED') && !activeVisitIds.has(v.id));
+
+    inactiveVisits.forEach(v => {
       const p = patients.find(p => p.id === v.patientId);
       const d = doctors.find(doc => doc.id === v.doctorId);
       const isAppointment = v.appointmentId != null;
+
+      const visitPayments = payments.filter(pay => pay.visitId === v.id);
+      const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
+      const amountDue = v.amountDue || 0;
+      
+      let paymentStatus = '—';
+      if (v.status === 'COMPLETED') {
+        paymentStatus = 'Unpaid';
+        if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
+        else if (totalPaid > 0) paymentStatus = 'Partial';
+        else if (amountDue === 0) paymentStatus = 'Paid';
+      } else if (totalPaid > 0) {
+        paymentStatus = 'Partial';
+      }
 
       data.push({
         id: v.id,
@@ -125,8 +166,9 @@ export function ReceptionDeskPage() {
         visitType: isAppointment ? 'Appointment' : 'Walk-in',
         token: '-',
         doctor: d?.name || '-',
-        stage: 'Completed',
-        rawStatus: 'Completed',
+        stage: v.status === 'CANCELLED' ? 'Cancelled' : 'Completed',
+        paymentStatus,
+        rawStatus: v.status === 'CANCELLED' ? 'Cancelled' : 'Completed',
         arrivalTime: '-',
         rawVisit: v,
         rawQueue: null,
@@ -135,8 +177,8 @@ export function ReceptionDeskPage() {
 
     if (search) {
       const s = search.toLowerCase();
-      data = data.filter(d => 
-        d.patientName.toLowerCase().includes(s) || 
+      data = data.filter(d =>
+        d.patientName.toLowerCase().includes(s) ||
         d.patientPhone.includes(s)
       );
     }
@@ -163,11 +205,13 @@ export function ReceptionDeskPage() {
     },
     {
       accessorKey: 'patientName',
-      header: 'Patient',
+      header: 'Patient Name',
       cell: ({ row }) => (
-        <div>
-          <div className="font-medium text-slate-900">{row.original.patientName}</div>
-          <div className="text-xs text-slate-500">{row.original.patientPhone}</div>
+        <div 
+          className="font-medium text-slate-900 truncate max-w-[150px]" 
+          title={row.original.patientName}
+        >
+          {row.original.patientName}
         </div>
       )
     },
@@ -175,26 +219,45 @@ export function ReceptionDeskPage() {
       accessorKey: 'visitType',
       header: 'Visit Type',
       cell: ({ row }) => (
-        <Badge variant="outline" className={row.original.visitType === 'Appointment' ? 'text-indigo-600' : 'text-slate-600'}>
+        <Badge variant="outline" className={`whitespace-nowrap ${row.original.visitType === 'Appointment' ? 'text-indigo-600' : 'text-slate-600'}`}>
           {row.original.visitType}
         </Badge>
       )
     },
     {
       accessorKey: 'doctor',
-      header: 'Doctor',
-      cell: ({ row }) => <span className="text-slate-600">{row.original.doctor === '-' ? 'Unassigned' : row.original.doctor}</span>
+      header: 'Doctor Name',
+      cell: ({ row }) => (
+        <div 
+          className="text-slate-600 truncate max-w-[120px]" 
+          title={row.original.doctor === '-' ? '' : row.original.doctor}
+        >
+          {row.original.doctor === '-' ? '—' : row.original.doctor}
+        </div>
+      )
+    },
+    {
+      accessorKey: 'paymentStatus',
+      header: 'Payment Status',
+      cell: ({ row }) => {
+        const s = row.original.paymentStatus;
+        if (s === 'Paid') return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>;
+        if (s === 'Partial') return <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>;
+        if (s === 'Unpaid') return <Badge className="bg-rose-100 text-rose-800 border-rose-200">Unpaid</Badge>;
+        return <span className="text-slate-400">—</span>;
+      }
     },
     {
       accessorKey: 'stage',
-      header: 'Stage',
+      header: 'Status',
       cell: ({ row }) => {
         const s = row.original.stage;
-        if (s === 'Waiting') return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">🟡 Waiting</Badge>;
-        if (s === 'With Doctor') return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">🔵 With Doctor</Badge>;
-        if (s === 'Ready at Reception') return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">🟢 Ready at Reception</Badge>;
-        if (s === 'Completed') return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100">✅ Completed</Badge>;
-        return <Badge variant="outline">{s}</Badge>;
+        if (s === 'Waiting') return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 whitespace-nowrap">🟡 Waiting</Badge>;
+        if (s === 'With Doctor') return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 whitespace-nowrap">🔵 With Doctor</Badge>;
+        if (s === 'Ready at Reception') return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
+        if (s === 'Completed') return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
+        if (s === 'Cancelled') return <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
+        return <Badge variant="outline" className="whitespace-nowrap">{s}</Badge>;
       }
     },
     {
@@ -202,19 +265,115 @@ export function ReceptionDeskPage() {
       header: 'Action',
       cell: ({ row }) => {
         const stage = row.original.stage;
-        if (stage === 'Waiting') {
-          return <Button size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setAssignQueueId(row.original.id); }}>Send to Doc</Button>;
-        }
-        if (stage === 'Ready at Reception') {
-          return <Button size="sm" variant="default" className="bg-teal-600 hover:bg-teal-700" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenProcess(row.original); }}>Process</Button>;
-        }
-        if (stage === 'Completed') {
-          return <Button size="sm" variant="outline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setViewVisitId(row.original.visitId); }}>View</Button>;
-        }
-        return <span className="text-sm text-slate-400">—</span>;
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="w-8 h-8 text-teal-600 hover:bg-teal-50"
+              title="Edit Patient"
+              onClick={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                const patient = patients.find(p => p.id === row.original.patientId);
+                if (patient) {
+                  setRegData({ 
+                    name: patient.name, 
+                    phone: patient.phone, 
+                    age: patient.age.toString(), 
+                    gender: patient.gender, 
+                    reasonForVisit: row.original.rawVisit?.reasonForVisit || '' 
+                  });
+                  setEditingPatientId(patient.id);
+                  setIsEditPatientOpen(true);
+                }
+              }}
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+
+            <Button
+              size="icon"
+              variant="ghost"
+              className="w-8 h-8 text-blue-600 hover:bg-blue-50"
+              title="View History"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setHistoryPatientId(row.original.patientId); }}
+            >
+              <Eye className="w-4 h-4" />
+            </Button>
+
+            {stage !== 'Cancelled' && stage !== 'Completed' && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="w-8 h-8 text-rose-600 hover:bg-rose-50"
+                title="Cancel Visit"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCancelVisit(row.original.visitId); }}
+              >
+                <XCircle className="w-4 h-4" />
+              </Button>
+            )}
+
+            {stage === 'Waiting' && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="w-8 h-8 text-indigo-600 hover:bg-indigo-50"
+                title="Send to Doctor"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setAssignQueueId(row.original.id); }}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            )}
+
+            {stage === 'Ready at Reception' && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="w-8 h-8 text-emerald-600 hover:bg-emerald-50"
+                title="Process Visit"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenProcess(row.original); }}
+              >
+                <CreditCard className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        );
       }
     }
   ];
+
+  const handleCancelVisit = async (visitId: string) => {
+    const result = await MySwal.fire({
+      title: 'Cancel this visit?',
+      text: "This will cancel the patient's current visit. Patient history and records will be preserved.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Cancel Visit',
+      cancelButtonText: 'Keep Visit',
+      confirmButtonColor: '#e11d48', // rose-600
+      cancelButtonColor: '#94a3b8', // slate-400
+      customClass: {
+        popup: 'rounded-2xl',
+        confirmButton: 'rounded-lg font-semibold px-6 py-2',
+        cancelButton: 'rounded-lg font-semibold px-6 py-2'
+      }
+    });
+
+    if (result.isConfirmed) {
+      const res = await cancelVisit(visitId);
+      if (res.success) {
+        MySwal.fire({
+          title: 'Cancelled',
+          text: 'The visit has been successfully cancelled.',
+          icon: 'success',
+          confirmButtonColor: '#0d9488',
+          customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-lg font-semibold px-8 py-2' }
+        });
+      } else {
+        MySwal.fire('Error', res.error || 'Failed to cancel the visit', 'error');
+      }
+    }
+  };
 
   const handleRegister = async () => {
     let finalPatientId = selectedExistingPatientId;
@@ -224,7 +383,7 @@ export function ReceptionDeskPage() {
         toast.error("Name and Phone are required");
         return;
       }
-      
+
       const existing = patients.find(p => p.phone === regData.phone);
       if (existing) {
         toast.error("A patient with this phone number already exists.");
@@ -251,11 +410,42 @@ export function ReceptionDeskPage() {
       toast.error("Please select or register a patient.");
       return;
     }
-    
+
     try {
+      let patientDetails = patients.find(p => p.id === finalPatientId);
+      if (!patientDetails && isNewPatient) {
+        patientDetails = { name: regData.name, phone: regData.phone } as any;
+      }
+
+      const showSuccessModal = (title: string, subtext: string) => {
+        MySwal.fire({
+          title: `<span class="text-2xl font-bold text-slate-800">${title}</span>`,
+          html: `
+            <div class="text-left bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
+              <div class="grid grid-cols-3 gap-2 text-sm">
+                <div class="text-slate-500 font-medium">Patient</div>
+                <div class="col-span-2 font-semibold text-slate-900">${patientDetails?.name || 'N/A'}</div>
+                <div class="text-slate-500 font-medium">Phone</div>
+                <div class="col-span-2 font-mono text-slate-700">${patientDetails?.phone || 'N/A'}</div>
+              </div>
+              <div class="mt-4 pt-3 border-t border-slate-200 text-teal-600 font-medium text-center text-sm">
+                ${subtext}
+              </div>
+            </div>
+          `,
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#0d9488',
+          customClass: {
+            popup: 'rounded-2xl',
+            confirmButton: 'rounded-lg font-semibold px-8 py-2'
+          }
+        });
+      };
+
       if (regType === 'walk-in') {
         await startVisit(finalPatientId, undefined, false, regData.reasonForVisit || 'General Consultation');
-        toast.success(isNewPatient ? "Patient registered and added to Waiting list" : "Walk-in added to Waiting list");
+        showSuccessModal('Registration Complete', isNewPatient ? "Patient registered and added to Waiting list" : "Walk-in added to Waiting list");
         setIsRegisterOpen(false);
         setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
         setSelectedExistingPatientId('');
@@ -268,32 +458,61 @@ export function ReceptionDeskPage() {
           status: 'Scheduled',
           notes: apptData.notes
         });
-        
+
         const today = new Date().toISOString().split('T')[0];
         if (apptData.date === today) {
           await confirmAppointmentArrival(appointment.id);
-          toast.success(isNewPatient ? "Patient registered and checked in for today's appointment." : "Checked in for today's appointment.");
+          showSuccessModal('Checked In', isNewPatient ? "Patient registered and checked in for today's appointment." : "Checked in for today's appointment.");
         } else {
-          toast.success(isNewPatient ? "Patient registered and appointment created." : "Appointment created successfully.");
+          showSuccessModal('Appointment Booked', isNewPatient ? "Patient registered and appointment created." : "Appointment created successfully.");
         }
-        
+
         setIsRegisterOpen(false);
         setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
         setSelectedExistingPatientId('');
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to create visit/appointment");
+      toast.error(err.response?.data?.error || "Failed to start walk-in visit");
     }
   };
 
-  const handleAssignDoctor = async (doctorId: string) => {
-    if (!assignQueueId) return;
-    const res = await assignDoctor(assignQueueId, doctorId);
-    if (res.success) {
-      toast.success("Patient assigned to Doctor");
+  const handleAssignDoctor = async () => {
+    if (!confirmAssignData) return;
+    const { queueId, doctorId } = confirmAssignData;
+    const result = await assignDoctor(queueId, doctorId);
+    if (result.success) {
+      const targetQ = queue.find(q => q.id === queueId);
+      const doc = staff.find(d => d.id === doctorId);
+      const patient = patients.find(p => p.id === targetQ?.patientId);
+
+      MySwal.fire({
+        title: `<span class="text-2xl font-bold text-slate-800">Doctor Assigned</span>`,
+        html: `
+          <div class="text-left bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
+            <div class="grid grid-cols-3 gap-2 text-sm">
+              <div class="text-slate-500 font-medium">Patient</div>
+              <div class="col-span-2 font-semibold text-slate-900">${patient?.name || 'N/A'}</div>
+              <div class="text-slate-500 font-medium">Doctor</div>
+              <div class="col-span-2 font-semibold text-slate-900">${doc?.name || 'N/A'}</div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-200 text-teal-600 font-medium text-center text-sm">
+              Patient sent to doctor's queue.
+            </div>
+          </div>
+        `,
+        icon: 'success',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#0d9488',
+        customClass: {
+          popup: 'rounded-2xl',
+          confirmButton: 'rounded-lg font-semibold px-8 py-2'
+        }
+      });
+
       setAssignQueueId(null);
+      setConfirmAssignData(null);
     } else {
-      toast.error(res.error || "Failed to assign doctor");
+      toast.error(result.error || 'Failed to assign doctor');
     }
   };
 
@@ -305,7 +524,7 @@ export function ReceptionDeskPage() {
       const items = rx.items.map((ri, idx) => {
         const med = medicines.find(m => m.id === ri.medicineId);
         const dItem = disp?.items.find(di => di.medicineId === ri.medicineId);
-        
+
         return {
           id: `i${idx}`,
           medicineId: ri.medicineId,
@@ -331,7 +550,7 @@ export function ReceptionDeskPage() {
     if (!processVisitId) return;
     const rx = prescriptions.find(r => r.visitId === processVisitId && r.status === 'Finalized');
     if (!rx) return;
-    
+
     const mappedItems = activeItems.map(ai => ({
       medicineId: ai.medicineId,
       prescribedQuantity: ai.prescribedQty,
@@ -351,9 +570,27 @@ export function ReceptionDeskPage() {
       toast.error('Please select a payment method');
       return;
     }
-    const result = await recordPayment(processVisitId, activeMethod as 'Cash' | 'GPay');
+    const amt = Number(paymentAmount);
+    if (!amt || amt <= 0) {
+      toast.error('Please enter a valid payment amount');
+      return;
+    }
+
+    const visitPayments = payments.filter(p => p.visitId === processVisitId);
+    const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
+    const amountDue = activeProcessVisit?.amountDue || 0;
+    const balance = amountDue - totalPaid;
+
+    if (amt > balance) {
+      toast.error(`Payment amount cannot exceed remaining balance (₹${balance})`);
+      return;
+    }
+
+    const result = await recordPayment(processVisitId, amt, activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card');
     if (result.success) {
       toast.success('Payment completed successfully');
+      setPaymentAmount(''); // Reset for next partial payment if needed
+      setActiveMethod(null);
     } else {
       toast.error(result.error || 'Failed to record payment');
     }
@@ -366,7 +603,7 @@ export function ReceptionDeskPage() {
         credentials: 'include'
       });
       if (!response.ok) throw new Error(`Failed to print ${type}`);
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -384,12 +621,21 @@ export function ReceptionDeskPage() {
 
   return (
     <div className="flex-1 bg-slate-50/50 flex flex-col h-screen overflow-hidden">
-      <div className="h-16 shrink-0 border-b border-slate-200 bg-white px-8 flex items-center justify-between">
+      <div className="h-16 shrink-0  px-8 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
           <p className="text-sm text-slate-500">Register patients, manage today's visits, and complete reception tasks.</p>
         </div>
-        <Button onClick={() => setIsRegisterOpen(true)} className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white">
+        <Button 
+          onClick={() => {
+            setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+            setIsNewPatient(false);
+            setSelectedExistingPatientId('');
+            setPatientSearch('');
+            setIsRegisterOpen(true);
+          }} 
+          className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white"
+        >
           <Users className="w-4 h-4 mr-2" />
           Register Patient
         </Button>
@@ -397,7 +643,7 @@ export function ReceptionDeskPage() {
 
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-7xl mx-auto space-y-8">
-          
+
           {/* Doctor Availability Section */}
           <section>
             <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -411,9 +657,25 @@ export function ReceptionDeskPage() {
                     <h3 className="font-medium text-slate-900">{doc.name}</h3>
                     <p className="text-xs text-slate-500">{doc.role}</p>
                   </div>
-                  <Badge variant={doctorAvailability[doc.id] === 'Available' ? 'outline' : 'secondary'} 
+                  <Badge variant={doctorAvailability[doc.id] === 'Available' ? 'outline' : 'secondary'}
                     className={doctorAvailability[doc.id] === 'Available' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}>
-                    {doctorAvailability[doc.id] === 'Available' ? '🟢 Available' : '🔴 With Patient'}
+                    {doctorAvailability[doc.id] === 'Available' ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        Available
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                        With Patient
+                      </span>
+                    )}
                   </Badge>
                 </div>
               ))}
@@ -426,31 +688,17 @@ export function ReceptionDeskPage() {
               <h2 className="text-base font-semibold text-slate-900">Active Queue</h2>
               <div className="relative w-64">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input 
-                  placeholder="Search patients..." 
+                <Input
+                  placeholder="Search patients..."
                   className="pl-9 bg-white border-slate-200 text-sm"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
             </div>
-            <DataTable 
-              columns={columns} 
-              data={unifiedData} 
-              onRowClick={(row) => {
-                const patient = patients.find(p => p.id === row.patientId);
-                if (patient) {
-                  setRegData({
-                    name: patient.name,
-                    phone: patient.phone,
-                    age: patient.age.toString(),
-                    gender: patient.gender,
-                    address: '',
-                  });
-                  setEditingPatientId(patient.id);
-                  setIsEditPatientOpen(true);
-                }
-              }}
+            <DataTable
+              columns={columns}
+              data={unifiedData}
             />
           </section>
 
@@ -458,7 +706,7 @@ export function ReceptionDeskPage() {
       </div>
 
       {/* Doctor Assignment Modal */}
-      <Dialog open={!!assignQueueId} onOpenChange={open => !open && setAssignQueueId(null)}>
+      <Dialog open={!!assignQueueId && !confirmAssignData} onOpenChange={open => !open && setAssignQueueId(null)}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Send to Doctor</DialogTitle>
@@ -473,11 +721,11 @@ export function ReceptionDeskPage() {
                     <h4 className="font-medium text-slate-900">{doc.name}</h4>
                     <span className="text-xs text-slate-500">{doc.role}</span>
                   </div>
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     variant={isAvail ? "default" : "secondary"}
                     disabled={!isAvail}
-                    onClick={() => handleAssignDoctor(doc.id)}
+                    onClick={() => setConfirmAssignData({ queueId: assignQueueId!, doctorId: doc.id, doctorName: doc.name })}
                     className={isAvail ? 'bg-teal-600 hover:bg-teal-700' : ''}
                   >
                     Send
@@ -488,6 +736,58 @@ export function ReceptionDeskPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignQueueId(null)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Modals */}
+      <Dialog open={!!confirmAssignData} onOpenChange={open => !open && setConfirmAssignData(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Confirm Assignment</DialogTitle>
+            <DialogDescription>Are you sure you want to assign this patient to {confirmAssignData?.doctorName}?</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setConfirmAssignData(null)}>Cancel</Button>
+            <Button className="bg-teal-600 hover:bg-teal-700" onClick={handleAssignDoctor}>Confirm Assignment</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!registrationSuccessData} onOpenChange={open => {
+        if (!open) {
+          setRegistrationSuccessData(null);
+          setIsRegisterOpen(false);
+          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+          setSelectedExistingPatientId('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-5 h-5" /> Registration Successful</DialogTitle>
+            <DialogDescription>{registrationSuccessData?.name} has been successfully registered and added to the queue.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => {
+              setRegistrationSuccessData(null);
+              setIsRegisterOpen(false);
+              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+              setSelectedExistingPatientId('');
+            }}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteVisitId} onOpenChange={open => !open && setDeleteVisitId(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Visit</DialogTitle>
+            <DialogDescription>
+              Visit deletion is currently disabled to maintain financial and clinical audit trails. Please contact the administrator for corrections.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="default" onClick={() => setDeleteVisitId(null)}>Understood</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -512,19 +812,19 @@ export function ReceptionDeskPage() {
               Register Patient
             </h2>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6">
               <DrawerSection title="Registration Type">
                 <div className="flex gap-4">
-                  <Button 
-                    variant={regType === 'walk-in' ? 'default' : 'outline'} 
+                  <Button
+                    variant={regType === 'walk-in' ? 'default' : 'outline'}
                     className={regType === 'walk-in' ? 'bg-teal-600 text-white hover:bg-teal-700' : ''}
                     onClick={() => setRegType('walk-in')}
                   >
                     Walk-in
                   </Button>
-                  <Button 
+                  <Button
                     variant={regType === 'appointment' ? 'default' : 'outline'}
                     className={regType === 'appointment' ? 'bg-teal-600 text-white hover:bg-teal-700' : ''}
                     onClick={() => setRegType('appointment')}
@@ -533,18 +833,18 @@ export function ReceptionDeskPage() {
                   </Button>
                 </div>
               </DrawerSection>
-              
+
               <DrawerSection title="Patient Selection">
                 <div className="space-y-4">
                   <div className="flex gap-4">
-                    <Button 
-                      variant={!isNewPatient ? 'default' : 'outline'} 
+                    <Button
+                      variant={!isNewPatient ? 'default' : 'outline'}
                       className={!isNewPatient ? 'bg-indigo-600 text-white hover:bg-indigo-700' : ''}
                       onClick={() => setIsNewPatient(false)}
                     >
                       Existing Patient
                     </Button>
-                    <Button 
+                    <Button
                       variant={isNewPatient ? 'default' : 'outline'}
                       className={isNewPatient ? 'bg-indigo-600 text-white hover:bg-indigo-700' : ''}
                       onClick={() => setIsNewPatient(true)}
@@ -556,7 +856,7 @@ export function ReceptionDeskPage() {
                   {!isNewPatient ? (
                     <div className="space-y-3">
                       <label className="text-sm font-medium text-slate-700 block">Search & Select Patient *</label>
-                      
+
                       {selectedExistingPatientId ? (
                         <div className="flex items-center justify-between p-3 border border-teal-200 bg-teal-50/50 rounded-lg shadow-sm">
                           <div>
@@ -567,9 +867,9 @@ export function ReceptionDeskPage() {
                               {patients.find(p => p.id === selectedExistingPatientId)?.phone}
                             </div>
                           </div>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            size="sm"
+                            variant="outline"
                             className="border-teal-200 text-teal-700 hover:bg-teal-100"
                             onClick={() => {
                               setSelectedExistingPatientId('');
@@ -583,30 +883,30 @@ export function ReceptionDeskPage() {
                         <>
                           <div className="relative">
                             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <Input 
+                            <Input
                               placeholder="Search by name or phone..."
                               className="pl-9 bg-white"
                               value={patientSearch}
                               onChange={e => setPatientSearch(e.target.value)}
                             />
                           </div>
-                          
+
                           <div className="border border-slate-200 rounded-md bg-white max-h-48 overflow-y-auto shadow-sm">
                             {patients
                               .filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()) || p.phone.includes(patientSearch))
                               .map(p => (
-                              <div 
-                                key={p.id}
-                                onClick={() => {
-                                   setSelectedExistingPatientId(p.id);
-                                   setPatientSearch('');
-                                }}
-                                className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 text-slate-700"
-                              >
-                                <div className="font-medium">{p.name}</div>
-                                <div className="text-xs text-slate-500 mt-0.5">{p.phone}</div>
-                              </div>
-                            ))}
+                                <div
+                                  key={p.id}
+                                  onClick={() => {
+                                    setSelectedExistingPatientId(p.id);
+                                    setPatientSearch('');
+                                  }}
+                                  className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 text-slate-700"
+                                >
+                                  <div className="font-medium">{p.name}</div>
+                                  <div className="text-xs text-slate-500 mt-0.5">{p.phone}</div>
+                                </div>
+                              ))}
                             {patients.filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()) || p.phone.includes(patientSearch)).length === 0 && (
                               <div className="px-3 py-6 text-center text-sm text-slate-500">
                                 No patients found.
@@ -620,23 +920,23 @@ export function ReceptionDeskPage() {
                     <div className="space-y-4 mt-4 border-t border-slate-100 pt-4">
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name *</label>
-                        <Input placeholder="Enter patient name" value={regData.name} onChange={e => setRegData({...regData, name: e.target.value})} />
+                        <Input placeholder="Enter patient name" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
                       </div>
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number *</label>
-                        <Input placeholder="10-digit mobile number" value={regData.phone} onChange={e => setRegData({...regData, phone: e.target.value})} />
+                        <Input placeholder="10-digit mobile number" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value })} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-sm font-medium text-slate-700 mb-1 block">Age</label>
-                          <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({...regData, age: e.target.value})} />
+                          <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value })} />
                         </div>
                         <div>
                           <label className="text-sm font-medium text-slate-700 mb-1 block">Gender</label>
-                          <select 
+                          <select
                             className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            value={regData.gender} 
-                            onChange={e => setRegData({...regData, gender: e.target.value})}
+                            value={regData.gender}
+                            onChange={e => setRegData({ ...regData, gender: e.target.value })}
                           >
                             <option>Male</option>
                             <option>Female</option>
@@ -650,7 +950,19 @@ export function ReceptionDeskPage() {
                   {regType === 'walk-in' && (
                     <div className="mt-4 pt-4 border-t border-slate-100">
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
-                      <Input placeholder="e.g. Tooth ache, Cleaning" value={regData.reasonForVisit} onChange={e => setRegData({...regData, reasonForVisit: e.target.value})} />
+                      <Select value={regData.reasonForVisit} onValueChange={(val) => setRegData({ ...regData, reasonForVisit: val })}>
+                        <SelectTrigger className="w-full bg-white border-slate-200">
+                          <SelectValue placeholder="Select Reason for Visit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
+                          <SelectItem value="Toothache">Toothache</SelectItem>
+                          <SelectItem value="Cleaning">Cleaning</SelectItem>
+                          <SelectItem value="Follow-up">Follow-up</SelectItem>
+                          <SelectItem value="Emergency">Emergency</SelectItem>
+                          <SelectItem value="Consultation">Consultation</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
                 </div>
@@ -662,19 +974,19 @@ export function ReceptionDeskPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Date</label>
-                        <Input type="date" value={apptData.date} onChange={e => setApptData({...apptData, date: e.target.value})} />
+                        <Input type="date" value={apptData.date} onChange={e => setApptData({ ...apptData, date: e.target.value })} />
                       </div>
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Time</label>
-                        <Input type="time" value={apptData.time} onChange={e => setApptData({...apptData, time: e.target.value})} />
+                        <Input type="time" value={apptData.time} onChange={e => setApptData({ ...apptData, time: e.target.value })} />
                       </div>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Type</label>
-                      <select 
+                      <select
                         className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
-                        value={apptData.type} 
-                        onChange={e => setApptData({...apptData, type: e.target.value})}
+                        value={apptData.type}
+                        onChange={e => setApptData({ ...apptData, type: e.target.value })}
                       >
                         <option value="Consultation">Consultation</option>
                         <option value="Follow-up">Follow-up</option>
@@ -685,14 +997,14 @@ export function ReceptionDeskPage() {
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Notes (Optional)</label>
-                      <Input placeholder="Enter any notes" value={apptData.notes} onChange={e => setApptData({...apptData, notes: e.target.value})} />
+                      <Input placeholder="Enter any notes" value={apptData.notes} onChange={e => setApptData({ ...apptData, notes: e.target.value })} />
                     </div>
                   </div>
                 </DrawerSection>
               )}
             </div>
           </div>
-          
+
           <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex items-center justify-end gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
             <Button variant="outline" onClick={() => {
               setIsRegisterOpen(false);
@@ -719,30 +1031,30 @@ export function ReceptionDeskPage() {
               Edit Patient Details
             </h2>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6">
               <DrawerSection title="Basic Details">
                 <div className="space-y-4">
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name *</label>
-                    <Input placeholder="e.g. John Doe" value={regData.name} onChange={e => setRegData({...regData, name: e.target.value})} />
+                    <Input placeholder="e.g. John Doe" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number *</label>
-                    <Input placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({...regData, phone: e.target.value})} />
+                    <Input placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value })} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Age</label>
-                      <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({...regData, age: e.target.value})} />
+                      <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value })} />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Gender</label>
-                      <select 
+                      <select
                         className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
-                        value={regData.gender} 
-                        onChange={e => setRegData({...regData, gender: e.target.value})}
+                        value={regData.gender}
+                        onChange={e => setRegData({ ...regData, gender: e.target.value })}
                       >
                         <option>Male</option>
                         <option>Female</option>
@@ -751,19 +1063,31 @@ export function ReceptionDeskPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Address</label>
-                    <Input placeholder="City, Area" value={regData.address} onChange={e => setRegData({...regData, address: e.target.value})} />
+                    <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
+                    <Select value={regData.reasonForVisit} onValueChange={(val) => setRegData({ ...regData, reasonForVisit: val })}>
+                      <SelectTrigger className="w-full bg-white border-slate-200">
+                        <SelectValue placeholder="Select Reason for Visit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
+                        <SelectItem value="Toothache">Toothache</SelectItem>
+                        <SelectItem value="Cleaning">Cleaning</SelectItem>
+                        <SelectItem value="Follow-up">Follow-up</SelectItem>
+                        <SelectItem value="Emergency">Emergency</SelectItem>
+                        <SelectItem value="Consultation">Consultation</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </DrawerSection>
             </div>
           </div>
-          
+
           <div className="p-6 bg-white border-t border-slate-200 shrink-0">
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setIsEditPatientOpen(false)}>Cancel</Button>
-              <Button 
-                className="flex-1 bg-teal-600 hover:bg-teal-700" 
+              <Button
+                className="flex-1 bg-teal-600 hover:bg-teal-700"
                 onClick={() => {
                   toast.success('Patient details updated temporarily in demo!');
                   setIsEditPatientOpen(false);
@@ -789,118 +1113,160 @@ export function ReceptionDeskPage() {
               <span>{activeProcessDoctor?.name}</span>
             </div>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              
-              {/* Dynamic Step Calculations */}
-              {(() => {
-                const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
-                const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
-                const isDispensingStep = hasPrescription && !hasCompletedDispensing;
-                
-                const hasCompletedPayment = activeProcessVisit?.status === 'COMPLETED' || payments.some((p: any) => p.visitId === processVisitId);
-                const isPaymentStep = (!hasPrescription || hasCompletedDispensing) && !hasCompletedPayment;
-                const isWorkflowCompleted = hasCompletedPayment;
 
-                return (
-                  <>
-                    <DrawerSection title="1. Medicines">
-                      {isDispensingStep ? (
-                  <div className="space-y-4">
-                    {activeItems.length > 0 ? (
-                      activeItems.map((item, index) => (
-                        <DispensingMedicineItem
-                          key={item.id}
-                          item={item}
-                          onChange={(id, qty) => {
-                            const newItems = [...activeItems];
-                            newItems[index].dispensedQty = qty;
-                            setActiveItems(newItems);
-                          }}
-                        />
-                      ))
-                    ) : (
-                      <p className="text-sm text-slate-500 p-4 text-center bg-white border border-slate-200 rounded-lg">No medicines prescribed.</p>
-                    )}
-                    <Button onClick={handleCompleteDispensing} className="w-full bg-teal-600 hover:bg-teal-700">
-                      Complete Dispensing
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-800">
-                    <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Medicines Processed</span>
-                  </div>
-                      )}
-                    </DrawerSection>
+            {/* Dynamic Step Calculations */}
+            {(() => {
+              const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
+              const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
+              const isDispensingStep = hasPrescription && !hasCompletedDispensing;
 
-                    <DrawerSection title="2. Payment">
-                      {isPaymentStep ? (
-                  <div className="space-y-6 bg-white p-5 rounded-xl border border-slate-200">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm text-slate-600">
-                        <span>Consultation Fee</span>
-                        <span>₹{activeProcessVisit?.consultationFee || 0}</span>
-                      </div>
-                      <div className="flex justify-between text-sm text-slate-600">
-                        <span>Treatment Fee</span>
-                        <span>₹{activeProcessVisit?.treatmentFee || 0}</span>
-                      </div>
-                      <div className="flex justify-between text-sm text-slate-600">
-                        <span>Medicine Cost</span>
-                        <span>₹{activeProcessVisit?.medicineCost || 0}</span>
-                      </div>
-                      <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-lg">
-                        <span>Total Due</span>
-                        <span>₹{activeProcessVisit?.amountDue || 0}</span>
-                      </div>
-                    </div>
-                    
-                    <div className="pt-4 border-t border-slate-100">
-                      <h4 className="text-sm font-medium text-slate-900 mb-3">Select Payment Method</h4>
-                      <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
-                    </div>
+              const visitPayments = payments.filter(p => p.visitId === processVisitId);
+              const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
+              const amountDue = activeProcessVisit?.amountDue || 0;
+              const balance = amountDue - totalPaid;
 
-                    <Button onClick={handleMarkAsPaid} className="w-full bg-teal-600 hover:bg-teal-700">
-                          Complete Payment
+              const hasCompletedPayment = activeProcessVisit?.status === 'COMPLETED' && balance <= 0;
+              // Only a step if dispensing is done AND balance is still > 0
+              const isPaymentStep = (!hasPrescription || hasCompletedDispensing) && balance > 0;
+              const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED';
+
+              return (
+                <>
+                  <DrawerSection title="1. Medicines">
+                    {isDispensingStep ? (
+                      <div className="space-y-4">
+                        {activeItems.length > 0 ? (
+                          activeItems.map((item, index) => (
+                            <DispensingMedicineItem
+                              key={item.id}
+                              item={item}
+                              onChange={(id, qty) => {
+                                const newItems = [...activeItems];
+                                newItems[index].dispensedQty = qty;
+                                setActiveItems(newItems);
+                              }}
+                            />
+                          ))
+                        ) : (
+                          <p className="text-sm text-slate-500 p-4 text-center bg-white border border-slate-200 rounded-lg">No medicines prescribed.</p>
+                        )}
+                        <Button onClick={handleCompleteDispensing} className="w-full bg-teal-600 hover:bg-teal-700">
+                          Complete Dispensing
                         </Button>
                       </div>
-                      ) : hasCompletedPayment ? (
-                         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-800">
-                          <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Payment Completed</span>
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-500 text-sm">
-                          Complete dispensing first to unlock payment.
-                        </div>
-                      )}
-                    </DrawerSection>
-                    
-                    {isWorkflowCompleted && (
-                      <DrawerSection title="3. Print">
-                  <div className="p-5 bg-white border border-slate-200 rounded-lg space-y-4">
-                    <div className="flex items-center gap-3 text-emerald-600 mb-4">
-                      <CheckCircle2 className="w-5 h-5" />
-                      <span className="font-medium">Workflow Completed</span>
-                    </div>
-                    <div className="flex gap-3">
-                      <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('prescription')}>
-                        <FileText className="w-4 h-4 mr-2" />
-                        Print Prescription
-                      </Button>
-                      <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('receipt')}>
-                        <Receipt className="w-4 h-4 mr-2" />
-                        Print Receipt
-                      </Button>
-                    </div>
-                  </div>
-                </DrawerSection>
+                    ) : (
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-800">
+                        <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Medicines Processed</span>
+                      </div>
                     )}
-                  </>
-                );
-              })()}
+                  </DrawerSection>
+
+                  <DrawerSection title="2. Payment">
+                    {visitPayments.length > 0 && (
+                      <div className="mb-4 space-y-2">
+                        <h4 className="text-sm font-semibold text-slate-900">Payment History</h4>
+                        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                          {visitPayments.map((p, idx) => (
+                            <div key={idx} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0">
+                              <div className="text-sm">
+                                <span className="font-medium text-slate-800">{p.method}</span>
+                                <span className="text-slate-500 text-xs ml-2">{new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <span className="font-semibold text-slate-900">₹{p.amount}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {isPaymentStep ? (
+                      <div className="space-y-6 bg-white p-5 rounded-xl border border-slate-200">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm text-slate-600">
+                            <span>Consultation Fee</span>
+                            <span>₹{activeProcessVisit?.consultationFee || 0}</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-slate-600">
+                            <span>Treatment Fee</span>
+                            <span>₹{activeProcessVisit?.treatmentFee || 0}</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-slate-600">
+                            <span>Medicine Cost</span>
+                            <span>₹{activeProcessVisit?.medicineCost || 0}</span>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-base">
+                            <span>Total Due</span>
+                            <span>₹{amountDue}</span>
+                          </div>
+                          <div className="flex justify-between font-semibold text-emerald-600 text-base">
+                            <span>Total Paid</span>
+                            <span>₹{totalPaid}</span>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-lg">
+                            <span>Balance</span>
+                            <span>₹{balance}</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100">
+                          <h4 className="text-sm font-medium text-slate-900 mb-3">Add Payment</h4>
+                          <div className="mb-4">
+                            <label className="text-sm text-slate-600 block mb-1">Payment Amount (₹)</label>
+                            <Input
+                              type="number"
+                              min="1"
+                              max={balance}
+                              placeholder={`Max ₹${balance}`}
+                              value={paymentAmount}
+                              onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
+                            />
+                          </div>
+                          <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
+                        </div>
+
+                        <Button onClick={handleMarkAsPaid} disabled={!activeMethod || !paymentAmount || paymentAmount <= 0 || paymentAmount > balance} className="w-full bg-teal-600 hover:bg-teal-700">
+                          Add Payment
+                        </Button>
+                      </div>
+                    ) : hasCompletedPayment ? (
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-800">
+                        <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Payment Completed</span>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-500 text-sm">
+                        Complete dispensing first to unlock payment.
+                      </div>
+                    )}
+                  </DrawerSection>
+
+                  {isWorkflowCompleted && (
+                    <DrawerSection title="3. Print">
+                      <div className="p-5 bg-white border border-slate-200 rounded-lg space-y-4">
+                        <div className="flex items-center gap-3 text-emerald-600 mb-4">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="font-medium">Workflow Completed</span>
+                        </div>
+                        <div className="flex gap-3">
+                          <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('prescription')}>
+                            <FileText className="w-4 h-4 mr-2" />
+                            Print Prescription
+                          </Button>
+                          <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('receipt')}>
+                            <Receipt className="w-4 h-4 mr-2" />
+                            Print Receipt
+                          </Button>
+                        </div>
+                      </div>
+                    </DrawerSection>
+                  )}
+                </>
+              );
+            })()}
 
           </div>
-          
+
           <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex items-center justify-end gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
             <Button onClick={() => setProcessVisitId(null)} className="w-full">
               {activeProcessQueue?.status === 'Completed' || activeProcessVisit?.status === 'COMPLETED' ? 'Done' : 'Close'}
@@ -916,11 +1282,11 @@ export function ReceptionDeskPage() {
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
             <h2 className="text-lg font-semibold text-slate-900">Visit Details</h2>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-6">
             {viewVisitId && (
-              <HistoricalVisitDetails 
-                visitId={viewVisitId} 
+              <HistoricalVisitDetails
+                visitId={viewVisitId}
                 onViewHistory={() => {
                   const visit = visits.find(v => v.id === viewVisitId);
                   if (visit) setHistoryPatientId(visit.patientId);
@@ -928,7 +1294,7 @@ export function ReceptionDeskPage() {
               />
             )}
           </div>
-          
+
           <div className="border-t border-slate-200 bg-white p-4 shrink-0">
             <Button variant="outline" onClick={() => setViewVisitId(null)} className="w-full">Close</Button>
           </div>
@@ -945,7 +1311,7 @@ export function ReceptionDeskPage() {
             {historyPatientId && (() => {
               const patient = patients.find(p => p.id === historyPatientId);
               if (!patient) return null;
-              
+
               const patientVisits = visits
                 .filter(v => v.patientId === historyPatientId)
                 .map(v => ({
@@ -954,22 +1320,23 @@ export function ReceptionDeskPage() {
                   title: v.reasonForVisit || 'General Visit',
                   status: v.status
                 }));
-                
+
               return (
                 <div className="space-y-6">
-                  <PatientClinicalSummary 
-                    patientId={patient.id} 
+                  <PatientClinicalSummary
+                    patientId={patient.id}
                     name={patient.name}
                     phone={patient.phone}
                     age={patient.age}
                     status={patientVisits.some(v => v.status !== 'COMPLETED') ? 'In Progress' : 'Completed'}
+                    hideDetails={true}
                   />
-                  <PatientVisitHistory 
-                    visits={patientVisits} 
+                  <PatientVisitHistory
+                    visits={patientVisits}
                     onView={(id) => {
                       setHistoryPatientId(null);
                       setViewVisitId(id);
-                    }} 
+                    }}
                   />
                 </div>
               );
