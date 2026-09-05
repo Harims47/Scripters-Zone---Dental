@@ -46,12 +46,17 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
   const filteredNav = navItems.filter(item => {
     if (!currentUser) return false
     
-    // Phase 9: Hide modules that are merged into Reception Desk for Receptionist
-    if (currentUser.role === 'Receptionist') {
-      const hiddenForReceptionist = ['/patients', '/appointments', '/queue', '/billing']
-      if (hiddenForReceptionist.includes(item.href)) {
+    // Phase 9: Hide modules that are merged into Reception Desk for Receptionist & Head Doctor
+    if (currentUser.role === 'Receptionist' || currentUser.role === 'Head Doctor') {
+      const hiddenForMerged = ['/patients', '/appointments', '/queue', '/billing']
+      if (hiddenForMerged.includes(item.href)) {
         return false
       }
+    }
+    
+    // Hide Patients for Duty Doctor as requested
+    if (currentUser.role === 'Duty Doctor' && item.href === '/patients') {
+      return false
     }
     
     return canAccessRoute(currentUser.role, item.href)

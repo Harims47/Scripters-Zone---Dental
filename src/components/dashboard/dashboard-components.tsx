@@ -5,11 +5,14 @@ import { Button } from "../ui/button"
 import { Badge } from "../ui/badge"
 import { UserPlus, CalendarPlus, Clock, Phone, AlertCircle, CheckCircle2, TrendingUp, Wallet, Calendar } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { useAuth } from "../../context/AuthContext"
 
 // --- HEADER ---
 export function DashboardHeader({ greetingOverride }: { greetingOverride?: string }) {
   const [currentDate, setCurrentDate] = useState('')
   const navigate = useNavigate()
+  const { currentUser } = useAuth()
+  const role = currentUser?.role
 
   useEffect(() => {
     const d = new Date()
@@ -30,14 +33,21 @@ export function DashboardHeader({ greetingOverride }: { greetingOverride?: strin
       
       {/* Quick Actions Desktop */}
       <div className="hidden sm:flex items-center gap-3">
-        <Button onClick={() => navigate('/appointments')} variant="outline" className="gap-2 text-slate-600 bg-white shadow-sm border-slate-200/60 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200">
-          <Calendar className="w-4 h-4" />
-          Schedule
-        </Button>
-        <Button onClick={() => navigate('/patients')} className="gap-2 shadow-sm transition-all duration-200">
-          <UserPlus className="w-4 h-4" />
-          Register Patient
-        </Button>
+        {role === 'Head Doctor' && (
+          <Button onClick={() => navigate('/appointments')} variant="outline" className="gap-2 text-slate-600 bg-white shadow-sm border-slate-200/60 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200">
+            <Calendar className="w-4 h-4" />
+            Schedule
+          </Button>
+        )}
+        {role !== 'Duty Doctor' && (
+          <Button 
+            onClick={() => navigate('/reception-desk', { state: { openRegister: true } })} 
+            className="gap-2 shadow-sm transition-all duration-200"
+          >
+            <UserPlus className="w-4 h-4" />
+            Register Patient
+          </Button>
+        )}
       </div>
     </div>
   )
