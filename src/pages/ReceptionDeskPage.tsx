@@ -28,7 +28,7 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit } = useClinicContext();
+  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations } = useClinicContext();
 
   const navigate = useNavigate();
 
@@ -370,7 +370,7 @@ export function ReceptionDeskPage() {
               variant="ghost"
               disabled={!isReadyForReception}
               className={`w-8 h-8 ${isReadyForReception ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
-              title={isReadyForReception ? "Process Visit" : "Not ready for processing"}
+              title={isReadyForReception ? "Checkout & Billing" : "Not ready for processing"}
               onClick={(e) => { 
                 e.preventDefault(); e.stopPropagation(); 
                 if (isReadyForReception) handleOpenProcess(row.original); 
@@ -1295,9 +1295,9 @@ export function ReceptionDeskPage() {
       {/* Process Visit Drawer */}
       <Sheet open={!!processVisitId} onOpenChange={open => !open && setProcessVisitId(null)}>
         <SheetContent side="right" className="w-[400px] sm:w-[600px] p-0 flex flex-col bg-slate-50 h-full">
-          <SheetTitle className="sr-only">Process Visit</SheetTitle>
+          <SheetTitle className="sr-only">Checkout & Billing</SheetTitle>
           <div className="h-20 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
-            <h2 className="text-lg font-semibold text-slate-900">Process Visit</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Checkout & Billing</h2>
             <div className="text-sm text-slate-500 flex gap-2">
               <span>{activeProcessPatient?.name}</span>
               <span>•</span>
@@ -1322,9 +1322,25 @@ export function ReceptionDeskPage() {
               // Only a step if dispensing is done AND balance is still > 0
               const isPaymentStep = (!hasPrescription || hasCompletedDispensing) && balance > 0;
               const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED';
+              const activeConsultation = consultations.find(c => c.visitId === processVisitId);
 
               return (
                 <>
+                  <DrawerSection title="Visit Details">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3 text-sm mb-2">
+                      <div>
+                        <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Reason for Visit</span>
+                        <span className="text-slate-900 font-medium">{activeConsultation?.reasonForVisit || 'Not specified'}</span>
+                      </div>
+                      {activeConsultation?.clinicalNotes && (
+                        <div>
+                          <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Clinical Notes</span>
+                          <span className="text-slate-700 whitespace-pre-wrap">{activeConsultation.clinicalNotes}</span>
+                        </div>
+                      )}
+                    </div>
+                  </DrawerSection>
+
                   <DrawerSection title="1. Medicines">
                     {isDispensingStep ? (
                       <div className="space-y-4">
