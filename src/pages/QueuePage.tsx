@@ -1,177 +1,138 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { QueueHeader, getStatusBadge, getPriorityBadge } from '../components/queue/queue-components'
-import type { QueueRow, QueueStatus } from '../components/queue/queue-components'
-import { Search, PlayCircle, Users } from 'lucide-react'
+import type { QueueStatus } from '../components/queue/queue-components'
+import { Search, PlayCircle, Users, Download, FileText, FileSpreadsheet, File } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { Button } from '../components/ui/button'
 
-import { DEMO_STAFF } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
 import { canAccessRoute } from '../lib/route-permissions'
 import { api } from '../lib/api'
 
+type QueueRow = {
+  id: string
+  visitId: string
+  patientId: string
+  assignedDoctorId: string | null
+  name: string
+  reasonForVisit: string
+  patientType: 'New Patient' | 'Existing Patient'
+  status: string
+}
+
 export function QueuePage() {
-  const { queue, patients, visits, consultations, callPatient, startConsultationFlow } = useClinicContext()
+  const { queue, patients, visits } = useClinicContext()
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
-  const [doctorFilter, setDoctorFilter] = useState<string>(canManageClinical ? (currentUser?.staffId || 'all') : 'all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
   
   const navigate = useNavigate()
 
   // Map Canonical Context Data to UI view model
   const queueRows: QueueRow[] = queue.map(q => {
     const p = patients.find(pt => pt.id === q.patientId)
-    const d = DEMO_STAFF.find(st => st.id === q.assignedDoctorId)
     const v = visits.find(visit => visit.id === q.visitId)
-    const source = v?.appointmentId ? 'Appointment' : 'Walk-in'
 
-    // Calculate mock wait time for demo
-    const [hours, _minutes, period] = (q.arrivalTime || "09:00 AM").match(/(\d+):(\d+)\s*(AM|PM)/)?.slice(1) || ["9", "0", "AM"];
-    // Calculate mock wait time for demo - cap it to realistic ranges (0 to 45 mins)
-    let arrivalHour = parseInt(hours);
-    if (period === 'PM' && arrivalHour < 12) arrivalHour += 12;
-    if (period === 'AM' && arrivalHour === 12) arrivalHour = 0;
-    
-    let diffMin = 0;
-    // For demo realism, instead of actual elapsed time which could be 500+ mins if time is old,
-    // generate a stable, believable mock wait time based on patient string sum.
-    const charSum = q.patientId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-    diffMin = (charSum % 40) + 5; // 5 to 45 minutes
+    // Calculate Patient Type
+    const patientVisits = visits.filter(visit => visit.patientId === q.patientId)
+    const hasPastCompletedVisit = patientVisits.some(visit => visit.id !== q.visitId && visit.status === 'Completed')
+    const patientType = hasPastCompletedVisit ? 'Existing Patient' : 'New Patient'
 
     return {
       id: q.id,
-      queueNumber: String(q.position).padStart(2, '0'),
       visitId: q.visitId,
-      name: p?.name || 'Unknown Patient',
       patientId: q.patientId,
-      phone: p?.phone || 'Unknown',
-      arrivalTime: q.arrivalTime,
-      waitTimeMin: isNaN(diffMin) ? 0 : diffMin,
-      doctor: d?.name || 'Unassigned',
-      assignedDoctorId: q.assignedDoctorId,
-      status: (q.status === 'In Progress' ? 'With Doctor' : q.status) as QueueStatus,
-      priority: q.priority ? 'Urgent' : 'Normal',
-      source
+      assignedDoctorId: q.assignedDoctorId || null,
+      name: p?.name || 'Unknown Patient',
+      reasonForVisit: v?.reasonForVisit || 'Not Specified',
+      patientType,
+      status: q.status
     }
   })
 
-  // Modal states
-  const [callModalOpen, setCallModalOpen] = useState(false)
-  const [callTarget, setCallTarget] = useState<QueueRow | null>(null)
-
-  const initiateCall = (row: QueueRow) => {
-    setCallTarget(row)
-    setCallModalOpen(true)
-  }
-
-  const handleConfirmCall = async () => {
-    if (callTarget) {
-      try {
-        await callPatient(callTarget.visitId)
-        setCallModalOpen(false)
-        setCallTarget(null)
-      } catch (err) {
-        console.error(err)
-        alert('Failed to call patient')
-      }
-    }
-  }
-
-  const handleAction = async (id: string, action: 'Call' | 'Start' | 'Resume' | 'Cancel') => {
+  const handleAction = async (id: string, action: 'Start') => {
     const row = queueRows.find(q => q.id === id)
     if (!row) return;
 
-    if (action === 'Call') {
-      // Transition WAITING -> CALLED
-      initiateCall(row)
-    } else if (action === 'Start') {
-      // In Phase 9, it's already With Doctor. Just navigate to start the consultation.
-      navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
-    } else if (action === 'Resume') {
+    if (action === 'Start') {
       navigate(`/doctor/patient/${row.patientId}?visitId=${row.visitId}`)
     }
   }
 
   const filteredQueue = queueRows.filter(q => {
-    const matchesSearch = q.name.toLowerCase().includes(search.toLowerCase()) || q.patientId.toLowerCase().includes(search.toLowerCase())
-    const matchesDoctor = doctorFilter === 'all' || q.assignedDoctorId === doctorFilter
-    const matchesStatus = statusFilter === 'all' || q.status.toLowerCase().replace(' ', '-') === statusFilter
-    return matchesSearch && matchesDoctor && matchesStatus
+    // Doctors only see their own assigned patients
+    if (canManageClinical && currentUser?.staffId) {
+      if (q.assignedDoctorId !== currentUser.staffId) return false
+    }
+    // Search filter
+    return q.name.toLowerCase().includes(search.toLowerCase()) || q.patientId.toLowerCase().includes(search.toLowerCase())
   })
 
-  const summary = {
-    waiting: queueRows.filter(q => q.status === 'Waiting').length,
-    called: queueRows.filter(q => q.status === 'Called').length,
-    withDoctor: queueRows.filter(q => q.status === 'With Doctor').length,
-    completed: queueRows.filter(q => q.status === 'Completed').length,
+  const exportQueue = (format: 'pdf' | 'xlsx' | 'csv') => {
+    const query = new URLSearchParams({
+      format,
+      ...(search ? { search } : {})
+    }).toString();
+    api.download(`/api/queue/export?${query}`, `queue_export.${format}`);
   }
 
   const columns: ColumnDef<QueueRow>[] = [
     {
-      accessorKey: "queueNumber",
-      header: "Queue #",
-      cell: ({ row }) => (
-        <span className="font-mono text-xl font-bold text-slate-400">#{row.original.queueNumber}</span>
-      )
-    },
-    {
       accessorKey: "name",
-      header: "Patient",
+      header: "Patient Name",
       cell: ({ row }) => (
         <span className="font-semibold text-slate-900 block">{row.original.name}</span>
       )
     },
-    ...(doctorFilter === 'all' ? [{
-      accessorKey: "doctor",
-      header: "Assigned Doctor",
-      cell: ({ row }: any) => <span className="text-sm font-medium text-slate-700">{row.original.doctor}</span>
-    }] as any[] : []),
     {
-      accessorKey: "source",
-      header: "Context",
-      cell: ({ row }) => <span className="text-sm text-slate-500 font-medium">{row.original.source}</span>
+      accessorKey: "reasonForVisit",
+      header: "Reason for Visit",
+      cell: ({ row }) => <span className="text-sm font-medium text-slate-700">{row.original.reasonForVisit}</span>
     },
     {
-      accessorKey: "status",
+      accessorKey: "patientType",
+      header: "Patient Type",
+      cell: ({ row }) => {
+        const type = row.original.patientType
+        return (
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            type === 'New Patient' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+          }`}>
+            {type}
+          </span>
+        )
+      }
+    },
+    {
+      accessorKey: "action",
       header: "Status",
       cell: ({ row }) => {
         const item = row.original;
-        
-        // Determine if there is an actionable button for the current user
         let actionButton = null;
-        if (item.status === 'Waiting' && !canManageClinical) {
-          actionButton = (
-            <Button size="sm" className="h-9 shadow-sm" onClick={() => handleAction(item.id, 'Call')}>
-              Call Patient
-            </Button>
-          );
-        } else if (item.status === 'Called' && canManageClinical && item.assignedDoctorId === currentUser?.staffId) {
-          actionButton = (
-            <Button size="sm" variant="default" className="h-9 bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={() => handleAction(item.id, 'Start')}>
-              <PlayCircle className="mr-2 h-4 w-4" /> Start
-            </Button>
-          );
-        } else if (item.status === 'With Doctor' && canManageClinical && item.assignedDoctorId === currentUser?.staffId) {
-          const hasStarted = consultations.some(c => c.visitId === item.visitId);
-          actionButton = (
-            <Button size="sm" variant={hasStarted ? "outline" : "default"} className={`h-9 shadow-sm ${hasStarted ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={() => handleAction(item.id, hasStarted ? 'Resume' : 'Start')}>
-              <PlayCircle className="mr-2 h-4 w-4" /> {hasStarted ? 'Resume' : 'Start Consultation'}
-            </Button>
-          );
+        if (canManageClinical) {
+          if (item.status === 'Called' || item.status === 'With Doctor' || item.status === 'Waiting' || item.status === 'In Progress') {
+            const isResuming = item.status === 'With Doctor' || item.status === 'In Progress';
+            actionButton = (
+              <Button size="sm" variant="default" className="h-9 bg-indigo-600 hover:bg-indigo-700 shadow-sm text-white" onClick={() => handleAction(item.id, 'Start')}>
+                <PlayCircle className="mr-2 h-4 w-4" /> {isResuming ? 'Resume Consulting' : 'Start Consulting'}
+              </Button>
+            );
+          } else if (item.status === 'Ready for Reception' || item.status === 'Ready for Payment' || item.status === 'Paid' || item.status === 'Completed') {
+            actionButton = (
+              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-800">
+                {item.status === 'Ready for Reception' ? 'Completed (At Reception)' : item.status}
+              </span>
+            );
+          }
         }
 
         return (
           <div className="flex items-center gap-2">
-            {actionButton ? actionButton : getStatusBadge(item.status)}
-            <span className="hidden xl:inline">{getPriorityBadge(item.priority)}</span>
+            {actionButton ? actionButton : <span className="text-sm text-slate-500 italic">Not available</span>}
           </div>
         );
       }
@@ -180,54 +141,26 @@ export function QueuePage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <QueueHeader summary={summary} />
-
       <DataTableToolbar
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient, ID or phone..."
-        exportOptions={{ 
-          pdf: true, 
-          excel: true, 
-          csv: true,
-          onExport: (format) => {
-            const query = new URLSearchParams({
-              format,
-              ...(search ? { search } : {}),
-              doctor: doctorFilter,
-              status: statusFilter
-            }).toString();
-            api.download(`/api/queue/export?${query}`, `queue_export.${format}`);
-          }
-        }}
-        filterSlot={
-          <>
-            <select 
-              className="flex h-9 w-[140px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              value={doctorFilter}
-              onChange={(e) => setDoctorFilter(e.target.value)}
-            >
-              <option value="all">All Doctors</option>
-              {DEMO_STAFF.filter(s => s.role.includes('Doctor')).map(doc => (
-                <option key={doc.id} value={doc.id}>{doc.name}</option>
-              ))}
-            </select>
-            <select 
-              className="flex h-9 w-[130px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Statuses</option>
-              <option value="waiting">Waiting</option>
-              <option value="called">Called</option>
-              <option value="with-doctor">With Doctor</option>
-            </select>
-          </>
+        actionSlot={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportQueue('pdf')} className="h-9 bg-white">
+              <FileText className="mr-2 h-4 w-4 text-red-500" /> PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportQueue('xlsx')} className="h-9 bg-white">
+              <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" /> Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportQueue('csv')} className="h-9 bg-white">
+              <File className="mr-2 h-4 w-4 text-blue-600" /> CSV
+            </Button>
+          </div>
         }
       />
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
-
         <DataTable 
           columns={columns} 
           data={filteredQueue}
@@ -248,24 +181,6 @@ export function QueuePage() {
           }
         />
       </div>
-
-      {/* Call Patient Modal */}
-      <Dialog open={callModalOpen} onOpenChange={setCallModalOpen}>
-        <DialogContent className="sm:max-w-md bg-white">
-          <DialogHeader>
-            <DialogTitle>Call Patient</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-slate-600">
-              Are you sure you want to call <span className="font-semibold text-slate-900">{callTarget?.name}</span> to the consultation room?
-            </p>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setCallModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleConfirmCall} className="bg-indigo-600 hover:bg-indigo-700 text-white">Call Patient</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

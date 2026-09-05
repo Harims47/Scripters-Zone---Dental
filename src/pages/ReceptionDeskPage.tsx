@@ -383,12 +383,12 @@ export function ReceptionDeskPage() {
             <Button
               size="icon"
               variant="ghost"
-              disabled={isCancelledOrCompleted}
-              className={`w-8 h-8 ${!isCancelledOrCompleted ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
-              title={!isCancelledOrCompleted ? "Cancel Visit" : "Cannot cancel completed or cancelled visits"}
+              disabled={isCancelledOrCompleted || row.original.doctor !== '-'}
+              className={`w-8 h-8 ${!(isCancelledOrCompleted || row.original.doctor !== '-') ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
+              title={!(isCancelledOrCompleted || row.original.doctor !== '-') ? "Cancel Visit" : "Cannot cancel once doctor is assigned"}
               onClick={(e) => { 
                 e.preventDefault(); e.stopPropagation(); 
-                if (!isCancelledOrCompleted) handleCancelVisit(row.original.visitId); 
+                if (!(isCancelledOrCompleted || row.original.doctor !== '-')) handleCancelVisit(row.original.visitId); 
               }}
             >
               <XCircle className="w-4 h-4" />
