@@ -51,7 +51,7 @@ export const getPatientTreatmentPlan = async (req: Request, res: Response, next:
 export const addTreatmentPlanItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { patientId } = req.params;
-    const { treatmentCatalogId, notes } = req.body;
+    const { treatmentCatalogId, notes, completedVisitId } = req.body;
 
     const patient = await prisma.patient.findUnique({ where: { id: patientId } });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
@@ -69,7 +69,9 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
         treatmentPlanId: plan.id,
         treatmentCatalogId,
         notes,
-        status: 'Planned'
+        status: 'Completed',
+        completedVisitId: completedVisitId || null,
+        completedAt: completedVisitId ? new Date() : new Date(),
       },
       include: { catalogItem: true, completedVisit: true }
     });

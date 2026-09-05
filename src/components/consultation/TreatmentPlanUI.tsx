@@ -50,7 +50,8 @@ export function TreatmentPlanUI({
     try {
       const res = await api.post<TreatmentPlanItem>(`/api/patients/${patientId}/treatment-plan/items`, {
         treatmentCatalogId: selectedProcedure,
-        notes: notes || undefined
+        notes: notes || undefined,
+        completedVisitId: currentVisitId
       })
       setPlan(prev => prev ? { ...prev, items: [res, ...prev.items] } : null)
       setIsAdding(false)
@@ -103,7 +104,7 @@ export function TreatmentPlanUI({
 
       {isAdding && (
         <div className="bg-slate-50 p-4 rounded-xl space-y-4 border border-slate-200">
-          <h4 className="text-sm font-semibold text-slate-900">Add Planned Treatment</h4>
+          <h4 className="text-sm font-semibold text-slate-900">Add Treatment</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-700">Category</label>
@@ -136,7 +137,7 @@ export function TreatmentPlanUI({
              <Button variant="ghost" size="sm" onClick={() => setIsAdding(false)}>Cancel</Button>
              <Button size="sm" disabled={!selectedProcedure || saving} onClick={handleAdd}>
                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-               Save to Plan
+               Save Treatment
              </Button>
           </div>
         </div>
@@ -165,11 +166,6 @@ export function TreatmentPlanUI({
                 </div>
               </div>
               
-              {item.status === 'Planned' && currentVisitId && (
-                <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={() => handleMarkCompleted(item.id)} disabled={saving}>
-                  <Check className="w-3.5 h-3.5 mr-1" /> Mark Completed
-                </Button>
-              )}
               {item.status === 'Completed' && (
                 <div className="text-xs text-emerald-600 font-medium flex items-center h-8">
                    <Check className="w-4 h-4 mr-1" /> {item.completedVisitId === currentVisitId ? 'Completed Today' : 'Completed'}

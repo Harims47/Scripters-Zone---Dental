@@ -199,8 +199,8 @@ export const assignDoctor = async (req: Request, res: Response, next: NextFuncti
         throw new Error('Queue entry not found');
       }
 
-      if (queueEntry.status !== 'Waiting') {
-        throw new Error('Patient is not waiting');
+      if (queueEntry.status !== 'Waiting' && queueEntry.status !== 'In Progress' && queueEntry.status !== 'With Doctor' && queueEntry.status !== 'Called') {
+        throw new Error('Patient is not eligible for assignment');
       }
 
       // Check if doctor is available
@@ -225,7 +225,7 @@ export const assignDoctor = async (req: Request, res: Response, next: NextFuncti
         where: { id },
         data: {
           assignedDoctorId: doctorId,
-          status: 'In Progress'
+          status: queueEntry.status === 'Waiting' ? 'In Progress' : 'Transferred'
         },
         include: { visit: true }
       });

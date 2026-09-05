@@ -138,7 +138,7 @@ export function StaffPage() {
     try {
       await api.put(`/api/staff/${id}/attendance`, { attendance });
       toast.success("Attendance updated");
-      fetchData();
+      await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to update attendance");

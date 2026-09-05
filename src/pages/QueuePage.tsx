@@ -25,7 +25,7 @@ type QueueRow = {
 }
 
 export function QueuePage() {
-  const { queue, patients, visits } = useClinicContext()
+  const { queue, patients, visits, consultations } = useClinicContext()
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
@@ -114,8 +114,9 @@ export function QueuePage() {
         const item = row.original;
         let actionButton = null;
         if (canManageClinical) {
-          if (item.status === 'Called' || item.status === 'With Doctor' || item.status === 'Waiting' || item.status === 'In Progress') {
-            const isResuming = item.status === 'With Doctor' || item.status === 'In Progress';
+          if (item.status === 'Called' || item.status === 'With Doctor' || item.status === 'Waiting' || item.status === 'In Progress' || item.status === 'Transferred') {
+            const hasConsultation = consultations.some(c => c.visitId === item.visitId);
+            const isResuming = item.status === 'With Doctor' || item.status === 'Transferred' || hasConsultation;
             actionButton = (
               <Button size="sm" variant="default" className="h-9 bg-indigo-600 hover:bg-indigo-700 shadow-sm text-white" onClick={() => handleAction(item.id, 'Start')}>
                 <PlayCircle className="mr-2 h-4 w-4" /> {isResuming ? 'Resume Consulting' : 'Start Consulting'}
@@ -132,6 +133,11 @@ export function QueuePage() {
 
         return (
           <div className="flex items-center gap-2">
+            {item.status === 'Transferred' && (
+              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800">
+                Transferred
+              </span>
+            )}
             {actionButton ? actionButton : <span className="text-sm text-slate-500 italic">Not available</span>}
           </div>
         );

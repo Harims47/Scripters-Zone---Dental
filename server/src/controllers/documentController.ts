@@ -31,15 +31,18 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
     const prescriptionData = {
       clinicName: 'DentalCore Dental Clinic',
       patientName: visit.patient.name,
+      patientAge: visit.patient.age || '',
+      patientGender: visit.patient.gender || '',
       patientId: visit.patient.id,
       patientPhone: visit.patient.phone,
-      visitDate: visit.createdAt.toLocaleDateString(),
+      visitDate: visit.createdAt.toLocaleDateString('en-IN'),
       visitId: visit.id,
       doctorName: staff ? staff.name : 'Unknown',
       items: visit.prescription.items.map((item: any) => ({
         medicineName: item.medicine.name,
         quantity: item.quantity,
         dosage: item.dosage || undefined,
+        frequency: item.frequency || undefined,
         duration: item.duration || undefined,
         instructions: item.instructions || undefined
       }))
@@ -64,7 +67,7 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       where: { id: visitId },
       include: {
         patient: true,
-        payment: true,
+        payments: true,
         consultation: true,
         dispensing: {
           include: {
@@ -89,7 +92,9 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       if (doctorStaff) doctorName = doctorStaff.name;
     }
 
-    if (!visit.payment || (visit.payment.status !== 'Paid' && visit.payment.status !== 'Completed')) {
+    const payment = visit.payments && visit.payments.length > 0 ? visit.payments[visit.payments.length - 1] : null;
+
+    if (!payment || (payment.status !== 'Paid' && payment.status !== 'Completed')) {
       return res.status(400).json({ error: 'Payment is not completed. Cannot generate receipt.' });
     }
 
@@ -102,21 +107,21 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       );
     }
 
-    const consultationFee = Math.max(0, visit.payment.amount - medicineCost);
+    const consultationFee = Math.max(0, payment.amount - medicineCost);
 
     const receiptData = {
       clinicName: 'DentalCore Dental Clinic',
       patientName: visit.patient.name,
       patientPhone: visit.patient.phone,
       visitDate: visit.createdAt.toLocaleDateString(),
-      doctorName: visit.consultation?.doctor?.name || 'Doctor',
+      doctorName: doctorName,
       consultationFee,
       medicineCost,
-      totalAmount: visit.payment.amount,
-      amountPaid: visit.payment.amount,
-      paymentMethod: visit.payment.method,
-      paymentDate: new Date(visit.payment.date).toLocaleDateString(),
-      paymentStatus: visit.payment.status
+      totalAmount: payment.amount,
+      amountPaid: payment.amount,
+      paymentMethod: payment.method,
+      paymentDate: new Date(payment.date).toLocaleDateString(),
+      paymentStatus: payment.status
     };
 
     const pdfBuffer = await generateReceiptPDF(receiptData as any);

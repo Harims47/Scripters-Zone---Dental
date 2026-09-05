@@ -47,9 +47,17 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
   const filteredNav = navItems.filter(item => {
     if (!currentUser) return false
     
-    // Phase 9: Hide modules that are merged into Reception Desk for Receptionist & Head Doctor
-    if (currentUser.role === 'Receptionist' || currentUser.role === 'Head Doctor') {
+    // Phase 9: Hide modules that are merged into Reception Desk
+    if (currentUser.role === 'Receptionist') {
       const hiddenForMerged = ['/patients', '/appointments', '/queue', '/billing']
+      if (hiddenForMerged.includes(item.href)) {
+        return false
+      }
+    }
+    
+    // Head Doctor uses Reception Desk for Billing/Appointments, but needs Queue and Patients for clinical work
+    if (currentUser.role === 'Head Doctor') {
+      const hiddenForMerged = ['/appointments', '/billing']
       if (hiddenForMerged.includes(item.href)) {
         return false
       }

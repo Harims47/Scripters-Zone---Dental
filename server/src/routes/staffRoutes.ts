@@ -14,7 +14,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/export', requireRole('Head Doctor', 'Receptionist'), exportStaff);
-router.get('/', requireRole('Head Doctor', 'Receptionist'), getStaff);
+router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getStaff);
 router.post('/', requireRole('Head Doctor'), createStaff);
 router.put('/:id', requireRole('Head Doctor'), updateStaff);
 router.put('/:id/status', requireRole('Head Doctor'), updateStaffStatus);

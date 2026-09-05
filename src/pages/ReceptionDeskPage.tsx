@@ -110,6 +110,7 @@ export function ReceptionDeskPage() {
       let stage = 'Waiting';
       if (q.status === 'Waiting') stage = 'Waiting';
       else if (q.status === 'In Progress' || q.status === 'With Doctor' || q.status === 'Called') stage = 'With Doctor';
+      else if (q.status === 'Transferred') stage = 'Transferred';
       else if (q.status === 'Completed' && v?.status !== 'COMPLETED') stage = 'Ready at Reception';
       else if (q.status === 'Dispensing' || q.status === 'Payment' || q.status === 'Ready at Reception') stage = 'Ready at Reception';
       else stage = q.status; // fallback to raw status instead of incorrectly showing Waiting
@@ -277,6 +278,7 @@ export function ReceptionDeskPage() {
         let badge = <Badge variant="outline" className="whitespace-nowrap">{s}</Badge>;
         if (s === 'Waiting') badge = <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 whitespace-nowrap">🟡 Waiting</Badge>;
         else if (s === 'With Doctor') badge = <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 whitespace-nowrap">🔵 With Doctor</Badge>;
+        else if (s === 'Transferred') badge = <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 whitespace-nowrap">🔄 Transferred</Badge>;
         else if (s === 'Ready at Reception') badge = <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
         else if (s === 'Completed') badge = <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
         else if (s === 'Cancelled') badge = <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
@@ -1296,13 +1298,8 @@ export function ReceptionDeskPage() {
       <Sheet open={!!processVisitId} onOpenChange={open => !open && setProcessVisitId(null)}>
         <SheetContent side="right" className="w-[400px] sm:w-[600px] p-0 flex flex-col bg-slate-50 h-full">
           <SheetTitle className="sr-only">Checkout & Billing</SheetTitle>
-          <div className="h-20 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
+          <div className="h-16 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
             <h2 className="text-lg font-semibold text-slate-900">Checkout & Billing</h2>
-            <div className="text-sm text-slate-500 flex gap-2">
-              <span>{activeProcessPatient?.name}</span>
-              <span>•</span>
-              <span>{activeProcessDoctor?.name}</span>
-            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -1327,17 +1324,47 @@ export function ReceptionDeskPage() {
               return (
                 <>
                   <DrawerSection title="Visit Details">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3 text-sm mb-2">
-                      <div>
-                        <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Reason for Visit</span>
-                        <span className="text-slate-900 font-medium">{activeConsultation?.reasonForVisit || 'Not specified'}</span>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4 text-sm mb-2">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Reason for Visit</span>
+                          <span className="text-slate-900 font-medium">{activeConsultation?.reasonForVisit || 'Not specified'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Fees</span>
+                          <span className="text-slate-900 font-medium leading-relaxed">
+                            Consulting: ₹{activeConsultation?.consultationFee || 0} <br/>
+                            Treatment: ₹{activeProcessVisit?.treatmentFee || 0}
+                          </span>
+                        </div>
                       </div>
+                      
                       {activeConsultation?.clinicalNotes && (
                         <div>
                           <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Clinical Notes</span>
                           <span className="text-slate-700 whitespace-pre-wrap">{activeConsultation.clinicalNotes}</span>
                         </div>
                       )}
+                      
+                      {(() => {
+                        const activePrescription = prescriptions.find(p => p.visitId === processVisitId);
+                        if (!activePrescription || activePrescription.items.length === 0) return null;
+                        return (
+                          <div className="pt-3 border-t border-slate-100">
+                            <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-2">Prescribed Medicines</span>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {activePrescription.items.map(item => {
+                                const med = medicines.find(m => m.id === item.medicineId);
+                                return (
+                                  <li key={item.id} className="text-slate-700">
+                                    <span className="font-medium">{med?.name || 'Unknown Medicine'}</span> — {item.quantity} units {item.dosage ? `(${item.dosage})` : ''}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </DrawerSection>
 
@@ -1508,11 +1535,7 @@ export function ReceptionDeskPage() {
                           <span className="font-medium">Workflow Completed</span>
                         </div>
                         <div className="flex gap-3">
-                          <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('prescription')}>
-                            <FileText className="w-4 h-4 mr-2" />
-                            Print Prescription
-                          </Button>
-                          <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('receipt')}>
+                          <Button variant="outline" className="w-full" onClick={() => handlePrintDocument('receipt')}>
                             <Receipt className="w-4 h-4 mr-2" />
                             Print Receipt
                           </Button>

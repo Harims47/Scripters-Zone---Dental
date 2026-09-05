@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, FileText, Pill, Plus, Minus, Trash2, GripVertical } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Search, Info, Edit, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 
@@ -18,7 +18,7 @@ import { MEDICINE_CATEGORIES } from '../lib/medicine-categories'
 import type { Medicine } from '../lib/mock-data'
 
 import { useClinicContext } from '../context/ClinicContext'
-import { api } from '../lib/api'
+import { api, API_BASE_URL } from '../lib/api'
 import { cn } from '../lib/utils'
 
 // ── Inline prescription sub-components (avoids Dialog portal DnD issues) ──
@@ -205,7 +205,7 @@ export function DoctorWorkspacePage() {
   const visitId = searchParams.get('visitId')
   const navigate = useNavigate()
 
-  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription } = useClinicContext()
+  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription, queue, staff, assignDoctor } = useClinicContext()
 
   // Canonical Entities
   const visit = visits.find(v => v.id === visitId)
@@ -217,6 +217,8 @@ export function DoctorWorkspacePage() {
   const [consultationModalOpen, setConsultationModalOpen] = useState(false)
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
   const [completeModalOpen, setCompleteModalOpen] = useState(false)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [transferDoctorId, setTransferDoctorId] = useState<string>('')
 
   // Consultation state
   const [reason, setReason] = useState(visit?.reasonForVisit || '')
@@ -272,6 +274,22 @@ export function DoctorWorkspacePage() {
       setActivePrescription([])
     }
   }, [prescription, medicines])
+
+  const handlePrintPrescription = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/documents/prescription/${visitId}`, {
+        method: 'GET',
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to generate prescription');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const rxSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -349,6 +367,28 @@ export function DoctorWorkspacePage() {
     }
   }
 
+  const handleTransfer = async () => {
+    const queueEntry = queue.find(q => q.visitId === visitId);
+    if (!queueEntry) {
+      alert("Queue entry not found for this visit");
+      return;
+    }
+    if (!transferDoctorId) return;
+
+    try {
+      const result = await assignDoctor(queueEntry.id, transferDoctorId);
+      if (result.success) {
+        setTransferModalOpen(false);
+        navigate('/queue');
+      } else {
+        alert('Failed to transfer patient: ' + result.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to transfer patient');
+    }
+  }
+
   // --- Prescription Helpers ---
   const filteredMedicines = medicines.filter(med => {
     const matchesSearch = med.name.toLowerCase().includes(medSearch.toLowerCase()) ||
@@ -393,11 +433,22 @@ export function DoctorWorkspacePage() {
   return (
     <div>
       <div className="max-w-5xl mx-auto space-y-6 pb-24 pt-4">
-        {/* Header Back */}
-        <div className="mb-2">
+        {/* Header Back & Action Buttons */}
+        <div className="mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <Button variant="ghost" onClick={() => navigate('/queue')} className="text-slate-500 hover:text-slate-900 -ml-3 h-8">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Queue
           </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
+              <Plus className="mr-2 h-4 w-4 text-emerald-600" /> Treatment Plan
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
+              <FileText className="mr-2 h-4 w-4 text-blue-600" /> Consultation
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
+              <Pill className="mr-2 h-4 w-4 text-indigo-600" /> Prescription
+            </Button>
+          </div>
         </div>
 
         {/* Patient Profile Header */}
@@ -428,26 +479,15 @@ export function DoctorWorkspacePage() {
 
         {/* Main Workspace Card */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/50">
             <h2 className="font-bold text-slate-800 uppercase tracking-wider text-xs">Current Visit Workspace</h2>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-9 shadow-sm bg-white">
-                <Plus className="mr-2 h-4 w-4 text-emerald-600" /> Treatment Plan
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-9 shadow-sm bg-white">
-                <FileText className="mr-2 h-4 w-4 text-blue-600" /> Consultation
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-9 shadow-sm bg-white">
-                <Pill className="mr-2 h-4 w-4 text-indigo-600" /> Prescription
-              </Button>
-            </div>
           </div>
 
-          <div className="flex-1 p-6 space-y-8 min-h-[400px]">
+          <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[400px] content-start">
 
             {/* Render Saved Sections */}
             {treatmentPlan && treatmentPlan.items.length > 0 && (
-              <div className="space-y-4">
+              <div className="md:col-span-6 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" /> Treatment Plan
@@ -470,7 +510,7 @@ export function DoctorWorkspacePage() {
             )}
 
             {consultation && (
-              <div className="space-y-4">
+              <div className="md:col-span-6 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-blue-500" /> Consultation
@@ -497,14 +537,19 @@ export function DoctorWorkspacePage() {
             )}
 
             {prescription && prescription.items.length > 0 && (
-              <div className="space-y-4">
+              <div className="md:col-span-12 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-indigo-500" /> Prescription
                   </h3>
-                  <Button variant="ghost" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-8 px-2 text-slate-500 hover:text-slate-900">
-                    <Edit className="h-4 w-4 mr-2" /> Edit
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-8 px-2 text-slate-500 hover:text-slate-900">
+                      <Edit className="h-4 w-4 mr-2" /> Edit
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="h-8 px-3 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
+                      <Printer className="h-4 w-4 mr-1.5" /> Print
+                    </Button>
+                  </div>
                 </div>
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100">
                   <table className="w-full text-sm text-left">
@@ -546,7 +591,10 @@ export function DoctorWorkspacePage() {
 
           </div>
 
-          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-4 justify-end">
+            <Button size="lg" variant="outline" className="text-slate-700 font-medium bg-white" onClick={() => setTransferModalOpen(true)}>
+              Transfer Patient
+            </Button>
             <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium" onClick={() => setCompleteModalOpen(true)}>
               Complete Consultation
             </Button>
@@ -577,9 +625,12 @@ export function DoctorWorkspacePage() {
               <DialogTitle>Consultation Details</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 py-4">
-              <div className="space-y-3">
-                <Label htmlFor="reasonForVisit" className="text-sm font-semibold text-slate-700">Reason for Visit</Label>
-                <Input id="reasonForVisit" value={reason} onChange={e => setReason(e.target.value)} />
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-slate-700">Reason for Visit</Label>
+                <div className="px-3 py-2 rounded-md bg-slate-50 border border-slate-200 text-sm text-slate-700">
+                  {reason || 'Not specified'}
+                </div>
+                <p className="text-xs text-slate-400">Captured at registration — cannot be changed here.</p>
               </div>
               <div className="space-y-3">
                 <Label htmlFor="clinicalNotes" className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
@@ -683,18 +734,51 @@ export function DoctorWorkspacePage() {
           </DialogContent>
         </Dialog>
 
-        {/* Complete Consultation Modal */}
+        {/* Complete Modal */}
         <Dialog open={completeModalOpen} onOpenChange={setCompleteModalOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Complete Consultation?</DialogTitle>
-              <DialogDescription>
-                This will complete the doctor's consultation and send the patient back to Reception.
-              </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="mt-4">
+            <div className="py-4">
+              <p className="text-sm text-slate-500">
+                This will complete the doctor's consultation and send the patient back to Reception.
+              </p>
+            </div>
+            <DialogFooter>
               <Button variant="outline" onClick={() => setCompleteModalOpen(false)}>Cancel</Button>
               <Button onClick={handleComplete} className="bg-indigo-600 hover:bg-indigo-700 text-white">Complete Consultation</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Transfer Modal */}
+        <Dialog open={transferModalOpen} onOpenChange={setTransferModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Transfer Patient</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-slate-500">
+                Select another doctor to transfer this patient to. They will be placed in the selected doctor's queue.
+              </p>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Select Doctor</label>
+                <Select value={transferDoctorId} onValueChange={setTransferDoctorId}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Choose a doctor" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    {staff.filter(s => ['Head Doctor', 'Duty Doctor'].includes(s.role) && s.status === 'Active').map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name} ({d.role})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setTransferModalOpen(false)}>Cancel</Button>
+              <Button onClick={handleTransfer} disabled={!transferDoctorId}>Transfer Patient</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
