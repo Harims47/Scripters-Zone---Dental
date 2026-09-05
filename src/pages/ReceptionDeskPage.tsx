@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle } from 'lucide-react';
+import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
@@ -11,6 +11,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
 import { DrawerSection, DrawerFooterActions } from '../components/ui/drawer-patterns';
+import { CameraCapture } from '../components/ui/camera-capture';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'react-hot-toast';
 import type { QueueEntry, Visit } from '../types/domain';
@@ -27,7 +28,8 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit } = useClinicContext();
+  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit } = useClinicContext();
+
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
@@ -35,10 +37,13 @@ export function ReceptionDeskPage() {
   // Registration Drawer
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isEditPatientOpen, setIsEditPatientOpen] = useState(false);
+  const [editDrawerMode, setEditDrawerMode] = useState<'edit' | 'view'>('edit');
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
 
   const [regType, setRegType] = useState<'walk-in' | 'appointment'>('walk-in');
-  const [regData, setRegData] = useState({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+
+  const [regData, setRegData] = useState({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
   const [apptData, setApptData] = useState({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
 
   const [isNewPatient, setIsNewPatient] = useState(false);
@@ -47,6 +52,9 @@ export function ReceptionDeskPage() {
 
   // Payment States
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
+  const [paymentReason, setPaymentReason] = useState<string>('');
+  const [paymentReasonOther, setPaymentReasonOther] = useState<string>('');
+  const [isFinalPayment, setIsFinalPayment] = useState<boolean>(false);
 
   // Assignment Modal
   const [assignQueueId, setAssignQueueId] = useState<string | null>(null);
@@ -77,11 +85,15 @@ export function ReceptionDeskPage() {
   }, [staff]);
 
   const doctorAvailability = useMemo(() => {
-    const availability: Record<string, 'Available' | 'With Patient'> = {};
+    const availability: Record<string, 'Available' | 'With Patient' | 'Leave'> = {};
     doctors.forEach(doc => {
-      // A doctor is with a patient if they have ANY queue entry In Progress
-      const hasActive = queue.some(q => q.assignedDoctorId === doc.id && q.status === 'In Progress');
-      availability[doc.id] = hasActive ? 'With Patient' : 'Available';
+      if (doc.attendance === 'Leave') {
+        availability[doc.id] = 'Leave';
+      } else {
+        // A doctor is with a patient if they have ANY queue entry In Progress
+        const hasActive = queue.some(q => q.assignedDoctorId === doc.id && q.status === 'In Progress');
+        availability[doc.id] = hasActive ? 'With Patient' : 'Available';
+      }
     });
     return availability;
   }, [doctors, queue]);
@@ -196,77 +208,94 @@ export function ReceptionDeskPage() {
   const columns: ColumnDef<any>[] = [
     {
       accessorKey: 'token',
-      header: 'Token No.',
+      header: () => <div className="text-center font-semibold text-slate-600">Token No.</div>,
       cell: ({ row }) => (
-        <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">
-          #{row.original.token}
-        </span>
+        <div className="text-center">
+          <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">
+            #{row.original.token}
+          </span>
+        </div>
       )
     },
     {
       accessorKey: 'patientName',
-      header: 'Patient Name',
+      header: () => <div className="text-center font-semibold text-slate-600">Patient Name</div>,
       cell: ({ row }) => (
-        <div 
-          className="font-medium text-slate-900 truncate max-w-[150px]" 
-          title={row.original.patientName}
-        >
-          {row.original.patientName}
+        <div className="flex justify-center">
+          <div 
+            className="font-medium text-slate-900 truncate max-w-[150px] text-center" 
+            title={row.original.patientName}
+          >
+            {row.original.patientName}
+          </div>
         </div>
       )
     },
     {
       accessorKey: 'visitType',
-      header: 'Visit Type',
+      header: () => <div className="text-center font-semibold text-slate-600">Visit Type</div>,
       cell: ({ row }) => (
-        <Badge variant="outline" className={`whitespace-nowrap ${row.original.visitType === 'Appointment' ? 'text-indigo-600' : 'text-slate-600'}`}>
-          {row.original.visitType}
-        </Badge>
+        <div className="text-center">
+          <Badge variant="outline" className={`whitespace-nowrap ${row.original.visitType === 'Appointment' ? 'text-indigo-600' : 'text-slate-600'}`}>
+            {row.original.visitType}
+          </Badge>
+        </div>
       )
     },
     {
       accessorKey: 'doctor',
-      header: 'Doctor Name',
+      header: () => <div className="text-center font-semibold text-slate-600">Doctor Name</div>,
       cell: ({ row }) => (
-        <div 
-          className="text-slate-600 truncate max-w-[120px]" 
-          title={row.original.doctor === '-' ? '' : row.original.doctor}
-        >
-          {row.original.doctor === '-' ? '—' : row.original.doctor}
+        <div className="flex justify-center">
+          <div 
+            className="text-slate-600 truncate max-w-[120px] text-center" 
+            title={row.original.doctor === '-' ? '' : row.original.doctor}
+          >
+            {row.original.doctor === '-' ? '—' : row.original.doctor}
+          </div>
         </div>
       )
     },
     {
       accessorKey: 'paymentStatus',
-      header: 'Payment Status',
+      header: () => <div className="text-center font-semibold text-slate-600">Payment Status</div>,
       cell: ({ row }) => {
         const s = row.original.paymentStatus;
-        if (s === 'Paid') return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>;
-        if (s === 'Partial') return <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>;
-        if (s === 'Unpaid') return <Badge className="bg-rose-100 text-rose-800 border-rose-200">Unpaid</Badge>;
-        return <span className="text-slate-400">—</span>;
+        let badge = <span className="text-slate-400">—</span>;
+        if (s === 'Paid') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>;
+        else if (s === 'Partial') badge = <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>;
+        else if (s === 'Unpaid') badge = <Badge className="bg-rose-100 text-rose-800 border-rose-200">Unpaid</Badge>;
+        
+        return <div className="text-center">{badge}</div>;
       }
     },
     {
       accessorKey: 'stage',
-      header: 'Status',
+      header: () => <div className="text-center font-semibold text-slate-600">Status</div>,
       cell: ({ row }) => {
         const s = row.original.stage;
-        if (s === 'Waiting') return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 whitespace-nowrap">🟡 Waiting</Badge>;
-        if (s === 'With Doctor') return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 whitespace-nowrap">🔵 With Doctor</Badge>;
-        if (s === 'Ready at Reception') return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
-        if (s === 'Completed') return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
-        if (s === 'Cancelled') return <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
-        return <Badge variant="outline" className="whitespace-nowrap">{s}</Badge>;
+        let badge = <Badge variant="outline" className="whitespace-nowrap">{s}</Badge>;
+        if (s === 'Waiting') badge = <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 whitespace-nowrap">🟡 Waiting</Badge>;
+        else if (s === 'With Doctor') badge = <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 whitespace-nowrap">🔵 With Doctor</Badge>;
+        else if (s === 'Ready at Reception') badge = <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
+        else if (s === 'Completed') badge = <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
+        else if (s === 'Cancelled') badge = <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
+        
+        return <div className="text-center">{badge}</div>;
       }
     },
     {
       id: 'actions',
-      header: 'Action',
+      header: () => <div className="text-center font-semibold text-slate-600">Action</div>,
       cell: ({ row }) => {
         const stage = row.original.stage;
+        const isCancelledOrCompleted = stage === 'Cancelled' || stage === 'Completed';
+        const isWaiting = stage === 'Waiting';
+        const isReadyForReception = stage === 'Ready at Reception';
+
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2">
+            {/* Edit Patient */}
             <Button
               size="icon"
               variant="ghost"
@@ -276,14 +305,16 @@ export function ReceptionDeskPage() {
                 e.preventDefault(); e.stopPropagation();
                 const patient = patients.find(p => p.id === row.original.patientId);
                 if (patient) {
-                  setRegData({ 
-                    name: patient.name, 
-                    phone: patient.phone, 
-                    age: patient.age.toString(), 
-                    gender: patient.gender, 
-                    reasonForVisit: row.original.rawVisit?.reasonForVisit || '' 
-                  });
                   setEditingPatientId(patient.id);
+                  setRegData({
+                    name: patient.name,
+                    phone: patient.phone,
+                    age: patient.age.toString(),
+                    gender: patient.gender,
+                    reasonForVisit: row.original.reasonForVisit || 'Routine Checkup',
+                    photoUrl: patient.photoUrl || ''
+                  });
+                  setEditDrawerMode('edit');
                   setIsEditPatientOpen(true);
                 }
               }}
@@ -291,51 +322,77 @@ export function ReceptionDeskPage() {
               <Pencil className="w-4 h-4" />
             </Button>
 
+            {/* View Patient Details */}
             <Button
               size="icon"
               variant="ghost"
               className="w-8 h-8 text-blue-600 hover:bg-blue-50"
-              title="View History"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setHistoryPatientId(row.original.patientId); }}
+              title="View Patient Details"
+              onClick={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                const patient = patients.find(p => p.id === row.original.patientId);
+                if (patient) {
+                  setEditingPatientId(patient.id);
+                  setRegData({
+                    name: patient.name,
+                    phone: patient.phone,
+                    age: patient.age.toString(),
+                    gender: patient.gender,
+                    reasonForVisit: row.original.reasonForVisit || 'Routine Checkup',
+                    photoUrl: patient.photoUrl || ''
+                  });
+                  setEditDrawerMode('view');
+                  setIsEditPatientOpen(true);
+                }
+              }}
             >
               <Eye className="w-4 h-4" />
             </Button>
 
-            {stage !== 'Cancelled' && stage !== 'Completed' && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="w-8 h-8 text-rose-600 hover:bg-rose-50"
-                title="Cancel Visit"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCancelVisit(row.original.visitId); }}
-              >
-                <XCircle className="w-4 h-4" />
-              </Button>
-            )}
+            {/* Send to Doctor (Share) */}
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={!isWaiting}
+              className={`w-8 h-8 ${isWaiting ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
+              title={isWaiting ? "Send to Doctor" : "Cannot send to doctor at this stage"}
+              onClick={(e) => { 
+                e.preventDefault(); e.stopPropagation(); 
+                if (isWaiting) setAssignQueueId(row.original.id); 
+              }}
+            >
+              <Send className="w-4 h-4" />
+            </Button>
 
-            {stage === 'Waiting' && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="w-8 h-8 text-indigo-600 hover:bg-indigo-50"
-                title="Send to Doctor"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setAssignQueueId(row.original.id); }}
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-            )}
+            {/* Process Visit */}
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={!isReadyForReception}
+              className={`w-8 h-8 ${isReadyForReception ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
+              title={isReadyForReception ? "Process Visit" : "Not ready for processing"}
+              onClick={(e) => { 
+                e.preventDefault(); e.stopPropagation(); 
+                if (isReadyForReception) handleOpenProcess(row.original); 
+              }}
+            >
+              <CreditCard className="w-4 h-4" />
+            </Button>
 
-            {stage === 'Ready at Reception' && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="w-8 h-8 text-emerald-600 hover:bg-emerald-50"
-                title="Process Visit"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenProcess(row.original); }}
-              >
-                <CreditCard className="w-4 h-4" />
-              </Button>
-            )}
+            {/* Cancel Visit */}
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={isCancelledOrCompleted}
+              className={`w-8 h-8 ${!isCancelledOrCompleted ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
+              title={!isCancelledOrCompleted ? "Cancel Visit" : "Cannot cancel completed or cancelled visits"}
+              onClick={(e) => { 
+                e.preventDefault(); e.stopPropagation(); 
+                if (!isCancelledOrCompleted) handleCancelVisit(row.original.visitId); 
+              }}
+            >
+              <XCircle className="w-4 h-4" />
+            </Button>
           </div>
         );
       }
@@ -397,7 +454,7 @@ export function ReceptionDeskPage() {
           age: parseInt(regData.age) || 30,
           gender: regData.gender as any,
           status: 'Active',
-          photoUrl: ''
+          photoUrl: (regData as any).photoUrl || ''
         });
         finalPatientId = newPatient.id;
       } catch (err: any) {
@@ -447,7 +504,7 @@ export function ReceptionDeskPage() {
         await startVisit(finalPatientId, undefined, false, regData.reasonForVisit || 'General Consultation');
         showSuccessModal('Registration Complete', isNewPatient ? "Patient registered and added to Waiting list" : "Walk-in added to Waiting list");
         setIsRegisterOpen(false);
-        setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+        setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
         setSelectedExistingPatientId('');
       } else {
         const appointment = await addAppointment({
@@ -468,7 +525,7 @@ export function ReceptionDeskPage() {
         }
 
         setIsRegisterOpen(false);
-        setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+        setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
         setSelectedExistingPatientId('');
       }
     } catch (err: any) {
@@ -586,11 +643,36 @@ export function ReceptionDeskPage() {
       return;
     }
 
-    const result = await recordPayment(processVisitId, amt, activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card');
+    const isPartial = amt < balance;
+    let finalNotes: string | undefined;
+
+    if (isPartial && isFinalPayment) {
+      if (!paymentReason) {
+        toast.error('A reason is required when leaving a balance.');
+        return;
+      }
+      if (paymentReason === 'Other') {
+        if (!paymentReasonOther.trim()) {
+          toast.error('Please specify the reason.');
+          return;
+        }
+        finalNotes = paymentReasonOther.trim();
+      } else {
+        finalNotes = paymentReason;
+      }
+    }
+
+    // recordPayment expects 4 arguments initially. Wait, the `recordPayment` is from context. We need to update context too!
+    // But for now let's check what recordPayment takes. I will view ClinicContext first if needed.
+    // Instead of modifying context, I can just use API directly, or update context next.
+    const result = await recordPayment(processVisitId, amt, activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', finalNotes, isFinalPayment);
     if (result.success) {
       toast.success('Payment completed successfully');
       setPaymentAmount(''); // Reset for next partial payment if needed
+      setPaymentReason('');
+      setPaymentReasonOther('');
       setActiveMethod(null);
+      setIsFinalPayment(false);
     } else {
       toast.error(result.error || 'Failed to record payment');
     }
@@ -628,7 +710,7 @@ export function ReceptionDeskPage() {
         </div>
         <Button 
           onClick={() => {
-            setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+            setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
             setIsNewPatient(false);
             setSelectedExistingPatientId('');
             setPatientSearch('');
@@ -651,34 +733,46 @@ export function ReceptionDeskPage() {
               Doctors
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {doctors.map(doc => (
-                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
-                  <div>
-                    <h3 className="font-medium text-slate-900">{doc.name}</h3>
-                    <p className="text-xs text-slate-500">{doc.role}</p>
+              {doctors.map(doc => {
+                const avail = doctorAvailability[doc.id];
+                const isLeave = avail === 'Leave';
+                const isAvailable = avail === 'Available';
+                
+                const bgClass = isAvailable ? 'bg-emerald-600 border-emerald-700' : isLeave ? 'bg-slate-200 border-slate-300' : 'bg-rose-600 border-rose-700';
+                const textClass = isLeave ? 'text-slate-700' : 'text-white';
+                const textSubClass = isLeave ? 'text-slate-600' : 'text-white/90';
+
+                return (
+                  <div key={doc.id} className={`rounded-xl p-4 flex flex-col justify-between transition-all border shadow-md hover:shadow-lg ${bgClass} ${isLeave ? 'opacity-80' : ''} ${isAvailable ? 'animate-pulse' : ''}`}>
+                    <div className="flex items-start justify-between mb-3 gap-2">
+                      <div>
+                        <h3 className={`font-bold text-lg leading-tight ${textClass}`}>{doc.name}</h3>
+                        <p className={`font-bold text-sm ${textSubClass}`}>{doc.role}</p>
+                        <p className={`font-bold text-sm ${textSubClass}`}>Room {doc.roomNumber || '—'}</p>
+                      </div>
+                      <Badge variant="outline"
+                        className={`shrink-0 shadow-sm ${isAvailable ? 'bg-white/20 text-white border-white/20' : isLeave ? 'bg-slate-300 text-slate-700 border-slate-400' : 'bg-white/20 text-white border-white/20'}`}>
+                        {isAvailable ? (
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Available
+                          </span>
+                        ) : isLeave ? (
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <XCircle className="w-3.5 h-3.5" />
+                            Leave
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <Activity className="w-3.5 h-3.5" />
+                            With Patient
+                          </span>
+                        )}
+                      </Badge>
+                    </div>
                   </div>
-                  <Badge variant={doctorAvailability[doc.id] === 'Available' ? 'outline' : 'secondary'}
-                    className={doctorAvailability[doc.id] === 'Available' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}>
-                    {doctorAvailability[doc.id] === 'Available' ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                        </span>
-                        Available
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                        </span>
-                        With Patient
-                      </span>
-                    )}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
@@ -714,12 +808,17 @@ export function ReceptionDeskPage() {
           </DialogHeader>
           <div className="space-y-3 py-4">
             {doctors.map(doc => {
-              const isAvail = doctorAvailability[doc.id] === 'Available';
+              const avail = doctorAvailability[doc.id];
+              const isAvail = avail === 'Available';
+              const isLeave = avail === 'Leave';
+              
               return (
-                <div key={doc.id} className={`flex items-center justify-between p-3 rounded-lg border ${isAvail ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                <div key={doc.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${isAvail ? 'border-emerald-200 bg-emerald-50' : isLeave ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-red-200 bg-red-50 opacity-70'}`}>
                   <div>
-                    <h4 className="font-medium text-slate-900">{doc.name}</h4>
-                    <span className="text-xs text-slate-500">{doc.role}</span>
+                    <h4 className={`font-medium ${isAvail ? 'text-emerald-900' : isLeave ? 'text-slate-600' : 'text-red-900'}`}>
+                      {doc.name} {isLeave && <span className="text-xs font-normal ml-2">(On Leave)</span>}
+                    </h4>
+                    <span className={`text-xs ${isAvail ? 'text-emerald-600' : isLeave ? 'text-slate-500' : 'text-red-600'}`}>Room {doc.roomNumber || '—'}</span>
                   </div>
                   <Button
                     size="sm"
@@ -758,7 +857,7 @@ export function ReceptionDeskPage() {
         if (!open) {
           setRegistrationSuccessData(null);
           setIsRegisterOpen(false);
-          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
           setSelectedExistingPatientId('');
         }
       }}>
@@ -771,7 +870,7 @@ export function ReceptionDeskPage() {
             <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => {
               setRegistrationSuccessData(null);
               setIsRegisterOpen(false);
-              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
               setSelectedExistingPatientId('');
             }}>OK</Button>
           </DialogFooter>
@@ -796,7 +895,7 @@ export function ReceptionDeskPage() {
       <Sheet open={isRegisterOpen} onOpenChange={(open) => {
         setIsRegisterOpen(open);
         if (!open) {
-          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
           setApptData({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
           setIsNewPatient(false);
           setSelectedExistingPatientId('');
@@ -918,6 +1017,42 @@ export function ReceptionDeskPage() {
                     </div>
                   ) : (
                     <div className="space-y-4 mt-4 border-t border-slate-100 pt-4">
+                      {/* Photo Capture */}
+                      <div className="mt-2 mb-4">
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Patient Photo</label>
+                        
+                        {isCameraOpen ? (
+                          <CameraCapture 
+                            onCapture={(imageSrc) => {
+                              setRegData({...regData, photoUrl: imageSrc});
+                              setIsCameraOpen(false);
+                            }}
+                            onCancel={() => setIsCameraOpen(false)}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                            {(regData as any).photoUrl ? (
+                              <div className="relative flex flex-col items-center">
+                                <img src={(regData as any).photoUrl} alt="Patient" className="w-20 h-20 rounded-md object-cover border-4 border-white shadow-sm" />
+                                <button 
+                                  onClick={() => setRegData({...regData, photoUrl: ''})}
+                                  className="absolute top-0 right-0 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="cursor-pointer flex flex-col items-center gap-2" onClick={() => setIsCameraOpen(true)}>
+                                <div className="w-12 h-12 bg-slate-200 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-300 transition-colors shadow-inner">
+                                  <Camera className="w-5 h-5" />
+                                </div>
+                                <span className="text-xs font-medium text-slate-600">Open Camera</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name *</label>
                         <Input placeholder="Enter patient name" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
@@ -944,6 +1079,7 @@ export function ReceptionDeskPage() {
                           </select>
                         </div>
                       </div>
+
                     </div>
                   )}
 
@@ -1008,7 +1144,7 @@ export function ReceptionDeskPage() {
           <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex items-center justify-end gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
             <Button variant="outline" onClick={() => {
               setIsRegisterOpen(false);
-              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' });
+              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
               setSelectedExistingPatientId('');
               setPatientSearch('');
             }}>
@@ -1021,14 +1157,14 @@ export function ReceptionDeskPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Edit Patient Sheet */}
+      {/* Edit/View Patient Sheet */}
       <Sheet open={isEditPatientOpen} onOpenChange={setIsEditPatientOpen}>
         <SheetContent side="right" className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full">
-          <SheetTitle className="sr-only">Edit Patient Details</SheetTitle>
+          <SheetTitle className="sr-only">{editDrawerMode === 'view' ? 'View Patient Details' : 'Edit Patient Details'}</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Users className="w-5 h-5 text-teal-600" />
-              Edit Patient Details
+              {editDrawerMode === 'view' ? 'View Patient Details' : 'Edit Patient Details'}
             </h2>
           </div>
 
@@ -1036,23 +1172,67 @@ export function ReceptionDeskPage() {
             <div className="space-y-6">
               <DrawerSection title="Basic Details">
                 <div className="space-y-4">
+                  <div className="flex justify-center mb-6">
+                    {editDrawerMode === 'view' ? (
+                      (regData as any).photoUrl ? (
+                        <img src={(regData as any).photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
+                      ) : (
+                        <div className="w-24 h-24 rounded-md bg-slate-200 flex items-center justify-center text-slate-400 border-4 border-white shadow-sm">
+                          <Users className="w-10 h-10" />
+                        </div>
+                      )
+                    ) : (
+                      isCameraOpen ? (
+                        <CameraCapture 
+                          onCapture={(photoUrl) => {
+                            setRegData({...regData, photoUrl});
+                            setIsCameraOpen(false);
+                          }}
+                          onCancel={() => setIsCameraOpen(false)}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                          {(regData as any).photoUrl ? (
+                            <div className="relative flex flex-col items-center">
+                              <img src={(regData as any).photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
+                              <button 
+                                type="button"
+                                onClick={() => setRegData({...regData, photoUrl: undefined})}
+                                className="absolute top-0 right-0 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="cursor-pointer flex flex-col items-center gap-2" onClick={() => setIsCameraOpen(true)}>
+                              <div className="w-16 h-16 bg-slate-200 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-300 transition-colors shadow-inner">
+                                <Camera className="w-8 h-8" />
+                              </div>
+                              <span className="text-sm font-medium text-slate-600">Capture Photo</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    )}
+                  </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name *</label>
-                    <Input placeholder="e.g. John Doe" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
+                    <Input disabled={editDrawerMode === 'view'} placeholder="e.g. John Doe" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number *</label>
-                    <Input placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value })} />
+                    <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value })} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Age</label>
-                      <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value })} />
+                      <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value })} />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Gender</label>
                       <select
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+                        disabled={editDrawerMode === 'view'}
+                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         value={regData.gender}
                         onChange={e => setRegData({ ...regData, gender: e.target.value })}
                       >
@@ -1064,8 +1244,8 @@ export function ReceptionDeskPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
-                    <Select value={regData.reasonForVisit} onValueChange={(val) => setRegData({ ...regData, reasonForVisit: val })}>
-                      <SelectTrigger className="w-full bg-white border-slate-200">
+                    <Select disabled={editDrawerMode === 'view'} value={regData.reasonForVisit} onValueChange={(val) => setRegData({ ...regData, reasonForVisit: val })}>
+                      <SelectTrigger className="w-full bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
                         <SelectValue placeholder="Select Reason for Visit" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1085,17 +1265,28 @@ export function ReceptionDeskPage() {
 
           <div className="p-6 bg-white border-t border-slate-200 shrink-0">
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setIsEditPatientOpen(false)}>Cancel</Button>
-              <Button
-                className="flex-1 bg-teal-600 hover:bg-teal-700"
-                onClick={() => {
-                  toast.success('Patient details updated temporarily in demo!');
-                  setIsEditPatientOpen(false);
-                }}
-                disabled={!regData.name || !regData.phone}
-              >
-                Save Details
-              </Button>
+              <Button variant={editDrawerMode === 'view' ? 'default' : 'outline'} className="flex-1" onClick={() => setIsEditPatientOpen(false)}>{editDrawerMode === 'view' ? 'Close' : 'Cancel'}</Button>
+              {editDrawerMode === 'edit' && (
+                <Button
+                  className="flex-1 bg-teal-600 hover:bg-teal-700"
+                  onClick={async () => {
+                    if (editingPatientId && updatePatient) {
+                      await updatePatient(editingPatientId, {
+                        name: regData.name,
+                        phone: regData.phone,
+                        age: parseInt(regData.age as string) || 0,
+                        gender: regData.gender,
+                        photoUrl: (regData as any).photoUrl
+                      });
+                      toast.success('Patient details updated successfully!');
+                      setIsEditPatientOpen(false);
+                    }
+                  }}
+                  disabled={!regData.name || !regData.phone}
+                >
+                  Save Details
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>
@@ -1224,9 +1415,61 @@ export function ReceptionDeskPage() {
                             />
                           </div>
                           <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
+                          
+                          {paymentAmount && paymentAmount > 0 && paymentAmount < balance && (
+                            <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
+                                  checked={isFinalPayment}
+                                  onChange={(e) => setIsFinalPayment(e.target.checked)}
+                                />
+                                Patient is leaving a balance (Final Payment)
+                              </label>
+                            </div>
+                          )}
+                          
+                          {paymentAmount && paymentAmount > 0 && paymentAmount < balance && isFinalPayment && (
+                            <div className="mt-3 space-y-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                              <label className="text-sm font-medium text-amber-900 block">Reason for Partial Payment <span className="text-red-500">*</span></label>
+                              <Select value={paymentReason} onValueChange={setPaymentReason}>
+                                <SelectTrigger className="bg-white border-amber-200">
+                                  <SelectValue placeholder="Select reason..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Patient requested partial payment">Patient requested partial payment</SelectItem>
+                                  <SelectItem value="Will pay remaining amount later">Will pay remaining amount later</SelectItem>
+                                  <SelectItem value="Financial difficulty">Financial difficulty</SelectItem>
+                                  <SelectItem value="Insurance / reimbursement pending">Insurance / reimbursement pending</SelectItem>
+                                  <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              
+                              {paymentReason === 'Other' && (
+                                <Input
+                                  placeholder="Specify reason..."
+                                  value={paymentReasonOther}
+                                  onChange={(e) => setPaymentReasonOther(e.target.value)}
+                                  className="mt-2 bg-white border-amber-200"
+                                />
+                              )}
+                            </div>
+                          )}
                         </div>
 
-                        <Button onClick={handleMarkAsPaid} disabled={!activeMethod || !paymentAmount || paymentAmount <= 0 || paymentAmount > balance} className="w-full bg-teal-600 hover:bg-teal-700">
+                        <Button 
+                          onClick={handleMarkAsPaid} 
+                          disabled={
+                            !activeMethod || 
+                            !paymentAmount || 
+                            paymentAmount <= 0 || 
+                            paymentAmount > balance ||
+                            (paymentAmount < balance && isFinalPayment && !paymentReason) ||
+                            (paymentAmount < balance && isFinalPayment && paymentReason === 'Other' && !paymentReasonOther.trim())
+                          } 
+                          className="w-full bg-teal-600 hover:bg-teal-700 mt-4"
+                        >
                           Add Payment
                         </Button>
                       </div>
@@ -1301,25 +1544,16 @@ export function ReceptionDeskPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Patient Full History Dialog */}
+      {/* Patient Details Dialog */}
       <Dialog open={!!historyPatientId} onOpenChange={open => !open && setHistoryPatientId(null)}>
-        <DialogContent className="sm:max-w-[900px] h-[85vh] p-0 flex flex-col overflow-hidden bg-slate-50">
+        <DialogContent className="sm:max-w-[700px] h-[70vh] p-0 flex flex-col overflow-hidden bg-slate-50">
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-white shrink-0">
-            <DialogTitle>Full Patient Clinical History</DialogTitle>
+            <DialogTitle>Patient Details</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-6">
             {historyPatientId && (() => {
               const patient = patients.find(p => p.id === historyPatientId);
               if (!patient) return null;
-
-              const patientVisits = visits
-                .filter(v => v.patientId === historyPatientId)
-                .map(v => ({
-                  id: v.id,
-                  date: new Date(parseInt(v.id.substring(0, 8), 16) * 1000).toLocaleDateString(), // approximate from mongo ObjectId if date missing
-                  title: v.reasonForVisit || 'General Visit',
-                  status: v.status
-                }));
 
               return (
                 <div className="space-y-6">
@@ -1328,15 +1562,9 @@ export function ReceptionDeskPage() {
                     name={patient.name}
                     phone={patient.phone}
                     age={patient.age}
-                    status={patientVisits.some(v => v.status !== 'COMPLETED') ? 'In Progress' : 'Completed'}
-                    hideDetails={true}
-                  />
-                  <PatientVisitHistory
-                    visits={patientVisits}
-                    onView={(id) => {
-                      setHistoryPatientId(null);
-                      setViewVisitId(id);
-                    }}
+                    status={patient.status}
+                    hideDetails={false}
+                    photoUrl={patient.photoUrl}
                   />
                 </div>
               );

@@ -6,6 +6,8 @@ export interface Staff {
   phone: string;
   role: ClinicRole;
   status: 'Active' | 'Inactive';
+  attendance?: 'Present' | 'Leave';
+  roomNumber?: string;
 }
 
 export const DEMO_STAFF: Staff[] = [

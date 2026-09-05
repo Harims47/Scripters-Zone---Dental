@@ -65,7 +65,8 @@ export const exportStaff = async (req: Request, res: Response, next: NextFunctio
       name: s.name,
       role: s.role,
       phone: s.phone,
-      status: s.status
+      status: s.status,
+      attendance: s.attendance
     }));
 
     const columns: ExportColumn[] = [
@@ -100,7 +101,7 @@ export const exportStaff = async (req: Request, res: Response, next: NextFunctio
 
 export const createStaff = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, phone, role, status, username, password, hasAccess } = req.body;
+    const { name, phone, role, status, username, password, hasAccess, roomNumber } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
       const newStaff = await tx.staff.create({
@@ -108,7 +109,9 @@ export const createStaff = async (req: Request, res: Response, next: NextFunctio
           name,
           phone,
           role,
-          status: status || 'Active'
+          status: status || 'Active',
+          attendance: 'Present',
+          roomNumber
         }
       });
 
@@ -139,12 +142,12 @@ export const createStaff = async (req: Request, res: Response, next: NextFunctio
 export const updateStaff = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { name, phone, role } = req.body;
+    const { name, phone, role, roomNumber } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
       const updatedStaff = await tx.staff.update({
         where: { id },
-        data: { name, phone, role }
+        data: { name, phone, role, roomNumber }
       });
 
       // Update role of associated user if it exists
@@ -185,6 +188,22 @@ export const updateStaffStatus = async (req: Request, res: Response, next: NextF
     });
 
     return res.json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateStaffAttendance = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const { attendance } = req.body;
+
+    const updatedStaff = await prisma.staff.update({
+      where: { id },
+      data: { attendance }
+    });
+
+    return res.json({ data: updatedStaff });
   } catch (error) {
     next(error);
   }

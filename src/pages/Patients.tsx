@@ -16,6 +16,7 @@ import {
   ReadOnlyField
 } from '../components/ui/drawer-patterns';
 import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components';
+import { CameraCapture } from '../components/ui/camera-capture';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
@@ -207,9 +208,9 @@ export function PatientsPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
           {row.original.photoUrl ? (
-            <img src={row.original.photoUrl} alt={row.original.name} className="w-8 h-8 rounded-full object-cover shadow-sm border border-slate-200" />
+            <img src={row.original.photoUrl} alt={row.original.name} className="w-8 h-8 rounded-md object-cover shadow-sm border border-slate-200" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-100">
+            <div className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-100">
               {row.original.name.substring(0, 2).toUpperCase()}
             </div>
           )}
@@ -397,46 +398,40 @@ export function PatientsPage() {
                     <DrawerSection title="Basic Information">
                       <div className="space-y-6">
                         
-                        {/* Camera Capture Section */}
-                        {drawerMode === 'create' && (
-                          <div className="flex flex-col items-center justify-center space-y-3 p-6 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                            {newPatient.photoUrl ? (
-                              <div className="relative">
-                                <img src={newPatient.photoUrl} alt="Patient" className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-sm" />
-                                <button 
-                                  onClick={() => setNewPatient({...newPatient, photoUrl: ''})}
-                                  className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                                <Button variant="outline" size="sm" className="mt-4 shadow-sm w-full" onClick={() => setNewPatient({...newPatient, photoUrl: ''})}>
-                                  Retake Photo
-                                </Button>
-                              </div>
-                            ) : isCameraOpen ? (
-                              <div className="w-full max-w-[200px] flex flex-col items-center gap-3">
-                                <div className="w-full aspect-square bg-slate-800 rounded-full flex items-center justify-center text-slate-400 overflow-hidden relative shadow-inner">
-                                  <Camera className="w-8 h-8 opacity-20" />
-                                  <div className="absolute inset-0 bg-teal-500/10 animate-pulse" />
-                                </div>
-                                <div className="flex gap-2 w-full">
-                                  <Button variant="outline" size="sm" className="flex-1 text-slate-500" onClick={() => setIsCameraOpen(false)}>Cancel</Button>
-                                  <Button size="sm" className="flex-1 bg-teal-600 hover:bg-teal-700" onClick={() => {
-                                    setIsCameraOpen(false);
-                                    setNewPatient({...newPatient, photoUrl: 'https://i.pravatar.cc/150?img=' + Math.floor(Math.random() * 70)});
-                                  }}>Capture</Button>
-                                </div>
-                              </div>
+                        {(drawerMode === 'create' || drawerMode === 'edit') && (
+                          <div className="mt-4">
+                            <label className="text-sm font-medium text-slate-700 mb-2 block">Patient Photo</label>
+                            
+                            {isCameraOpen ? (
+                              <CameraCapture 
+                                onCapture={(imageSrc) => {
+                                  setNewPatient({...newPatient, photoUrl: imageSrc});
+                                  setIsCameraOpen(false);
+                                }}
+                                onCancel={() => setIsCameraOpen(false)}
+                              />
                             ) : (
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-slate-400">
-                                  <UserPlus className="w-6 h-6" />
+                                <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                                  {newPatient.photoUrl ? (
+                                    <div className="relative flex flex-col items-center">
+                                      <img src={newPatient.photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
+                                      <button 
+                                        type="button"
+                                        onClick={() => setNewPatient({...newPatient, photoUrl: undefined})}
+                                        className="absolute top-0 right-0 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="cursor-pointer flex flex-col items-center gap-2" onClick={() => setIsCameraOpen(true)}>
+                                      <div className="w-16 h-16 bg-slate-200 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-300 transition-colors shadow-inner">
+                                        <Camera className="w-8 h-8" />
+                                      </div>
+                                      <span className="text-sm font-medium text-slate-600">Capture Photo</span>
+                                    </div>
+                                  )}
                                 </div>
-                                <Button variant="outline" size="sm" className="shadow-sm gap-2" onClick={() => setIsCameraOpen(true)}>
-                                  <Camera className="w-4 h-4" />
-                                  Take Photo
-                                </Button>
-                              </div>
                             )}
                           </div>
                         )}

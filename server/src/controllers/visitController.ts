@@ -153,7 +153,8 @@ export const getVisits = async (req: Request, res: Response, next: NextFunction)
       include: { 
         queueEntry: true,
         consultation: true,
-        prescription: { include: { items: true } }
+        prescription: { include: { items: true } },
+        dispensing: { include: { items: true } }
       }
     });
     return res.json(visits);
@@ -170,7 +171,8 @@ export const getVisitById = async (req: Request, res: Response, next: NextFuncti
       include: { 
         queueEntry: true,
         consultation: true,
-        prescription: { include: { items: true } }
+        prescription: { include: { items: true } },
+        dispensing: { include: { items: true } }
       }
     });
     if (!visit) return res.status(404).json({ error: 'Visit not found' });

@@ -15,7 +15,7 @@ export const errorHandler = (
   }
   
   if (err instanceof Prisma.PrismaClientValidationError) {
-    return res.status(400).json({ error: 'Database validation failed' });
+    return res.status(400).json({ error: 'Database validation failed', details: err.message });
   }
   
   if (err instanceof Prisma.PrismaClientInitializationError) {

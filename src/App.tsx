@@ -14,6 +14,7 @@ import { PaymentPage } from './pages/PaymentPage';
 import { AppointmentsPage } from './pages/AppointmentsPage';
 import { StaffPage } from './pages/StaffPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { PartialPaymentAlertsPage } from './pages/PartialPaymentAlertsPage';
 import { ClinicProvider } from './context/ClinicContext';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -49,6 +50,7 @@ function App() {
             <Route path="patients" element={<PatientsPage />} />
             <Route path="appointments" element={<AppointmentsPage />} />
             <Route path="reception-desk" element={<ReceptionDeskPage />} />
+            <Route path="partial-payments" element={<PartialPaymentAlertsPage />} />
             <Route path="queue" element={<QueuePage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="billing" element={<BillingPage />} />

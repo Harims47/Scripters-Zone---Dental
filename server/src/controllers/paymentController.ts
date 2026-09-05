@@ -56,7 +56,7 @@ export const getPayment = async (req: Request, res: Response, next: NextFunction
 
 export const createPayment = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { visitId, amount, method } = req.body;
+    const { visitId, amount, method, notes, isFinalPayment } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
       // Lock the visit row to prevent concurrent partial payment races
@@ -73,7 +73,7 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
       const expectedAmount = visit.amountDue || 0;
       const balance = expectedAmount - totalPaid;
 
-      if (balance <= 0) {
+      if (visit.status === 'COMPLETED' || balance <= 0) {
         throw { status: 409, message: 'Payment already completed for this visit.' };
       }
 
@@ -105,16 +105,17 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
           patientId: visit.patientId,
           amount,
           method,
+          notes: notes || undefined,
           status: 'Completed',
           date: new Date().toISOString()
         }
       });
 
-      // Update Visit Status ONLY if fully paid
+      // Update Visit Status ONLY if fully paid or explicitly marked as final
       let updatedVisit = visit;
       const newBalance = balance - amount;
       
-      if (newBalance === 0) {
+      if (newBalance === 0 || isFinalPayment) {
         updatedVisit = await tx.visit.update({
           where: { id: visit.id },
           data: { status: 'COMPLETED' }

@@ -21,8 +21,10 @@ model Staff {
   id        String   @id @default(uuid())
   name      String
   phone     String
-  role      String
-  status    String   @default("Active")
+  role       String
+  status     String   @default("Active")
+  attendance String   @default("Present")
+  roomNumber String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User?
@@ -184,6 +186,7 @@ model Payment {
   amount    Float
   method    String
   status    String   @default("Pending")
+  notes     String?
   date      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

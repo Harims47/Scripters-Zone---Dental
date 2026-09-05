@@ -50,12 +50,12 @@ export function PatientIdentity({
     <div className={cn("flex items-center", sizeClasses[size].gap, className)} {...props}>
       <div 
         className={cn(
-          "shrink-0 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold tracking-wider",
+          "shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center font-semibold tracking-wider",
           sizeClasses[size].avatar
         )}
       >
         {avatarUrl ? (
-          <img src={avatarUrl} alt={name} className="h-full w-full rounded-full object-cover" />
+          <img src={avatarUrl} alt={name} className="h-full w-full rounded-md object-cover" />
         ) : (
           initials
         )}

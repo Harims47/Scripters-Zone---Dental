@@ -14,6 +14,7 @@ import { StaffStatusBadge, RoleAccessPreview } from '../components/staff/staff-c
 import { type ClinicRole, ROLE_CONFIG } from '../lib/role-config'
 import { DEMO_STAFF, type Staff } from '../lib/mock-data'
 import { api } from '../lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import type { PaginationMeta, PaginatedResponse } from '../types/domain'
 
 type StaffStatus = 'Active' | 'Inactive'
@@ -133,6 +134,17 @@ export function StaffPage() {
     }
   }
 
+  const handleAttendanceChange = async (id: string, attendance: string) => {
+    try {
+      await api.put(`/api/staff/${id}/attendance`, { attendance });
+      toast.success("Attendance updated");
+      fetchData();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Failed to update attendance");
+    }
+  };
+
   // Remove filteredData since search is on backend
 
   const columns: ColumnDef<Staff>[] = [
@@ -164,6 +176,28 @@ export function StaffPage() {
       header: "Status",
       accessorKey: "status",
       cell: ({ row }) => <StaffStatusBadge status={row.original.status} />
+    },
+    {
+      header: "Attendance",
+      accessorKey: "attendance",
+      cell: ({ row }) => {
+        if (row.original.role === 'Receptionist' || row.original.status !== 'Active') return <span className="text-slate-400 text-sm">—</span>;
+        
+        return (
+          <Select 
+            value={row.original.attendance || 'Present'} 
+            onValueChange={(val) => handleAttendanceChange(row.original.id, val)}
+          >
+            <SelectTrigger className="h-8 w-32 border-slate-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Present">Present</SelectItem>
+              <SelectItem value="Leave">Leave</SelectItem>
+            </SelectContent>
+          </Select>
+        );
+      }
     },
     {
       id: "actions",
@@ -387,6 +421,19 @@ export function StaffPage() {
                     ))}
                   </select>
                 </div>
+
+                {(activeItem.role === 'Head Doctor' || activeItem.role === 'Duty Doctor') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Room Number</label>
+                    <Input 
+                      className="bg-white border-slate-200" 
+                      placeholder="e.g. Room 101"
+                      value={activeItem.roomNumber || ''}
+                      onChange={e => setActiveItem(prev => ({ ...prev, roomNumber: e.target.value }))}
+                      disabled={drawerMode === 'view'}
+                    />
+                  </div>
+                )}
 
                 {!isCreating && drawerMode === 'edit' && (
                   <div className="space-y-2">

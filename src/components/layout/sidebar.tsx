@@ -21,6 +21,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Reception Desk", href: "/reception-desk", icon: Users },
+  { title: "Partial Payments", href: "/partial-payments", icon: Receipt },
   { title: "Patients", href: "/patients", icon: Users },
   { title: "Appointments", href: "/appointments", icon: Calendar },
   { title: "Queue", href: "/queue", icon: Clock },

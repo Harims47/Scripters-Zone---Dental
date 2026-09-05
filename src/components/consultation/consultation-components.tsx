@@ -7,7 +7,8 @@ export function PatientClinicalSummary({
   phone,
   age,
   status,
-  hideDetails = false
+  hideDetails = false,
+  photoUrl
 }: {
   patientId: string
   name: string
@@ -15,14 +16,21 @@ export function PatientClinicalSummary({
   age: number | string
   status?: string
   hideDetails?: boolean
+  photoUrl?: string
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] p-5">
       <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wider mb-4">Patient Summary</h3>
-      <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
-        <div>
-          <div className="text-slate-500 font-medium mb-1">Patient Name</div>
-          <div className="font-semibold text-slate-900">{name}</div>
+      <div className="flex gap-4">
+        {photoUrl && (
+          <div className="shrink-0">
+            <img src={photoUrl} alt="Patient" className="w-16 h-16 rounded-full object-cover border-2 border-slate-100 shadow-sm" />
+          </div>
+        )}
+        <div className="flex-1 grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
+          <div>
+            <div className="text-slate-500 font-medium mb-1">Patient Name</div>
+            <div className="font-semibold text-slate-900">{name}</div>
         </div>
         {!hideDetails && (
           <div>
@@ -44,6 +52,7 @@ export function PatientClinicalSummary({
             <Badge variant="statusWithDoctor"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5" /> {status}</Badge>
           </div>
         )}
+        </div>
       </div>
     </div>
   )

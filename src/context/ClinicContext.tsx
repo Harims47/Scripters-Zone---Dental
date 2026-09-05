@@ -37,7 +37,7 @@ interface ClinicContextType {
 
   // Phase 0P.5
   completeDispensing: (visitId: string, prescriptionId: string, items: { medicineId: string, prescribedQuantity: number, dispensedQuantity: number }[]) => Promise<{ success: boolean, error?: string }>
-  recordPayment: (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card') => Promise<{ success: boolean, error?: string }>
+  recordPayment: (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', notes?: string, isFinalPayment?: boolean) => Promise<{ success: boolean, error?: string }>
   adjustMedicineStock: (id: string, adjustmentAmount: number) => Promise<{ success: boolean, error?: string, medicine?: Medicine }>
 }
 
@@ -61,17 +61,19 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         const visitsData = (res as any).data || res;
         setVisits(visitsData)
         
-        // Extract related entities to populate global state
         const allConsultations: Consultation[] = []
         const allPrescriptions: Prescription[] = []
+        const allDispensings: Dispensing[] = []
         
         visitsData.forEach((v: any) => {
           if (v.consultation) allConsultations.push(v.consultation)
           if (v.prescription) allPrescriptions.push(v.prescription)
+          if (v.dispensing) allDispensings.push(v.dispensing)
         })
         
         setConsultations(allConsultations)
         setPrescriptions(allPrescriptions)
+        setDispensings(allDispensings)
       }).catch(console.error)
       api.get<QueueEntry[]>('/api/queue').then(res => setQueue((res as any).data || res)).catch(console.error)
       api.get<any>('/api/staff?limit=100').then(res => {
@@ -84,6 +86,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       setQueue([])
       setConsultations([])
       setPrescriptions([])
+      setDispensings([])
     }
   }, [isAuthenticated])
 
@@ -363,23 +366,19 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       return { success: true }
     } catch (err: any) {
       console.error(err);
-      return { success: false, error: err.response?.data?.error || err.message || 'Failed to complete dispensing' }
+      const details = err.response?.data?.details ? ` - ${err.response.data.details}` : '';
+      return { success: false, error: (err.response?.data?.error || err.message || 'Failed to record payment') + details }
     }
   }
 
-  const recordPayment = async (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card') => {
-    const visit = visits.find(v => v.id === visitId)
-    if (!visit) return { success: false, error: 'Visit not found.' }
-
-    if (visit.status !== 'READY_FOR_PAYMENT') {
-      return { success: false, error: 'Visit is not ready for payment.' }
-    }
-
+  const recordPayment = async (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', notes?: string, isFinalPayment?: boolean) => {
     try {
       const res = await api.post<{ payment: Payment, visit: Visit }>('/api/payments', {
         visitId,
         amount,
-        method
+        method,
+        notes,
+        isFinalPayment
       });
 
       const payment = res.payment || (res as any).data?.payment;
@@ -391,7 +390,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       return { success: true }
     } catch (err: any) {
       console.error(err);
-      return { success: false, error: err.response?.data?.error || err.message || 'Failed to record payment' }
+      const details = err.response?.data?.details ? ` - ${err.response.data.details}` : '';
+      return { success: false, error: (err.response?.data?.error || err.message || 'Failed to record payment') + details }
     }
   }
 
