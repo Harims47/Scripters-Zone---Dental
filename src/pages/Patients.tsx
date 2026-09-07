@@ -73,7 +73,7 @@ export function PatientsPage() {
   const [historicalVisitId, setHistoricalVisitId] = useState<string | null>(null);
 
   // Form states
-  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '' });
+  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '', address: '' });
   const [visitDoctor, setVisitDoctor] = useState('');
   const [activeVisitWarning, setActiveVisitWarning] = useState(false);
   const [visitReason, setVisitReason] = useState('');
@@ -138,7 +138,8 @@ export function PatientsPage() {
         age: parseInt(newPatient.age) || 0,
         gender: newPatient.gender,
         status: 'Active',
-        photoUrl: newPatient.photoUrl || undefined
+        photoUrl: newPatient.photoUrl || undefined,
+        address: (newPatient as any).address || undefined
       });
       
       setSelectedPatient(created);
@@ -161,6 +162,7 @@ export function PatientsPage() {
           phone: newPatient.phone || selectedPatient.phone,
           age: parseInt(newPatient.age) || selectedPatient.age,
           gender: newPatient.gender || selectedPatient.gender,
+          address: (newPatient as any).address || selectedPatient.address,
         });
         setSelectedPatient(prev => prev ? {
           ...prev,
@@ -168,6 +170,7 @@ export function PatientsPage() {
           phone: newPatient.phone || selectedPatient.phone,
           age: parseInt(newPatient.age) || selectedPatient.age,
           gender: newPatient.gender || selectedPatient.gender,
+          address: (newPatient as any).address || selectedPatient.address,
         } : prev);
       }
       toast.success('Patient details updated.');
@@ -373,6 +376,9 @@ export function PatientsPage() {
                         <ReadOnlyField label="Phone" value={selectedPatient.phone} />
                         <ReadOnlyField label="Age" value={`${selectedPatient.age} Yrs`} />
                         <ReadOnlyField label="Gender" value={selectedPatient.gender} />
+                        <div className="sm:col-span-2 mt-2">
+                          <ReadOnlyField label="Address" value={selectedPatient.address || 'Not provided'} />
+                        </div>
                         {getActiveVisit(selectedPatient.id) && (
                           <div className="sm:col-span-2 mt-2">
                             <ReadOnlyField label="Current Reason for Visit" value={getActiveVisit(selectedPatient.id)!.reasonForVisit || 'Not specified'} />
@@ -489,6 +495,16 @@ export function PatientsPage() {
                             value={visitReason}
                             onChange={e => setVisitReason(e.target.value)}
                             placeholder="e.g. Routine Checkup, Toothache, Cleaning..."
+                            className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">Address (Optional)</label>
+                          <textarea 
+                            value={drawerMode === 'create' ? (newPatient as any).address : selectedPatient?.address}
+                            onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, address: e.target.value})}
+                            disabled={drawerMode === 'view'}
+                            placeholder="Patient address"
                             className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
                           />
                         </div>

@@ -38,6 +38,7 @@ model Patient {
   gender    String
   status    String    @default("Active")
   photoUrl  String?
+  address   String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   payments      Payment[]

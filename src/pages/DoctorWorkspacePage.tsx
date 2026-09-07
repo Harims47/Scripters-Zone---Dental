@@ -212,6 +212,7 @@ export function DoctorWorkspacePage() {
   const patient = patients.find(p => p.id === (visit ? visit.patientId : patientId))
   const consultation = consultations.find(c => c.visitId === visitId)
   const prescription = prescriptions.find(p => p.visitId === visitId)
+  const visitDoctor = staff.find(s => s.id === visit?.doctorId)
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false)
   const [consultationModalOpen, setConsultationModalOpen] = useState(false)
@@ -451,49 +452,93 @@ export function DoctorWorkspacePage() {
           </div>
         </div>
 
-        {/* Patient Profile Header */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col md:flex-row items-start gap-6 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600"></div>
-
-          <div className="w-24 h-24 shrink-0 rounded-md bg-slate-100 overflow-hidden border border-slate-200">
-            {patient.photoUrl ? (
-              <img src={patient.photoUrl} alt={patient.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-400 font-medium text-2xl">
-                {patient.name.charAt(0)}
+        {/* Patient Summary Header */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xs font-bold  uppercase tracking-wider">Patient Summary</h3>
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900 whitespace-nowrap">Reason for Visit:</span>
+                <span className="bg-slate-50 px-3 py-1 rounded border border-slate-100 text-slate-800 truncate max-w-xs">
+                  {visit.reasonForVisit || 'Not specified'}
+                </span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900 whitespace-nowrap">Date:</span>
+                <span className="whitespace-nowrap text-slate-700">{new Date(visit.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900 whitespace-nowrap">Time:</span>
+                <span className="whitespace-nowrap text-slate-700">{new Date(visit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex-1 min-w-0 pt-1">
-            <h1 className="text-2xl font-bold text-slate-900">{patient.name}</h1>
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-slate-600">
 
-              <div><span className="font-medium text-slate-900">Phone:</span> {patient.phone}</div>
-              <div><span className="font-medium text-slate-900">Age/Gender:</span> {patient.age} / {patient.gender}</div>
-              <div><span className="font-medium text-slate-900">Visit Type:</span> {visit.appointmentId ? 'Appointment' : 'Walk-in'}</div>
-              <div><span className="font-medium text-slate-900">Patient Type:</span> {patientType}</div>
-              <div className="md:col-span-2"><span className="font-medium text-slate-900">Reason for Visit:</span> {visit.reasonForVisit}</div>
+          <div className="flex gap-8 items-start">
+            {/* Left: Photo */}
+            <div className="w-24 h-24 shrink-0 bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 overflow-hidden rounded-md">
+              {patient.photoUrl ? (
+                <img src={patient.photoUrl} alt={patient.name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-2xl font-medium">{patient.name.charAt(0)}</span>
+              )}
+            </div>
+
+            {/* Right: Details (3 Columns) */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6 text-sm text-slate-700 min-w-0">
+
+              {/* Column 1: Identity */}
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 truncate">{patient.name}</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">Patient ID:</span>
+                  <span className="whitespace-nowrap">{patient.id.split('-')[0].toUpperCase()}</span>
+                </div>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-900 whitespace-nowrap">Location:</span>
+                    <span className="text-slate-600 truncate">{patient.address || 'Not provided'}</span>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Column 2: Demographics */}
+              <div className="space-y-4 pt-1">
+                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Age:</span> <span className="whitespace-nowrap">{patient.age}</span></div>
+                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Gender:</span> <span className="whitespace-nowrap">{patient.gender}</span></div>
+                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Phone:</span> <span className="whitespace-nowrap">{patient.phone}</span></div>
+              </div>
+
+              {/* Column 3: Encounter Details */}
+              <div className="space-y-4 pt-1">
+                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Patient Type:</span> <span className="truncate">{patientType}</span></div>
+                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Visit Type:</span> <span className="truncate">{visit.appointmentId ? 'Appointment' : 'Walk-in'}</span></div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">Assigned Doctor:</span>
+                  <span className="truncate">{visitDoctor?.name || 'Unassigned'}</span>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
 
-        {/* Main Workspace Card */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-            <h2 className="font-bold text-slate-800 uppercase tracking-wider text-xs">Current Visit Workspace</h2>
-          </div>
-
-          <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[400px] content-start">
+        {/* Workspace Sections */}
+        <div>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[400px] content-start">
 
             {/* Render Saved Sections */}
             {treatmentPlan && treatmentPlan.items.length > 0 && (
-              <div className="md:col-span-6 space-y-4">
+              <div className="md:col-span-6 space-y-4 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" /> Treatment Plan
                   </h3>
-                  <Button variant="ghost" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-8 px-2 text-slate-500 hover:text-slate-900">
-                    <Edit className="h-4 w-4 mr-2" /> Edit
+                  <Button variant="secondary" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                    <Edit className="h-4 w-4 mr-1.5" /> Edit
                   </Button>
                 </div>
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 space-y-3">
@@ -510,13 +555,13 @@ export function DoctorWorkspacePage() {
             )}
 
             {consultation && (
-              <div className="md:col-span-6 space-y-4">
+              <div className="md:col-span-6 space-y-4 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-blue-500" /> Consultation
                   </h3>
-                  <Button variant="ghost" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-8 px-2 text-slate-500 hover:text-slate-900">
-                    <Edit className="h-4 w-4 mr-2" /> Edit
+                  <Button variant="secondary" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                    <Edit className="h-4 w-4 mr-1.5" /> Edit
                   </Button>
                 </div>
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 text-sm text-slate-700 space-y-4">
@@ -537,14 +582,14 @@ export function DoctorWorkspacePage() {
             )}
 
             {prescription && prescription.items.length > 0 && (
-              <div className="md:col-span-12 space-y-4">
+              <div className="md:col-span-12 space-y-4 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-indigo-500" /> Prescription
                   </h3>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-8 px-2 text-slate-500 hover:text-slate-900">
-                      <Edit className="h-4 w-4 mr-2" /> Edit
+                    <Button variant="secondary" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                      <Edit className="h-4 w-4 mr-1.5" /> Edit
                     </Button>
                     <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="h-8 px-3 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
                       <Printer className="h-4 w-4 mr-1.5" /> Print
@@ -580,7 +625,7 @@ export function DoctorWorkspacePage() {
             )}
 
             {(!treatmentPlan || treatmentPlan.items.length === 0) && !consultation && (!prescription || prescription.items.length === 0) && (
-              <div className="text-center text-slate-400 py-12 flex flex-col items-center">
+              <div className="md:col-span-12 text-center text-slate-400 py-12 flex flex-col items-center bg-white rounded-2xl border border-slate-100 shadow-sm">
                 <div className="w-16 h-16 bg-slate-50 rounded-full border border-dashed border-slate-200 flex items-center justify-center mb-4">
                   <Info className="w-6 h-6 text-slate-400" />
                 </div>

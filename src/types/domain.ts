@@ -8,6 +8,9 @@ export interface Patient {
   gender: 'Male' | 'Female' | 'Other'
   status: 'Active' | 'Inactive'
   photoUrl?: string
+  address?: string
+  createdAt?: string
+  updatedAt?: string
   // Notice: No visit-specific state (like queue status or current doctor)
 }
 

@@ -66,7 +66,8 @@ export const createPatient = async (req: Request, res: Response, next: NextFunct
         age: data.age,
         gender: data.gender,
         status: data.status || 'Active',
-        photoUrl: data.photoUrl
+        photoUrl: data.photoUrl,
+        address: data.address
       }
     });
     return res.status(201).json(patient);
