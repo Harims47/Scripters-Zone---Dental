@@ -55,9 +55,9 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
       }
     }
     
-    // Head Doctor uses Reception Desk for Billing/Appointments, but needs Queue and Patients for clinical work
+    // Head Doctor uses Reception Desk for Billing/Appointments, and does not need Patients menu
     if (currentUser.role === 'Head Doctor') {
-      const hiddenForMerged = ['/appointments', '/billing']
+      const hiddenForMerged = ['/patients', '/appointments', '/billing']
       if (hiddenForMerged.includes(item.href)) {
         return false
       }

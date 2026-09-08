@@ -20,6 +20,10 @@ import type { Medicine } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
 import { api, API_BASE_URL } from '../lib/api'
 import { cn } from '../lib/utils'
+import Swal from 'sweetalert2'
+import withReactContent from 'sweetalert2-react-content'
+
+const MySwal = withReactContent(Swal)
 
 // ── Inline prescription sub-components (avoids Dialog portal DnD issues) ──
 
@@ -643,7 +647,34 @@ export function DoctorWorkspacePage() {
             <Button size="lg" variant="outline" className="text-slate-700 font-medium bg-white" onClick={() => setTransferModalOpen(true)}>
               Transfer Patient
             </Button>
-            <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium" onClick={() => setCompleteModalOpen(true)}>
+            <Button
+              size="lg"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+              onClick={async () => {
+                const hasMedicines = (prescription && prescription.items && prescription.items.length > 0) || activePrescription.length > 0
+                if (!hasMedicines) {
+                  const res = await MySwal.fire({
+                    title: 'No Medicines Prescribed',
+                    text: 'You have not given any medicine for this patient. Do you still want to continue or cancel?',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Continue',
+                    cancelButtonText: 'Cancel & Add Medicine',
+                    confirmButtonColor: '#4f46e5', // indigo-600
+                    cancelButtonColor: '#94a3b8', // slate-400
+                    customClass: {
+                      popup: 'rounded-2xl',
+                      confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
+                      cancelButton: 'rounded-lg font-semibold px-6 py-2.5'
+                    }
+                  })
+                  if (!res.isConfirmed) {
+                    return
+                  }
+                }
+                setCompleteModalOpen(true)
+              }}
+            >
               Complete Consultation
             </Button>
           </div>
