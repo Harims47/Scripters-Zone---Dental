@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Search, Info, Edit, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 
@@ -9,10 +9,12 @@ import { Input } from '../components/ui/input'
 import { Textarea } from '../components/ui/textarea'
 import { Label } from '../components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog'
+import { Sheet, SheetContent, SheetTitle } from '../components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Badge } from '../components/ui/badge'
 
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI'
+import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails'
 import type { PrescriptionLineItem } from '../components/prescription/prescription-components'
 import { MEDICINE_CATEGORIES } from '../lib/medicine-categories'
 import type { Medicine } from '../lib/mock-data'
@@ -224,6 +226,8 @@ export function DoctorWorkspacePage() {
   const [completeModalOpen, setCompleteModalOpen] = useState(false)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferDoctorId, setTransferDoctorId] = useState<string>('')
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const [viewingHistoricalVisitId, setViewingHistoricalVisitId] = useState<string | null>(null)
 
   // Consultation state
   const [reason, setReason] = useState(visit?.reasonForVisit || '')
@@ -520,12 +524,26 @@ export function DoctorWorkspacePage() {
               </div>
 
               {/* Column 3: Encounter Details */}
-              <div className="space-y-4 pt-1">
-                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Patient Type:</span> <span className="truncate">{patientType}</span></div>
-                <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Visit Type:</span> <span className="truncate">{visit.appointmentId ? 'Appointment' : 'Walk-in'}</span></div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-900 whitespace-nowrap">Assigned Doctor:</span>
-                  <span className="truncate">{visitDoctor?.name || 'Unassigned'}</span>
+              <div className="space-y-4 pt-1 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Patient Type:</span> <span className="truncate">{patientType}</span></div>
+                  <div className="flex items-center gap-2"><span className="font-semibold text-slate-900 whitespace-nowrap">Visit Type:</span> <span className="truncate">{visit.appointmentId ? 'Appointment' : 'Walk-in'}</span></div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-900 whitespace-nowrap">Assigned Doctor:</span>
+                    <span className="truncate">{visitDoctor?.name || 'Unassigned'}</span>
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryDrawerOpen(true)}
+                    className="w-full sm:w-auto text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 shadow-sm font-medium flex items-center gap-2"
+                  >
+                    <History className="w-4 h-4" />
+                    View Patient History
+                  </Button>
                 </div>
               </div>
 
@@ -858,6 +876,178 @@ export function DoctorWorkspacePage() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setTransferModalOpen(false)}>Cancel</Button>
               <Button onClick={handleTransfer} disabled={!transferDoctorId}>Transfer Patient</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Patient History Drawer */}
+        <Sheet open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>
+          <SheetContent side="right" className="w-[450px] sm:w-[580px] p-0 flex flex-col bg-slate-50 h-full">
+            <SheetTitle className="sr-only">Patient History</SheetTitle>
+            
+            {/* Drawer Header */}
+            <div className="h-16 pl-6 pr-14 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-indigo-600" />
+                <h2 className="text-lg font-semibold text-slate-900">Patient History</h2>
+              </div>
+              <Badge variant="outline" className="bg-slate-100 text-slate-600 text-xs font-mono font-medium">
+                {patient.id.split('-')[0].toUpperCase()}
+              </Badge>
+            </div>
+
+            {/* Current Patient Header Bar */}
+            <div className="px-6 py-4 bg-white border-b border-slate-100 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">{patient.name}</h3>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                    <span>{patient.age} Yrs, {patient.gender}</span>
+                    <span>•</span>
+                    <span>{patient.phone}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Current Visit</span>
+                  <Badge variant="secondary" className="mt-0.5 text-xs bg-indigo-50 text-indigo-700 border-indigo-100">
+                    Active in Workspace
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            {/* Previous Visits List */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Previous Visits</h4>
+                <span className="text-xs text-slate-400 font-medium">
+                  {patientVisits.filter(v => v.id !== visit.id).length} previous record{patientVisits.filter(v => v.id !== visit.id).length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {(() => {
+                const previousVisits = patientVisits
+                  .filter(v => v.id !== visit.id)
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+                if (previousVisits.length === 0) {
+                  return (
+                    <div className="bg-white rounded-xl border border-slate-200/80 p-8 text-center text-slate-400">
+                      <div className="w-12 h-12 bg-slate-50 rounded-full border border-dashed border-slate-200 flex items-center justify-center mx-auto mb-3">
+                        <Clock className="w-5 h-5 text-slate-400" />
+                      </div>
+                      <p className="font-medium text-slate-600 text-sm">No previous visit history.</p>
+                      <p className="text-xs text-slate-400 mt-1">This is the patient's first documented visit at DentalCore.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {previousVisits.map((prevVisit) => {
+                      const prevDoctor = staff.find((s: any) => s.id === prevVisit.doctorId);
+                      const isCompleted = prevVisit.status === 'COMPLETED' || prevVisit.status === 'Completed';
+                      const isCancelled = prevVisit.status === 'CANCELLED' || prevVisit.status === 'Cancelled';
+
+                      return (
+                        <div
+                          key={prevVisit.id}
+                          className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-2xs hover:border-indigo-200 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-slate-900 text-sm">
+                                  {new Date(prevVisit.createdAt).toLocaleDateString(undefined, {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </span>
+                                <span className="text-xs text-slate-400">
+                                  {new Date(prevVisit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <Badge
+                                  className={cn(
+                                    "text-[10px] px-2 py-0.5",
+                                    isCompleted ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                    isCancelled ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                    "bg-slate-100 text-slate-700 border-slate-200"
+                                  )}
+                                >
+                                  {prevVisit.status}
+                                </Badge>
+                              </div>
+
+                              <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                                <span className="font-medium text-slate-700">Doctor:</span>
+                                <span>{prevDoctor?.name || 'Unassigned Doctor'}</span>
+                              </div>
+
+                              <div className="text-xs text-slate-600 flex items-center gap-1.5">
+                                <span className="font-medium text-slate-700">Type:</span>
+                                <span>{prevVisit.appointmentId ? 'Appointment' : 'Walk-in'}</span>
+                              </div>
+
+                              <div className="text-xs text-slate-600">
+                                <span className="font-medium text-slate-700">Reason: </span>
+                                <span className="text-slate-800">{prevVisit.reasonForVisit || 'General Consultation'}</span>
+                              </div>
+                            </div>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setViewingHistoricalVisitId(prevVisit.id)}
+                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 shrink-0 text-xs px-3 h-8 shadow-2xs"
+                            >
+                              View
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="p-4 bg-white border-t border-slate-200 shrink-0">
+              <Button
+                variant="outline"
+                onClick={() => setHistoryDrawerOpen(false)}
+                className="w-full text-slate-700"
+              >
+                Close
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Read-only Historical Visit Details Dialog */}
+        <Dialog open={!!viewingHistoricalVisitId} onOpenChange={(open) => !open && setViewingHistoricalVisitId(null)}>
+          <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto p-0">
+            <DialogHeader className="p-6 pb-4 border-b border-slate-200 bg-white">
+              <DialogTitle className="flex items-center gap-2 text-slate-900">
+                <History className="w-5 h-5 text-indigo-600" />
+                Historical Visit Records
+              </DialogTitle>
+              <DialogDescription>
+                Review the read-only clinical records for this completed visit.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="p-0">
+              {viewingHistoricalVisitId && (
+                <HistoricalVisitDetails
+                  visitId={viewingHistoricalVisitId}
+                />
+              )}
+            </div>
+            <DialogFooter className="p-4 bg-white border-t border-slate-200">
+              <Button variant="outline" onClick={() => setViewingHistoricalVisitId(null)} className="w-full sm:w-auto">
+                Close
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

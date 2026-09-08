@@ -8,14 +8,14 @@ import { API_BASE_URL, api } from '../../lib/api'
 import type { TreatmentPlan } from '../../types/domain'
 
 export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: string, onViewHistory?: () => void }) {
-  const { visits, consultations, prescriptions, dispensings, payments, medicines } = useClinicContext()
+  const { visits, consultations, prescriptions, dispensings, payments, medicines, staff } = useClinicContext()
 
   const visit = visits.find(v => v.id === visitId)
   const consultation = consultations.find(c => c.visitId === visitId)
   const prescription = prescriptions.find(p => p.visitId === visitId)
   const dispensing = dispensings.find(d => d.visitId === visitId)
-  const payment = payments.find(p => p.visitId === visitId)
-  const doctor = DEMO_STAFF.find(d => d.id === visit?.doctorId)
+  const visitPayments = payments.filter(p => p.visitId === visitId)
+  const doctor = staff?.find((d: any) => d.id === visit?.doctorId) || DEMO_STAFF.find(d => d.id === visit?.doctorId)
 
   const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
   const [loadingPlan, setLoadingPlan] = useState(false)
@@ -196,44 +196,49 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
           </div>
         )}
 
-        {payment && (
+        {visitPayments.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden border-l-4 border-l-teal-500">
             <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
-              <span>Payment Details</span>
+              <span>Payment Details ({visitPayments.length})</span>
               <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')} className="h-7 text-xs bg-white">
                 <FileText className="w-3 h-3 mr-1.5 text-teal-600" /> Print Receipt
               </Button>
             </div>
-            <div className="p-4 grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Total Amount</label>
-                <p className="text-lg font-bold text-slate-900">₹{payment.amount}</p>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Method</label>
-                <Badge variant="secondary" className="mt-1">{payment.method}</Badge>
-              </div>
-              <div className="col-span-2 pt-3 border-t border-slate-100">
-                <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Status</label>
-                <p className="text-sm text-slate-700">{payment.status}</p>
-              </div>
+            <div className="divide-y divide-slate-100">
+              {visitPayments.map((p, idx) => (
+                <div key={p.id || idx} className="p-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                      {visitPayments.length > 1 ? `Payment #${idx + 1}` : 'Total Amount'}
+                    </label>
+                    <p className="text-lg font-bold text-slate-900">₹{p.amount}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">Method</label>
+                    <Badge variant="secondary" className="mt-1">{p.method}</Badge>
+                  </div>
+                  <div className="col-span-2 pt-2 border-t border-slate-50 flex items-center justify-between text-xs text-slate-500">
+                    <span>Status: <span className="font-medium text-slate-700">{p.status}</span></span>
+                    {p.createdAt && <span>{new Date(p.createdAt).toLocaleDateString()} {new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
       </div>
       
-      <div className="px-6 pt-2">
-        <Button 
-          variant="outline" 
-          className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-          onClick={() => {
-            if (onViewHistory) onViewHistory();
-            else window.open(`/patients/${visit.patientId}`, '_blank');
-          }}
-        >
-          View Full Patient History
-        </Button>
-      </div>
+      {onViewHistory && (
+        <div className="px-6 pt-2">
+          <Button 
+            variant="outline" 
+            className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+            onClick={onViewHistory}
+          >
+            View Full Patient History
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
