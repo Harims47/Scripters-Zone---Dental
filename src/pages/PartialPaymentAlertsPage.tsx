@@ -9,14 +9,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { ArrowRight, AlertTriangle, Banknote, CreditCard, Smartphone, CheckCircle } from 'lucide-react';
-import { api } from '../lib/api';
+import { ArrowRight, AlertTriangle, Banknote, CreditCard, Smartphone, CheckCircle, Eye, Receipt, Phone, User, Calendar, FileText, Activity } from 'lucide-react';
+import { API_BASE_URL } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export function PartialPaymentAlertsPage() {
-  const { visits, payments, patients, staff, recordPayment } = useClinicContext();
+  const { visits, payments, patients, staff, consultations, recordPayment } = useClinicContext();
   
   const [selectedAlert, setSelectedAlert] = useState<any | null>(null);
+  const [viewDetailsAlert, setViewDetailsAlert] = useState<any | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [activeMethod, setActiveMethod] = useState<'Cash' | 'GPay' | 'Credit Card' | 'Debit Card'>('Cash');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -34,7 +35,8 @@ export function PartialPaymentAlertsPage() {
       
       if (vPayments.length > 0) {
         const totalPaid = vPayments.reduce((sum, p) => sum + p.amount, 0);
-        const amountDue = v.amountDue || 0;
+        const calculatedDue = (v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0);
+        const amountDue = calculatedDue > 0 ? calculatedDue : (v.amountDue || 0);
         const balance = amountDue - totalPaid;
 
         if (balance > 0) {
@@ -50,16 +52,42 @@ export function PartialPaymentAlertsPage() {
 
           const patient = patients.find(p => p.id === v.patientId);
           const doctor = staff.find(s => s.id === v.doctorId);
+          const consultation = consultations.find(c => c.visitId === v.id);
+
+          // Extract reason and alt phone from payments
+          const partialPaymentWithNotes = vPayments.find(p => p.notes && (p.notes.includes('Alt Phone') || p.notes.includes('Reason') || p.amount < amountDue));
+          let partialReason = 'Not specified';
+          let altPhone = 'Not provided';
+          if (partialPaymentWithNotes?.notes) {
+            const parts = partialPaymentWithNotes.notes.split('|');
+            if (parts.length > 0) partialReason = parts[0].trim();
+            if (parts.length > 1 && parts[1].includes('Alt Phone:')) {
+              altPhone = parts[1].replace('Alt Phone:', '').trim();
+            }
+          }
 
           alertData.push({
             visitId: v.id,
+            patientId: v.patientId,
             patientName: patient?.name || 'Unknown',
+            patientPhone: patient?.phone || '—',
+            patientAge: patient?.age,
+            patientGender: patient?.gender,
+            patientAddress: patient?.address || '—',
             doctorName: doctor?.name || 'Unassigned',
+            consultationFee: v.consultationFee || consultation?.consultationFee || 0,
+            treatmentFee: v.treatmentFee || 0,
+            medicineCost: v.medicineCost || 0,
+            reasonForVisit: consultation?.reasonForVisit || v.reasonForVisit || 'General Consultation',
+            clinicalNotes: consultation?.clinicalNotes || '',
             totalAmount: amountDue,
             paidAmount: totalPaid,
             balance: balance,
             partialPaymentDate: earliestDate.toLocaleDateString(),
             daysOutstanding: daysOutstanding,
+            partialReason,
+            altPhone,
+            paymentHistory: vPayments
           });
         }
       }
@@ -169,7 +197,17 @@ export function PartialPaymentAlertsPage() {
       id: "actions",
       header: () => <div className="text-center font-semibold text-slate-600">Action</div>,
       cell: ({ row }) => (
-        <div className="flex justify-center">
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="w-8 h-8 text-blue-600 hover:bg-blue-50"
+            title="View Payment & Partial Payment Details"
+            onClick={() => setViewDetailsAlert(row.original)}
+          >
+            <Eye className="w-4 h-4" />
+          </Button>
+
           <Button 
             size="sm" 
             variant="outline" 
@@ -179,7 +217,7 @@ export function PartialPaymentAlertsPage() {
               setPaymentAmount(row.original.balance);
             }}
           >
-            Collect Payment <CheckCircle className="w-4 h-4 ml-2" />
+            Collect Payment <CheckCircle className="w-4 h-4 ml-1.5" />
           </Button>
         </div>
       )
@@ -303,6 +341,183 @@ export function PartialPaymentAlertsPage() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Partial Payment & Visit Details Modal */}
+      <Dialog open={!!viewDetailsAlert} onOpenChange={(open) => !open && setViewDetailsAlert(null)}>
+        <DialogContent className="sm:max-w-[560px] p-0 overflow-hidden bg-slate-50 flex flex-col max-h-[90vh]">
+          <DialogHeader className="px-6 py-4 bg-white border-b border-slate-200 shrink-0 flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-teal-600" />
+                Partial Payment Details
+              </DialogTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Visit financial record & follow-up information
+              </p>
+            </div>
+          </DialogHeader>
+
+          {viewDetailsAlert && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+              {/* Patient & Doctor Card */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-teal-600" />
+                    <span className="font-bold text-slate-900 text-sm">{viewDetailsAlert.patientName}</span>
+                    {viewDetailsAlert.patientAge && (
+                      <span className="text-slate-500 text-xs">({viewDetailsAlert.patientAge}y, {viewDetailsAlert.patientGender})</span>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-semibold">
+                    Outstanding: {viewDetailsAlert.daysOutstanding} days
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Doctor</span>
+                    <span className="font-semibold text-slate-800 text-xs">{viewDetailsAlert.doctorName}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Patient Phone</span>
+                    <span className="font-semibold text-slate-800 text-xs flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-slate-400" />
+                      {viewDetailsAlert.patientPhone}
+                    </span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Reason for Visit</span>
+                    <span className="text-slate-700 text-xs">{viewDetailsAlert.reasonForVisit}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Partial Payment Specific Reasons & Follow-up */}
+              <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/80 shadow-xs space-y-2.5">
+                <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                  Partial Payment Information
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="bg-white p-2.5 rounded-lg border border-amber-100">
+                    <span className="text-amber-800 text-[10px] font-bold uppercase block mb-0.5">Recorded Reason</span>
+                    <span className="text-slate-800 font-medium">{viewDetailsAlert.partialReason}</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-amber-100">
+                    <span className="text-amber-800 text-[10px] font-bold uppercase block mb-0.5">Alternative Phone (Follow-up)</span>
+                    <span className="text-slate-900 font-mono font-bold flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-amber-600" />
+                      {viewDetailsAlert.altPhone}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Breakdown */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Cost & Billing Breakdown</h4>
+                <div className="space-y-1.5 pt-1 text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Consultation Fee</span>
+                    <span className="font-medium text-slate-800">₹{viewDetailsAlert.consultationFee}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Treatment Fee</span>
+                    <span className="font-medium text-slate-800">₹{viewDetailsAlert.treatmentFee}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Medicine Cost</span>
+                    <span className="font-medium text-slate-800">₹{viewDetailsAlert.medicineCost}</span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-sm">
+                    <span>Total Bill</span>
+                    <span>₹{viewDetailsAlert.totalAmount}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-emerald-600 text-sm">
+                    <span>Total Paid</span>
+                    <span>₹{viewDetailsAlert.paidAmount}</span>
+                  </div>
+                  <div className="pt-1 border-t border-slate-100 flex justify-between font-bold text-rose-600 text-sm">
+                    <span>Remaining Balance</span>
+                    <span>₹{viewDetailsAlert.balance}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recorded Payments History */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Payment Transactions ({viewDetailsAlert.paymentHistory?.length || 0})
+                  </h4>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-teal-600 text-teal-700 hover:bg-teal-50 flex items-center gap-1"
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(`${API_BASE_URL}/api/documents/receipt/${viewDetailsAlert.visitId}`, {
+                          method: 'GET',
+                          credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error('Failed to generate receipt');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        window.open(url, '_blank');
+                        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                        toast.success('Receipt opened for printing');
+                      } catch (err) {
+                        toast.error('Could not generate receipt PDF');
+                      }
+                    }}
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    Print Receipt
+                  </Button>
+                </div>
+
+                <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                  {viewDetailsAlert.paymentHistory?.map((p: any, idx: number) => (
+                    <div key={p.id || idx} className="p-2.5 bg-slate-50/50 flex justify-between items-start gap-2">
+                      <div className="space-y-0.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-800">{p.method}</span>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(p.createdAt || p.date).toLocaleDateString()} {new Date(p.createdAt || p.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {p.notes && (
+                          <p className="text-[11px] text-slate-600 italic break-words">{p.notes}</p>
+                        )}
+                      </div>
+                      <span className="font-bold text-slate-900 shrink-0">₹{p.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="p-4 bg-white border-t border-slate-200 shrink-0 flex items-center justify-end gap-3">
+            <Button variant="outline" onClick={() => setViewDetailsAlert(null)}>
+              Close
+            </Button>
+            <Button
+              className="bg-teal-600 hover:bg-teal-700 text-white"
+              onClick={() => {
+                const alertToCollect = viewDetailsAlert;
+                setViewDetailsAlert(null);
+                setSelectedAlert(alertToCollect);
+                setPaymentAmount(alertToCollect.balance);
+              }}
+            >
+              Collect Remaining Balance (₹{viewDetailsAlert?.balance})
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -115,6 +115,19 @@ const INSTRUCTION_OPTIONS = [
   'After Dinner',
 ]
 
+const CLINICAL_NOTE_TAGS = [
+  'Routine Examination',
+  'Mild Gingivitis',
+  'Deep Caries',
+  'Acute Pulpitis',
+  'Calculus & Plaque',
+  'Tooth Mobility',
+  'Sensitivity',
+  'Scaling Advised',
+  'RCT Advised',
+  'Extraction Advised'
+]
+
 function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; onRemove: (id: string) => void }) {
   const selectedInstructions = item.instructions
     ? item.instructions.split(',').map(s => s.trim()).filter(Boolean)
@@ -966,9 +979,56 @@ export function DoctorWorkspacePage() {
                 </div>
                 <p className="text-xs text-slate-400">Captured at registration — cannot be changed here.</p>
               </div>
-              <div className="space-y-3">
-                <Label htmlFor="clinicalNotes" className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
-                <Textarea id="clinicalNotes" className="min-h-[160px]" value={notes} onChange={e => setNotes(e.target.value)} />
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="clinicalNotes" className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
+                  <span className="text-[11px] text-slate-400">Click tags to add/remove or type custom notes</span>
+                </div>
+
+                {/* Predefined Quick Tags (No scrollbar, wraps cleanly to fit screen) */}
+                <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Quick Dental Tags
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CLINICAL_NOTE_TAGS.map((tag) => {
+                      const isIncluded = notes.toLowerCase().includes(tag.toLowerCase());
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            if (isIncluded) {
+                              // Remove tag from notes
+                              const regex = new RegExp(`(^|\\n|,\\s*)${tag}(,\\s*|\\n|$)`, 'gi');
+                              const cleaned = notes.replace(regex, '$1').replace(/(^,\s*|,\s*$)/g, '').trim();
+                              setNotes(cleaned);
+                            } else {
+                              // Append tag with comma or newline
+                              const newNotes = notes.trim() ? `${notes.trim()}, ${tag}` : tag;
+                              setNotes(newNotes);
+                            }
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium ${isIncluded
+                              ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400 hover:text-teal-700 hover:bg-teal-50/50'
+                            }`}
+                        >
+                          {isIncluded && <span className="text-[10px]">✓</span>}
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <Textarea
+                  id="clinicalNotes"
+                  className="min-h-[110px] text-sm leading-relaxed"
+                  placeholder="Enter clinical observations, diagnoses, patient symptoms, or select from the tags above..."
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                />
               </div>
               <div className="border-t border-slate-100 pt-6">
                 <div className="space-y-3 max-w-xs">
@@ -1173,7 +1233,7 @@ export function DoctorWorkspacePage() {
         <Sheet open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>
           <SheetContent side="right" className="w-[450px] sm:w-[580px] p-0 flex flex-col bg-slate-50 h-full">
             <SheetTitle className="sr-only">Patient History</SheetTitle>
-            
+
             {/* Drawer Header */}
             <div className="h-16 pl-6 pr-14 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -1260,8 +1320,8 @@ export function DoctorWorkspacePage() {
                                   className={cn(
                                     "text-[10px] px-2 py-0.5",
                                     isCompleted ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                    isCancelled ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                    "bg-slate-100 text-slate-700 border-slate-200"
+                                      isCancelled ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                        "bg-slate-100 text-slate-700 border-slate-200"
                                   )}
                                 >
                                   {prevVisit.status}
