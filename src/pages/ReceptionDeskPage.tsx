@@ -249,17 +249,6 @@ export function ReceptionDeskPage() {
       )
     },
     {
-      accessorKey: 'visitType',
-      header: () => <div className="text-center font-semibold text-slate-600">Visit Type</div>,
-      cell: ({ row }) => (
-        <div className="text-center">
-          <Badge variant="outline" className={`whitespace-nowrap ${row.original.visitType === 'Appointment' ? 'text-indigo-600' : 'text-slate-600'}`}>
-            {row.original.visitType}
-          </Badge>
-        </div>
-      )
-    },
-    {
       accessorKey: 'doctor',
       header: () => <div className="text-center font-semibold text-slate-600">Doctor Name</div>,
       cell: ({ row }) => (

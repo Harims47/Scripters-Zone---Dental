@@ -147,38 +147,40 @@ export function QueuePage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <DataTableToolbar
-        searchQuery={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search patient, ID or phone..."
-        exportOptions={{
-          pdf: true,
-          excel: true,
-          csv: true,
-          onExport: exportQueue
-        }}
-      />
-
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
-        <DataTable 
-          columns={columns} 
-          data={filteredQueue}
-          emptyState={
-            search !== '' ? (
-              <DataTableEmpty 
-                icon={Search} 
-                title="No patients found" 
-                description={`There are no queue entries matching "${search}".`}
-              />
-            ) : (
-              <DataTableEmpty 
-                icon={Users}
-                title="Queue is empty" 
-                description="No patients are currently in the queue." 
-              />
-            )
-          }
+        <DataTableToolbar
+          searchQuery={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search patient, ID or phone..."
+          exportOptions={{
+            pdf: true,
+            excel: true,
+            csv: true,
+            onExport: exportQueue
+          }}
         />
+
+        <div className="p-4">
+          <DataTable 
+            columns={columns} 
+            data={filteredQueue}
+            emptyState={
+              search !== '' ? (
+                <DataTableEmpty 
+                  icon={Search} 
+                  title="No patients found" 
+                  description={`There are no queue entries matching "${search}".`}
+                />
+              ) : (
+                <DataTableEmpty 
+                  icon={Users}
+                  title="Queue is empty" 
+                  description="No patients are currently in the queue." 
+                />
+              )
+            }
+          />
+        </div>
       </div>
     </div>
   )

@@ -87,20 +87,23 @@ export function StaffPage() {
   }
 
   const handleOpenEdit = (row: Staff) => {
-    setActiveItem(row)
+    const cleanedPhone = (row.phone || '').replace(/\D/g, '').slice(-10)
+    setActiveItem({ ...row, phone: cleanedPhone })
     setDrawerMode('edit')
     setDrawerOpen(true)
   }
 
   const handleSave = async () => {
-    if (!activeItem.name || !activeItem.phone || !activeItem.role) {
+    const cleanedPhone = (activeItem.phone || '').replace(/\D/g, '').slice(-10)
+    if (!activeItem.name || !cleanedPhone || !activeItem.role) {
       toast.error('Please fill out all mandatory fields.');
       return;
     }
-    if (activeItem.phone.length !== 10) {
+    if (cleanedPhone.length !== 10) {
       toast.error('Phone number must be exactly 10 digits.');
       return;
     }
+    const itemToSave = { ...activeItem, phone: cleanedPhone };
     if ((activeItem as any).hasAccess && (!(activeItem as any).username || !(activeItem as any).password)) {
       toast.error('System Username and Password are required when granting system access.');
       return;
@@ -108,10 +111,10 @@ export function StaffPage() {
 
     try {
       if (drawerMode === 'create') {
-        await api.post('/api/staff', activeItem)
+        await api.post('/api/staff', itemToSave)
         toast.success('Staff member created successfully.')
       } else if (drawerMode === 'edit') {
-        await api.put(`/api/staff/${activeItem.id}`, activeItem)
+        await api.put(`/api/staff/${activeItem.id}`, itemToSave)
         toast.success('Staff member updated successfully.')
       }
       await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)

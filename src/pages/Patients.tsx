@@ -315,44 +315,45 @@ export function PatientsPage() {
         </Button>
       </div>
 
-      <DataTableToolbar
-        searchQuery={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search name, ID or phone..."
-        filterSlot={
-          <select
-            value={filterGender}
-            onChange={(e) => setFilterGender(e.target.value)}
-            className="flex h-9 w-[130px] items-center justify-between rounded-xl border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-1.5 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-teal-500"
-          >
-            <option value="all">All Genders</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
-          </select>
-        }
-        exportOptions={{ 
-          pdf: true, 
-          excel: true, 
-          csv: true,
-          onExport: (format) => {
-            const query = new URLSearchParams({
-              format,
-              ...(search ? { search } : {}),
-              ...(filterGender && filterGender !== 'all' ? { gender: filterGender } : {})
-            }).toString();
-            api.download(`/api/patients/export?${query}`, `patients_export.${format}`);
-          }
-        }}
-      />
-
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
-        <DataTable 
-          columns={columns} 
-          data={patients} 
-          selectable={false}
-          onRowClick={handleRowClick}
-          loading={isLoading}
+        <DataTableToolbar
+          searchQuery={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search name, ID or phone..."
+          filterSlot={
+            <select
+              value={filterGender}
+              onChange={(e) => setFilterGender(e.target.value)}
+              className="flex h-9 w-[130px] items-center justify-between rounded-xl border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-1.5 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="all">All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          }
+          exportOptions={{ 
+            pdf: true, 
+            excel: true, 
+            csv: true,
+            onExport: (format) => {
+              const query = new URLSearchParams({
+                format,
+                ...(search ? { search } : {}),
+                ...(filterGender && filterGender !== 'all' ? { gender: filterGender } : {})
+              }).toString();
+              api.download(`/api/patients/export?${query}`, `patients_export.${format}`);
+            }
+          }}
+        />
+
+        <div className="p-4 flex-1 flex flex-col">
+          <DataTable 
+            columns={columns} 
+            data={patients} 
+            selectable={false}
+            onRowClick={handleRowClick}
+            loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
           totalRecords={meta.totalRecords}
@@ -377,6 +378,7 @@ export function PatientsPage() {
             )
           }
         />
+        </div>
       </div>
 
       {/* Universal Drawer */}
