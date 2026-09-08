@@ -13,6 +13,7 @@ import { DispensingMedicineItem } from '../components/dispensing/dispensing-comp
 import type { DispensingItem } from '../components/dispensing/dispensing-components'
 import { useClinicContext } from '../context/ClinicContext'
 import { DEMO_STAFF } from '../lib/mock-data'
+import { api } from '../lib/api'
 
 export function ReceptionDispensingPage() {
   const navigate = useNavigate()
@@ -194,7 +195,18 @@ export function ReceptionDispensingPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient, ID or visit..."
-        exportOptions={{ pdf: true, excel: true, csv: true }}
+        exportOptions={{ 
+          pdf: true, 
+          excel: true, 
+          csv: true,
+          onExport: (format) => {
+            const query = new URLSearchParams({
+              format,
+              ...(search ? { search } : {})
+            }).toString();
+            api.download(`/api/dispensings/export?${query}`, `dispensings_export.${format}`);
+          }
+        }}
       />
 
       {/* Data Table */}
@@ -202,6 +214,7 @@ export function ReceptionDispensingPage() {
         <DataTable 
           columns={columns} 
           data={filteredData}
+          totalRecords={filteredData.length}
           onRowClick={handleOpenDrawer}
           emptyState={
             search !== '' ? (

@@ -6,9 +6,13 @@ export const getPayments = async (req: Request, res: Response, next: NextFunctio
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string;
+    const method = req.query.method as string;
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    if (method && method !== 'all') {
+      where.method = method;
+    }
     if (search) {
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
@@ -166,9 +170,13 @@ import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../service
 export const exportPayments = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = req.query.search as string;
+    const method = req.query.method as string;
     const format = req.query.format as string;
 
     const where: any = {};
+    if (method && method !== 'all') {
+      where.method = method;
+    }
     if (search) {
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
@@ -222,3 +230,103 @@ export const exportPayments = async (req: Request, res: Response, next: NextFunc
     next(error);
   }
 };
+
+export const exportPartialPayments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search as string;
+    const overdueFilter = req.query.overdue as string; // 'all' | 'overdue' | 'normal'
+    const format = req.query.format as string;
+
+    const visits = await prisma.visit.findMany({
+      where: { status: { not: 'CANCELLED' } },
+      include: {
+        patient: true,
+        payments: true
+      }
+    });
+
+    const staffMembers = await prisma.staff.findMany();
+    const staffMap = new Map(staffMembers.map(s => [s.id, s.name]));
+
+    const alertData: any[] = [];
+    for (const v of visits) {
+      const vPayments = v.payments || [];
+      if (vPayments.length > 0) {
+        const totalPaid = vPayments.reduce((sum, p) => sum + p.amount, 0);
+        const amountDue = v.amountDue || 0;
+        const balance = amountDue - totalPaid;
+
+        if (balance > 0) {
+          const earliestPayment = vPayments.reduce((prev, curr) =>
+            new Date(prev.createdAt) < new Date(curr.createdAt) ? prev : curr
+          );
+          const earliestDate = new Date(earliestPayment.createdAt);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - earliestDate.getTime());
+          const daysOutstanding = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          const docName = v.doctorId ? (staffMap.get(v.doctorId) || '—') : '—';
+
+          alertData.push({
+            patientName: v.patient?.name || 'Unknown',
+            doctorName: docName,
+            totalAmount: `₹${amountDue}`,
+            paidAmount: `₹${totalPaid}`,
+            balance: `₹${balance}`,
+            partialPaymentDate: earliestDate.toLocaleDateString(),
+            daysOutstanding: `${daysOutstanding} days`,
+            _rawDays: daysOutstanding
+          });
+        }
+      }
+    }
+
+    alertData.sort((a, b) => b._rawDays - a._rawDays);
+
+    let filteredData = alertData;
+    if (overdueFilter === 'overdue') {
+      filteredData = filteredData.filter(d => d._rawDays >= 3);
+    } else if (overdueFilter === 'normal') {
+      filteredData = filteredData.filter(d => d._rawDays < 3);
+    }
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredData = filteredData.filter(d =>
+        d.patientName.toLowerCase().includes(searchLower) ||
+        d.doctorName.toLowerCase().includes(searchLower)
+      );
+    }
+
+    const columns: ExportColumn[] = [
+      { key: 'patientName', label: 'Patient Name' },
+      { key: 'doctorName', label: 'Doctor Name' },
+      { key: 'totalAmount', label: 'Total Amount' },
+      { key: 'paidAmount', label: 'Paid Amount' },
+      { key: 'balance', label: 'Balance' },
+      { key: 'partialPaymentDate', label: 'Partial Payment Date' },
+      { key: 'daysOutstanding', label: 'Days Outstanding' }
+    ];
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, filteredData);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('partial_payments_export.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, filteredData, 'Partial Payments');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('partial_payments_export.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, filteredData, 'Partial Payment Alerts Report', `Total Records: ${filteredData.length}`);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('partial_payments_export.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+

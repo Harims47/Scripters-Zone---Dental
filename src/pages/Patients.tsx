@@ -35,6 +35,7 @@ export function PatientsPage() {
   const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Head Doctor';
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filterGender, setFilterGender] = useState('all');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 });
   const [isLoading, setIsLoading] = useState(false);
@@ -47,12 +48,13 @@ export function PatientsPage() {
 
   useEffect(() => {
     setPagination(prev => ({ ...prev, pageIndex: 0 }));
-  }, [debouncedSearch]);
+  }, [debouncedSearch, filterGender]);
 
-  const fetchPatients = useCallback(async (page: number, limit: number, query: string) => {
+  const fetchPatients = useCallback(async (page: number, limit: number, query: string, gender: string) => {
     setIsLoading(true);
     try {
-      const res = await api.get<PaginatedResponse<Patient>>(`/api/patients?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`);
+      const genderQuery = gender && gender !== 'all' ? `&gender=${encodeURIComponent(gender)}` : '';
+      const res = await api.get<PaginatedResponse<Patient>>(`/api/patients?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}${genderQuery}`);
       const payload = res as any;
       if (payload.data && payload.meta) {
         setPatients(payload.data);
@@ -66,8 +68,8 @@ export function PatientsPage() {
   }, []);
 
   useEffect(() => {
-    fetchPatients(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch);
-  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, fetchPatients]);
+    fetchPatients(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterGender);
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterGender, fetchPatients]);
   
   // Drawer State
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -317,6 +319,18 @@ export function PatientsPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name, ID or phone..."
+        filterSlot={
+          <select
+            value={filterGender}
+            onChange={(e) => setFilterGender(e.target.value)}
+            className="flex h-9 w-[130px] items-center justify-between rounded-xl border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-1.5 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-teal-500"
+          >
+            <option value="all">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+        }
         exportOptions={{ 
           pdf: true, 
           excel: true, 
@@ -324,7 +338,8 @@ export function PatientsPage() {
           onExport: (format) => {
             const query = new URLSearchParams({
               format,
-              ...(search ? { search } : {})
+              ...(search ? { search } : {}),
+              ...(filterGender && filterGender !== 'all' ? { gender: filterGender } : {})
             }).toString();
             api.download(`/api/patients/export?${query}`, `patients_export.${format}`);
           }

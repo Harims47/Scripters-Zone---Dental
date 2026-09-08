@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input';
 import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
 import { DataTable } from '../components/data-table/data-table';
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
@@ -34,6 +35,8 @@ export function ReceptionDeskPage() {
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = useState('all');
+  const [visitTypeFilter, setVisitTypeFilter] = useState('all');
 
   // Registration Drawer
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -193,6 +196,14 @@ export function ReceptionDeskPage() {
       });
     });
 
+    if (stageFilter && stageFilter !== 'all') {
+      data = data.filter(d => d.stage.toLowerCase() === stageFilter.toLowerCase());
+    }
+
+    if (visitTypeFilter && visitTypeFilter !== 'all') {
+      data = data.filter(d => d.visitType.toLowerCase() === visitTypeFilter.toLowerCase());
+    }
+
     if (search) {
       const s = search.toLowerCase();
       data = data.filter(d =>
@@ -209,7 +220,7 @@ export function ReceptionDeskPage() {
     });
 
     return data;
-  }, [queue, visits, patients, doctors, search]);
+  }, [queue, visits, patients, doctors, search, stageFilter, visitTypeFilter]);
 
   const columns: ColumnDef<any>[] = [
     {
@@ -832,22 +843,66 @@ export function ReceptionDeskPage() {
 
           {/* Unified Operations Table */}
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <h2 className="text-base font-semibold text-slate-900">Active Queue</h2>
-              <div className="relative w-64">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input
-                  placeholder="Search patients..."
-                  className="pl-9 bg-white border-slate-200 text-sm"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-            <DataTable
-              columns={columns}
-              data={unifiedData}
+            <DataTableToolbar
+              searchQuery={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search patients, doctors, tokens..."
+              filterSlot={
+                <>
+                  <Select value={stageFilter} onValueChange={setStageFilter}>
+                    <SelectTrigger className="h-9 w-[150px] bg-slate-50/50 border-slate-200 text-xs font-medium">
+                      <SelectValue placeholder="All Stages" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Stages</SelectItem>
+                      <SelectItem value="Waiting">Waiting</SelectItem>
+                      <SelectItem value="With Doctor">With Doctor</SelectItem>
+                      <SelectItem value="Transferred">Transferred</SelectItem>
+                      <SelectItem value="Ready at Reception">Ready at Reception</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={visitTypeFilter} onValueChange={setVisitTypeFilter}>
+                    <SelectTrigger className="h-9 w-[140px] bg-slate-50/50 border-slate-200 text-xs font-medium">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="Walk-in">Walk-in</SelectItem>
+                      <SelectItem value="Appointment">Appointment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              }
+              exportOptions={{
+                pdf: true,
+                excel: true,
+                csv: true,
+                onExport: async (format) => {
+                  try {
+                    const query = new URLSearchParams();
+                    query.set('format', format);
+                    if (search) query.set('search', search);
+                    if (stageFilter && stageFilter !== 'all') query.set('stage', stageFilter);
+                    if (visitTypeFilter && visitTypeFilter !== 'all') query.set('visitType', visitTypeFilter);
+                    const ext = format === 'pdf' ? 'pdf' : format === 'xlsx' ? 'xlsx' : 'csv';
+                    await api.download(`/api/visits/export?${query.toString()}`, `reception_desk_export.${ext}`);
+                    toast.success(`Exported ${format.toUpperCase()} successfully`);
+                  } catch (err: any) {
+                    toast.error(err.message || 'Failed to export data');
+                  }
+                }
+              }}
             />
+            <div className="p-4">
+              <DataTable
+                columns={columns}
+                data={unifiedData}
+                totalRecords={unifiedData.length}
+              />
+            </div>
           </section>
 
         </div>

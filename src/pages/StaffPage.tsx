@@ -25,6 +25,7 @@ export function StaffPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterRole, setFilterRole] = useState('all')
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
 
   useEffect(() => {
@@ -34,12 +35,13 @@ export function StaffPage() {
 
   useEffect(() => {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-  }, [debouncedSearch])
+  }, [debouncedSearch, filterRole])
 
-  const fetchStaff = useCallback(async (page: number, limit: number, query: string) => {
+  const fetchStaff = useCallback(async (page: number, limit: number, query: string, role: string) => {
     setIsLoading(true)
     try {
-      const res = await api.get<PaginatedResponse<Staff>>(`/api/staff?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
+      const roleQuery = role && role !== 'all' ? `&role=${encodeURIComponent(role)}` : ''
+      const res = await api.get<PaginatedResponse<Staff>>(`/api/staff?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}${roleQuery}`)
       const payload = res as any
       if (payload.data && payload.meta) {
         setData(payload.data)
@@ -56,8 +58,8 @@ export function StaffPage() {
   }, [])
 
   useEffect(() => {
-    fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
-  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, fetchStaff])
+    fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterRole)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterRole, fetchStaff])
   
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -244,6 +246,18 @@ export function StaffPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search name or phone..."
+        filterSlot={
+          <select
+            value={filterRole}
+            onChange={(e) => setFilterRole(e.target.value)}
+            className="flex h-9 w-[150px] items-center justify-between rounded-xl border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-1.5 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-teal-500"
+          >
+            <option value="all">All Roles</option>
+            <option value="Head Doctor">Head Doctor</option>
+            <option value="Duty Doctor">Duty Doctor</option>
+            <option value="Receptionist">Receptionist</option>
+          </select>
+        }
         exportOptions={{ 
           pdf: true, 
           excel: true, 
@@ -251,7 +265,8 @@ export function StaffPage() {
           onExport: (format) => {
             const query = new URLSearchParams({
               format,
-              ...(debouncedSearch ? { search: debouncedSearch } : {})
+              ...(debouncedSearch ? { search: debouncedSearch } : {}),
+              ...(filterRole && filterRole !== 'all' ? { role: filterRole } : {})
             }).toString();
             api.download(`/api/staff/export?${query}`, `staff_export.${format}`);
           }

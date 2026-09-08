@@ -6,7 +6,8 @@ import {
   getPayments,
   getPayment,
   createPayment,
-  exportPayments
+  exportPayments,
+  exportPartialPayments
 } from '../controllers/paymentController';
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 router.use(requireAuth);
 
 // Receptionists and Head Doctors can view and process payments
+router.get('/export-partial', requireRole('Head Doctor', 'Receptionist'), exportPartialPayments);
 router.get('/export', requireRole('Head Doctor', 'Receptionist'), exportPayments);
 router.get('/', requireRole('Head Doctor', 'Receptionist'), getPayments);
 router.get('/:id', requireRole('Head Doctor', 'Receptionist'), getPayment);

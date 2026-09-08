@@ -8,13 +8,15 @@ import {
   startWalkInVisit,
   checkInAppointment,
   cancelVisit,
-  updateVisit
+  updateVisit,
+  exportVisits
 } from '../controllers/visitController';
 
 const router = Router();
 
 router.use(requireAuth);
 
+router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportVisits);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getVisits);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getVisitById);
 

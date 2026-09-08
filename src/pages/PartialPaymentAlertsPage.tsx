@@ -1,13 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { useClinicContext } from '../context/ClinicContext';
 import { DataTable } from '../components/data-table/data-table';
+import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { ArrowRight, AlertTriangle, Banknote, CreditCard, Smartphone, CheckCircle } from 'lucide-react';
+import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export function PartialPaymentAlertsPage() {
@@ -17,9 +20,11 @@ export function PartialPaymentAlertsPage() {
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [activeMethod, setActiveMethod] = useState<'Cash' | 'GPay' | 'Credit Card' | 'Debit Card'>('Cash');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [overdueFilter, setOverdueFilter] = useState('all');
 
   const alerts = useMemo(() => {
-    const alertData: any[] = [];
+    let alertData: any[] = [];
     
     // We want to check all visits that aren't cancelled for balances
     const activeVisits = visits.filter(v => v.status !== 'CANCELLED');
@@ -60,9 +65,23 @@ export function PartialPaymentAlertsPage() {
       }
     }
     
+    if (overdueFilter === 'overdue') {
+      alertData = alertData.filter(d => d.daysOutstanding >= 3);
+    } else if (overdueFilter === 'normal') {
+      alertData = alertData.filter(d => d.daysOutstanding < 3);
+    }
+
+    if (search) {
+      const s = search.toLowerCase();
+      alertData = alertData.filter(d =>
+        d.patientName.toLowerCase().includes(s) ||
+        d.doctorName.toLowerCase().includes(s)
+      );
+    }
+
     // Sort by days outstanding descending
     return alertData.sort((a, b) => b.daysOutstanding - a.daysOutstanding);
-  }, [visits, payments, patients, staff]);
+  }, [visits, payments, patients, staff, search, overdueFilter]);
 
   const handleCollect = async () => {
     if (!selectedAlert || !paymentAmount || paymentAmount <= 0) {
@@ -177,12 +196,48 @@ export function PartialPaymentAlertsPage() {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
-        <DataTable 
-          columns={columns} 
-          data={alerts}
-          searchKey="patientName"
-          searchPlaceholder="Search by patient name..."
+        <DataTableToolbar
+          searchQuery={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by patient or doctor name..."
+          filterSlot={
+            <Select value={overdueFilter} onValueChange={setOverdueFilter}>
+              <SelectTrigger className="h-9 w-[170px] bg-slate-50/50 border-slate-200 text-xs font-medium">
+                <SelectValue placeholder="All Alerts" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Alerts</SelectItem>
+                <SelectItem value="overdue">Overdue (≥ 3 days)</SelectItem>
+                <SelectItem value="normal">Normal (&lt; 3 days)</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+          exportOptions={{
+            pdf: true,
+            excel: true,
+            csv: true,
+            onExport: async (format) => {
+              try {
+                const query = new URLSearchParams();
+                query.set('format', format);
+                if (search) query.set('search', search);
+                if (overdueFilter && overdueFilter !== 'all') query.set('overdue', overdueFilter);
+                const ext = format === 'pdf' ? 'pdf' : format === 'xlsx' ? 'xlsx' : 'csv';
+                await api.download(`/api/payments/export-partial?${query.toString()}`, `partial_payments_export.${ext}`);
+                toast.success(`Exported ${format.toUpperCase()} successfully`);
+              } catch (err: any) {
+                toast.error(err.message || 'Failed to export data');
+              }
+            }
+          }}
         />
+        <div className="p-4">
+          <DataTable 
+            columns={columns} 
+            data={alerts}
+            totalRecords={alerts.length}
+          />
+        </div>
       </div>
 
       <Dialog open={!!selectedAlert} onOpenChange={(open) => !open && setSelectedAlert(null)}>

@@ -6,9 +6,13 @@ export const getPatients = async (req: Request, res: Response, next: NextFunctio
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string;
+    const gender = req.query.gender as string;
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    if (gender && gender !== 'all') {
+      where.gender = gender;
+    }
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -102,9 +106,13 @@ import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../service
 export const exportPatients = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = req.query.search as string;
+    const gender = req.query.gender as string;
     const format = req.query.format as string;
 
     const where: any = {};
+    if (gender && gender !== 'all') {
+      where.gender = gender;
+    }
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },

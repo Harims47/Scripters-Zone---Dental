@@ -27,6 +27,7 @@ export function PaymentPage() {
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState('all')
 
   const [selectedRow, setSelectedRow] = useState<any | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -45,12 +46,16 @@ export function PaymentPage() {
 
   useEffect(() => {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-  }, [debouncedSearch])
+  }, [debouncedSearch, filterStatus])
 
-  const fetchPayments = useCallback(async (page: number, limit: number, query: string) => {
+  const fetchPayments = useCallback(async (page: number, limit: number, query: string, status: string) => {
     setIsLoading(true)
     try {
-      const res = await api.get<any>(`/api/billing?status=READY_FOR_PAYMENT,COMPLETED&page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
+      let statusParam = 'READY_FOR_PAYMENT,COMPLETED'
+      if (status === 'pending') statusParam = 'READY_FOR_PAYMENT'
+      if (status === 'completed') statusParam = 'COMPLETED'
+
+      const res = await api.get<any>(`/api/billing?status=${statusParam}&page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`)
       if (res.data && res.meta) {
         setPaymentVisits(res.data)
         setMeta(res.meta)
@@ -65,8 +70,8 @@ export function PaymentPage() {
   }, [])
 
   useEffect(() => {
-    fetchPayments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
-  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, fetchPayments])
+    fetchPayments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterStatus)
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterStatus, fetchPayments])
 
   const paymentData = useMemo(() => {
     return paymentVisits.map(v => {
@@ -178,16 +183,32 @@ export function PaymentPage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient, ID or visit..."
+        filterSlot={
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="flex h-9 w-[150px] items-center justify-between rounded-xl border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-1.5 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-teal-500"
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+          </select>
+        }
         exportOptions={{ 
           pdf: true, 
           excel: true, 
           csv: true,
           onExport: (format) => {
+            let statusParam = 'READY_FOR_PAYMENT,COMPLETED'
+            if (filterStatus === 'pending') statusParam = 'READY_FOR_PAYMENT'
+            if (filterStatus === 'completed') statusParam = 'COMPLETED'
+
             const query = new URLSearchParams({
               format,
-              ...(search ? { search } : {})
+              ...(search ? { search } : {}),
+              status: statusParam
             }).toString();
-            api.download(`/api/payments/export?${query}`, `payments_export.${format}`);
+            api.download(`/api/billing/export?${query}`, `payments_export.${format}`);
           }
         }}
       />

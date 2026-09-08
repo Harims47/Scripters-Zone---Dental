@@ -151,19 +151,12 @@ export function QueuePage() {
         searchQuery={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search patient, ID or phone..."
-        actionSlot={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportQueue('pdf')} className="h-9 bg-white">
-              <FileText className="mr-2 h-4 w-4 text-red-500" /> PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportQueue('xlsx')} className="h-9 bg-white">
-              <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" /> Excel
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportQueue('csv')} className="h-9 bg-white">
-              <File className="mr-2 h-4 w-4 text-blue-600" /> CSV
-            </Button>
-          </div>
-        }
+        exportOptions={{
+          pdf: true,
+          excel: true,
+          csv: true,
+          onExport: exportQueue
+        }}
       />
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">

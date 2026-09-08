@@ -311,7 +311,8 @@ export function BillingPage() {
           onExport: (format) => {
             const query = new URLSearchParams({
               format,
-              ...(search ? { search } : {})
+              ...(search ? { search } : {}),
+              ...(statusFilter && statusFilter !== 'all' ? { status: statusFilter === 'pending' ? 'READY_FOR_RECEPTION,READY_FOR_PAYMENT' : 'COMPLETED' } : {})
             }).toString();
             api.download(`/api/billing/export?${query}`, `billing_export.${format}`);
           }
