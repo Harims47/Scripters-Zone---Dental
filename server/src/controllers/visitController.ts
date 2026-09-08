@@ -285,7 +285,6 @@ export const exportVisits = async (req: Request, res: Response, next: NextFuncti
       orderBy: { createdAt: 'desc' },
       include: {
         patient: true,
-        doctor: true,
         queueEntry: true,
         payments: true
       }
