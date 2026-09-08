@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X } from 'lucide-react';
+import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X, AlertTriangle } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
 import { DataTable } from '../components/data-table/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -603,6 +604,9 @@ export function ReceptionDeskPage() {
       const items = rx.items.map((ri, idx) => {
         const med = medicines.find(m => m.id === ri.medicineId);
         const dItem = disp?.items.find(di => di.medicineId === ri.medicineId);
+        const availableStock = med?.currentStock || 0;
+        const initialDispensed = dItem !== undefined ? dItem.dispensedQuantity : ri.quantity;
+        const isDispensed = dItem !== undefined ? dItem.dispensedQuantity > 0 : true;
 
         return {
           id: `i${idx}`,
@@ -611,8 +615,9 @@ export function ReceptionDeskPage() {
           strength: med?.unit || '',
           categoryId: med?.categoryId || 'cat1',
           prescribedQty: ri.quantity,
-          dispensedQty: dItem ? dItem.dispensedQuantity : ri.quantity,
-          availableStock: med?.currentStock || 0,
+          isDispensed: isDispensed,
+          dispensedQty: isDispensed ? initialDispensed : 0,
+          availableStock,
           unitPrice: med?.unitPrice || 0
         };
       });
@@ -630,10 +635,28 @@ export function ReceptionDeskPage() {
     const rx = prescriptions.find(r => r.visitId === processVisitId && r.status === 'Finalized');
     if (!rx) return;
 
+    // Validate quantities for all items
+    for (const item of activeItems) {
+      if (item.isDispensed) {
+        if (!item.dispensedQty || item.dispensedQty < 1) {
+          toast.error(`Please enter a valid quantity (at least 1) for ${item.name} or uncheck Dispense.`);
+          return;
+        }
+        if (item.dispensedQty > item.prescribedQty) {
+          toast.error(`Dispense quantity for ${item.name} cannot exceed prescribed quantity (${item.prescribedQty}).`);
+          return;
+        }
+        if (item.dispensedQty > item.availableStock) {
+          toast.error(`Insufficient stock for ${item.name}. Available: ${item.availableStock}, Requested: ${item.dispensedQty}.`);
+          return;
+        }
+      }
+    }
+
     const mappedItems = activeItems.map(ai => ({
       medicineId: ai.medicineId,
       prescribedQuantity: ai.prescribedQty,
-      dispensedQuantity: ai.dispensedQty
+      dispensedQuantity: ai.isDispensed ? Number(ai.dispensedQty) : 0
     }));
 
     const result = await completeDispensing(processVisitId, rx.id, mappedItems);
@@ -1363,13 +1386,13 @@ export function ReceptionDeskPage() {
 
       {/* Process Visit Drawer */}
       <Sheet open={!!processVisitId} onOpenChange={open => !open && setProcessVisitId(null)}>
-        <SheetContent side="right" className="w-[400px] sm:w-[600px] p-0 flex flex-col bg-slate-50 h-full">
+        <SheetContent side="right" className="w-[480px] sm:w-[680px] p-0 flex flex-col bg-slate-50 h-full">
           <SheetTitle className="sr-only">Checkout & Billing</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
             <h2 className="text-lg font-semibold text-slate-900">Checkout & Billing</h2>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
             {/* Dynamic Step Calculations */}
             {(() => {
@@ -1392,69 +1415,150 @@ export function ReceptionDeskPage() {
               return (
                 <>
                   <DrawerSection title="Visit Details">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4 text-sm mb-2">
-                      <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Reason for Visit</span>
-                          <span className="text-slate-900 font-medium">{activeConsultation?.reasonForVisit || 'Not specified'}</span>
+                          <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider mb-0.5">Reason for Visit</span>
+                          <span className="text-slate-900 font-medium text-sm">{activeConsultation?.reasonForVisit || 'Not specified'}</span>
                         </div>
                         <div>
-                          <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Fees</span>
-                          <span className="text-slate-900 font-medium leading-relaxed">
-                            Consulting: ₹{activeConsultation?.consultationFee || 0} <br />
-                            Treatment: ₹{activeProcessVisit?.treatmentFee || 0}
+                          <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider mb-0.5">Fees</span>
+                          <span className="text-slate-900 font-medium">
+                            Consulting: ₹{activeConsultation?.consultationFee || 0} • Treatment: ₹{activeProcessVisit?.treatmentFee || 0}
                           </span>
                         </div>
                       </div>
 
                       {activeConsultation?.clinicalNotes && (
-                        <div>
-                          <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Clinical Notes</span>
-                          <span className="text-slate-700 whitespace-pre-wrap">{activeConsultation.clinicalNotes}</span>
+                        <div className="pt-2 border-t border-slate-100">
+                          <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider mb-0.5">Clinical Notes</span>
+                          <span className="text-slate-700 whitespace-pre-wrap leading-relaxed">{activeConsultation.clinicalNotes}</span>
                         </div>
                       )}
-
-                      {(() => {
-                        const activePrescription = prescriptions.find(p => p.visitId === processVisitId);
-                        if (!activePrescription || activePrescription.items.length === 0) return null;
-                        return (
-                          <div className="pt-3 border-t border-slate-100">
-                            <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-2">Prescribed Medicines</span>
-                            <ul className="list-disc pl-5 space-y-1">
-                              {activePrescription.items.map(item => {
-                                const med = medicines.find(m => m.id === item.medicineId);
-                                return (
-                                  <li key={item.id} className="text-slate-700">
-                                    <span className="font-medium">{med?.name || 'Unknown Medicine'}</span> — {item.quantity} units {item.dosage ? `(${item.dosage})` : ''}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        );
-                      })()}
                     </div>
                   </DrawerSection>
 
                   <DrawerSection title="1. Medicines">
                     {isDispensingStep ? (
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {activeItems.length > 0 ? (
-                          activeItems.map((item, index) => (
-                            <DispensingMedicineItem
-                              key={item.id}
-                              item={item}
-                              onChange={(id, qty) => {
-                                const newItems = [...activeItems];
-                                newItems[index].dispensedQty = qty;
-                                setActiveItems(newItems);
-                              }}
-                            />
-                          ))
+                          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                            <table className="w-full text-left text-xs table-fixed">
+                              <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
+                                <tr>
+                                  <th className="py-2.5 px-3">Medicine</th>
+                                  <th className="py-2.5 px-2 text-center w-16 whitespace-nowrap">Rx</th>
+                                  <th className="py-2.5 px-2 text-center w-16 whitespace-nowrap">Disp</th>
+                                  <th className="py-2.5 px-2 text-center w-20 whitespace-nowrap">Qty</th>
+                                  <th className="py-2.5 px-3 text-right w-20 whitespace-nowrap">Cost</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {activeItems.map((item, index) => {
+                                  const hasStockShortage = item.isDispensed && item.availableStock < item.prescribedQty;
+                                  const exceedsStock = item.isDispensed && item.dispensedQty > item.availableStock;
+                                  const exceedsPrescribed = item.isDispensed && item.dispensedQty > item.prescribedQty;
+                                  const itemCost = item.isDispensed ? (item.dispensedQty || 0) * (item.unitPrice || 0) : 0;
+
+                                  return (
+                                    <tr key={item.id} className={item.isDispensed ? 'bg-white' : 'bg-slate-50/70 text-slate-400'}>
+                                      <td className="py-2.5 px-3 align-middle truncate">
+                                        <div className={`font-medium truncate ${item.isDispensed ? 'text-slate-900 font-semibold' : 'text-slate-500'}`} title={item.name}>
+                                          {item.name}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                          {item.strength || 'Unit'} • ₹{item.unitPrice || 0}/unit
+                                        </div>
+                                        {hasStockShortage && (
+                                          <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded px-1.5 py-0.5 w-fit">
+                                            <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                            <span>Stock: {item.availableStock}/{item.prescribedQty}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle whitespace-nowrap font-medium text-slate-700">
+                                        {item.prescribedQty}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle whitespace-nowrap">
+                                        <div className="flex justify-center">
+                                          <Checkbox
+                                            checked={item.isDispensed}
+                                            onCheckedChange={(checked) => {
+                                              const newItems = [...activeItems];
+                                              const isChecked = !!checked;
+                                              newItems[index] = {
+                                                ...newItems[index],
+                                                isDispensed: isChecked,
+                                                dispensedQty: isChecked
+                                                  ? (item.dispensedQty > 0 ? item.dispensedQty : Math.min(item.prescribedQty, item.availableStock > 0 ? item.prescribedQty : 0))
+                                                  : 0
+                                              };
+                                              setActiveItems(newItems);
+                                            }}
+                                          />
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle whitespace-nowrap">
+                                        {item.isDispensed ? (
+                                          <div className="flex justify-center">
+                                            <Input
+                                              type="number"
+                                              min={1}
+                                              max={item.prescribedQty}
+                                              value={item.dispensedQty === 0 ? '' : item.dispensedQty}
+                                              onChange={(e) => {
+                                                const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                                const newItems = [...activeItems];
+                                                newItems[index] = {
+                                                  ...newItems[index],
+                                                  dispensedQty: isNaN(val) ? 0 : val
+                                                };
+                                                setActiveItems(newItems);
+                                              }}
+                                              className={`h-7 w-14 text-center text-xs font-semibold px-1 py-0 ${
+                                                exceedsStock || exceedsPrescribed || item.dispensedQty < 1
+                                                  ? 'border-rose-500 focus-visible:ring-rose-500 text-rose-600'
+                                                  : 'border-slate-200'
+                                              }`}
+                                            />
+                                          </div>
+                                        ) : (
+                                          <span className="text-slate-400 font-mono text-xs">—</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right align-middle whitespace-nowrap font-semibold text-slate-900">
+                                        ₹{itemCost}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+
+                            {/* Medicine Total Summary Row */}
+                            <div className="bg-slate-50 border-t border-slate-200 px-3.5 py-2.5 flex justify-between items-center text-xs">
+                              <span className="font-medium text-slate-600">Medicine Total</span>
+                              <span className="font-bold text-slate-900 text-sm">
+                                ₹{activeItems.reduce((sum, item) => sum + (item.isDispensed ? (item.dispensedQty || 0) * (item.unitPrice || 0) : 0), 0)}
+                              </span>
+                            </div>
+                          </div>
                         ) : (
-                          <p className="text-sm text-slate-500 p-4 text-center bg-white border border-slate-200 rounded-lg">No medicines prescribed.</p>
+                          <p className="text-xs text-slate-500 p-3 text-center bg-white border border-slate-200 rounded-lg">No medicines prescribed.</p>
                         )}
-                        <Button onClick={handleCompleteDispensing} className="w-full bg-teal-600 hover:bg-teal-700">
+
+                        {activeItems.some(item => item.isDispensed && (item.dispensedQty < 1 || item.dispensedQty > item.prescribedQty || item.dispensedQty > item.availableStock)) && (
+                          <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Please resolve quantity or stock errors before completing dispensing.</span>
+                          </div>
+                        )}
+
+                        <Button 
+                          onClick={handleCompleteDispensing} 
+                          disabled={activeItems.some(item => item.isDispensed && (item.dispensedQty < 1 || item.dispensedQty > item.prescribedQty || item.dispensedQty > item.availableStock))}
+                          className="w-full bg-teal-600 hover:bg-teal-700 h-9 font-medium text-sm"
+                        >
                           Complete Dispensing
                         </Button>
                       </div>

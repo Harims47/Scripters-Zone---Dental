@@ -44,32 +44,57 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
         throw { status: 409, message: 'Dispensing already completed for this visit.' };
       }
 
-      const prescription = await tx.prescription.findUnique({ where: { id: prescriptionId } });
+      const prescription = await tx.prescription.findUnique({
+        where: { id: prescriptionId },
+        include: { items: true }
+      });
       if (!prescription) throw { status: 404, message: 'Prescription not found' };
       if (prescription.visitId !== visitId) throw { status: 409, message: 'Prescription does not match visit' };
+
+      // Ensure all prescription items are accounted for
+      const prescriptionItemMap = new Map(prescription.items.map(pi => [pi.medicineId, pi]));
+      if (items.length !== prescription.items.length) {
+        throw { status: 400, message: 'All prescribed medicines must be accounted for in dispensing submission.' };
+      }
 
       // Validations and Stock Reduction
       let medicineCost = 0;
 
       for (const item of items) {
-        if (item.dispensedQuantity > item.prescribedQuantity) {
-          throw { status: 409, message: 'Dispensed quantity cannot exceed prescribed quantity.' };
+        const presItem = prescriptionItemMap.get(item.medicineId);
+        if (!presItem) {
+          throw { status: 400, message: `Medicine ${item.medicineId} is not part of prescription ${prescriptionId}.` };
+        }
+
+        if (item.prescribedQuantity !== presItem.quantity) {
+          throw { status: 400, message: `Prescribed quantity mismatch for medicine ${item.medicineId}. Expected ${presItem.quantity}, received ${item.prescribedQuantity}.` };
+        }
+
+        if (!Number.isInteger(item.dispensedQuantity) || item.dispensedQuantity < 0) {
+          throw { status: 400, message: 'Dispensed quantity must be a non-negative integer.' };
+        }
+
+        if (item.dispensedQuantity > presItem.quantity) {
+          throw { status: 400, message: `Dispensed quantity cannot exceed prescribed quantity (${presItem.quantity}).` };
         }
 
         const med = await tx.medicine.findUnique({ where: { id: item.medicineId } });
         if (!med) throw { status: 404, message: `Medicine ${item.medicineId} not found` };
 
-        if (item.dispensedQuantity > med.currentStock) {
-          throw { status: 409, message: `Insufficient stock for ${med.name}. Requested: ${item.dispensedQuantity}, Available: ${med.currentStock}.` };
+        // Only validate and deduct stock if dispensedQuantity > 0
+        if (item.dispensedQuantity > 0) {
+          if (item.dispensedQuantity > med.currentStock) {
+            throw { status: 409, message: `Insufficient stock for ${med.name}. Requested: ${item.dispensedQuantity}, Available: ${med.currentStock}.` };
+          }
+
+          // Deduct Stock
+          await tx.medicine.update({
+            where: { id: med.id },
+            data: { currentStock: med.currentStock - item.dispensedQuantity }
+          });
+
+          medicineCost += (item.dispensedQuantity * med.unitPrice);
         }
-
-        // Deduct Stock
-        await tx.medicine.update({
-          where: { id: med.id },
-          data: { currentStock: med.currentStock - item.dispensedQuantity }
-        });
-
-        medicineCost += (item.dispensedQuantity * med.unitPrice);
       }
 
       // Create Dispensing Records
@@ -100,7 +125,6 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
       });
 
       return { dispensing, visit: updatedVisit };
-
     });
 
     return res.json(result);
