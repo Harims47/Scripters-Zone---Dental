@@ -18,6 +18,8 @@ interface ClinicContextType {
   payments: Payment[]
   medicines: Medicine[]
   staff: any[]
+  reloadStaff: () => Promise<void>
+  updateStaffAttendance: (staffId: string, attendance: string) => Promise<void>
   
   addPatient: (patientData: Omit<Patient, 'id'>) => Promise<Patient>
   updatePatient?: (id: string, updates: Partial<Patient>) => Promise<void>
@@ -78,9 +80,6 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         setDispensings(allDispensings)
       }).catch(console.error)
       api.get<QueueEntry[]>('/api/queue').then(res => setQueue((res as any).data || res)).catch(console.error)
-      api.get<any>('/api/staff?limit=100').then(res => {
-        setStaff(res.data?.data || res.data || res)
-      }).catch(console.error)
     } else {
       setPatients([])
       setAppointments([])
@@ -98,19 +97,39 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   const [medicines, setMedicines] = React.useState<Medicine[]>([])
   const [staff, setStaff] = React.useState<any[]>([])
 
+  const reloadStaff = React.useCallback(async () => {
+    try {
+      const res = await api.get<any>('/api/staff?limit=100')
+      setStaff(res.data?.data || res.data || res || [])
+    } catch (e) {
+      console.error('Failed to reload staff in ClinicContext', e)
+    }
+  }, [])
+
+  const updateStaffAttendance = React.useCallback(async (staffId: string, attendance: string) => {
+    // Optimistically update ClinicContext staff state immediately
+    setStaff(prev => prev.map(s => s.id === staffId ? { ...s, attendance } : s))
+    try {
+      await api.put(`/api/staff/${staffId}/attendance`, { attendance })
+    } catch (e) {
+      console.error('Failed to update staff attendance', e)
+      // Revert/refresh on failure
+      reloadStaff()
+      throw e
+    }
+  }, [reloadStaff])
+
   React.useEffect(() => {
     if (isAuthenticated) {
       api.get<{ data: Medicine[] }>('/api/inventory').then(res => setMedicines(res.data || (res as any))).catch(console.error)
       api.get<Payment[]>('/api/payments').then(res => setPayments((res as any).data || res)).catch(console.error)
-      api.get<any>('/api/staff?limit=100').then(res => {
-        setStaff(res.data?.data || res.data || res)
-      }).catch(console.error)
+      reloadStaff()
     } else {
       setMedicines([])
       setPayments([])
       setStaff([])
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, reloadStaff])
 
   // Remove old LocalStorage for migrated domains
   React.useEffect(() => {
@@ -437,7 +456,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   return (
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
-      staff,
+      staff, reloadStaff, updateStaffAttendance,
       addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit,
         assignDoctor,
         normalizePhone,

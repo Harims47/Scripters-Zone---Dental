@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { Plus, Search, User, Phone, Edit2, ShieldOff, Eye } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
@@ -12,17 +12,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { DrawerFooterActions } from '../components/ui/drawer-patterns'
 import { StaffStatusBadge, RoleAccessPreview } from '../components/staff/staff-components'
 import { type ClinicRole, ROLE_CONFIG } from '../lib/role-config'
-import { DEMO_STAFF, type Staff } from '../lib/mock-data'
+import type { Staff } from '../lib/mock-data'
 import { api } from '../lib/api'
+import { useClinicContext } from '../context/ClinicContext'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import type { PaginationMeta, PaginatedResponse } from '../types/domain'
 
 type StaffStatus = 'Active' | 'Inactive'
 
 export function StaffPage() {
+  const { reloadStaff, updateStaffAttendance } = useClinicContext()
   const [data, setData] = useState<Staff[]>([])
   const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
-  const [isLoading, setIsLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filterRole, setFilterRole] = useState('all')
@@ -38,7 +39,6 @@ export function StaffPage() {
   }, [debouncedSearch, filterRole])
 
   const fetchStaff = useCallback(async (page: number, limit: number, query: string, role: string) => {
-    setIsLoading(true)
     try {
       const roleQuery = role && role !== 'all' ? `&role=${encodeURIComponent(role)}` : ''
       const res = await api.get<PaginatedResponse<Staff>>(`/api/staff?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}${roleQuery}`)
@@ -52,8 +52,6 @@ export function StaffPage() {
       }
     } catch (e) {
       console.error(e)
-    } finally {
-      setIsLoading(false)
     }
   }, [])
 
@@ -117,7 +115,8 @@ export function StaffPage() {
         await api.put(`/api/staff/${activeItem.id}`, itemToSave)
         toast.success('Staff member updated successfully.')
       }
-      await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+      await reloadStaff()
+      await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterRole)
       setDrawerOpen(false)
     } catch (error: any) {
       console.error(error)
@@ -129,7 +128,8 @@ export function StaffPage() {
     if (deactivateId) {
       try {
         await api.put(`/api/staff/${deactivateId}/status`, { status: 'Inactive' })
-        await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+        await reloadStaff()
+        await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterRole)
         setDeactivateId(null)
         toast.success('Staff member deactivated.')
       } catch (error: any) {
@@ -141,9 +141,9 @@ export function StaffPage() {
 
   const handleAttendanceChange = async (id: string, attendance: string) => {
     try {
-      await api.put(`/api/staff/${id}/attendance`, { attendance });
+      await updateStaffAttendance(id, attendance);
       toast.success("Attendance updated");
-      await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch);
+      await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterRole);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to update attendance");

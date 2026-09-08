@@ -56,6 +56,16 @@ export function ReceptionDeskPage() {
   const [selectedExistingPatientId, setSelectedExistingPatientId] = useState('');
   const [patientSearch, setPatientSearch] = useState('');
 
+  const resetRegistrationForm = () => {
+    setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
+    setApptData({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
+    setIsNewPatient(false);
+    setSelectedExistingPatientId('');
+    setPatientSearch('');
+    setRegType('walk-in');
+    setIsCameraOpen(false);
+  };
+
   // Payment States
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentReason, setPaymentReason] = useState<string>('');
@@ -527,8 +537,7 @@ export function ReceptionDeskPage() {
         await startVisit(finalPatientId, undefined, false, regData.reasonForVisit || 'General Consultation');
         showSuccessModal('Registration Complete', isNewPatient ? "Patient registered and added to Waiting list" : "Walk-in added to Waiting list");
         setIsRegisterOpen(false);
-        setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
-        setSelectedExistingPatientId('');
+        resetRegistrationForm();
       } else {
         const appointment = await addAppointment({
           patientId: finalPatientId,
@@ -548,8 +557,7 @@ export function ReceptionDeskPage() {
         }
 
         setIsRegisterOpen(false);
-        setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
-        setSelectedExistingPatientId('');
+        resetRegistrationForm();
       }
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Failed to start walk-in visit");
@@ -764,10 +772,7 @@ export function ReceptionDeskPage() {
         </div>
         <Button
           onClick={() => {
-            setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
-            setIsNewPatient(false);
-            setSelectedExistingPatientId('');
-            setPatientSearch('');
+            resetRegistrationForm();
             setIsRegisterOpen(true);
           }}
           className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white"
@@ -955,8 +960,7 @@ export function ReceptionDeskPage() {
         if (!open) {
           setRegistrationSuccessData(null);
           setIsRegisterOpen(false);
-          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
-          setSelectedExistingPatientId('');
+          resetRegistrationForm();
         }
       }}>
         <DialogContent className="sm:max-w-[425px]">
@@ -968,8 +972,7 @@ export function ReceptionDeskPage() {
             <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => {
               setRegistrationSuccessData(null);
               setIsRegisterOpen(false);
-              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
-              setSelectedExistingPatientId('');
+              resetRegistrationForm();
             }}>OK</Button>
           </DialogFooter>
         </DialogContent>
@@ -992,14 +995,7 @@ export function ReceptionDeskPage() {
       {/* Register Patient Sheet */}
       <Sheet open={isRegisterOpen} onOpenChange={(open) => {
         setIsRegisterOpen(open);
-        if (!open) {
-          setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '', address: '' });
-          setApptData({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
-          setIsNewPatient(false);
-          setSelectedExistingPatientId('');
-          setPatientSearch('');
-          setRegType('walk-in');
-        }
+        resetRegistrationForm();
       }}>
         <SheetContent 
           side="right" 
@@ -1266,9 +1262,7 @@ export function ReceptionDeskPage() {
           <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex items-center justify-end gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
             <Button variant="outline" onClick={() => {
               setIsRegisterOpen(false);
-              setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
-              setSelectedExistingPatientId('');
-              setPatientSearch('');
+              resetRegistrationForm();
             }}>
               Cancel
             </Button>
