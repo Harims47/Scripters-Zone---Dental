@@ -111,14 +111,14 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
         }
       });
 
-      // Update Visit Status ONLY if fully paid or explicitly marked as final
-      let updatedVisit = visit;
+      let updatedVisit: any = visit;
       const newBalance = balance - amount;
       
       if (newBalance === 0 || isFinalPayment) {
         updatedVisit = await tx.visit.update({
           where: { id: visit.id },
-          data: { status: 'COMPLETED' }
+          data: { status: 'COMPLETED' },
+          include: { patient: true, payments: true, prescription: true }
         });
         
         // Also ensure QueueEntry is marked Completed if we auto-completed the visit

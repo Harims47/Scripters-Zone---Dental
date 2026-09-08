@@ -248,8 +248,11 @@ export function DoctorWorkspacePage() {
       setNotes(consultation.clinicalNotes)
       if (consultation.consultationFee !== undefined) setConsultationFee(consultation.consultationFee)
       if ((consultation as any).treatmentFee !== undefined) setTreatmentFee((consultation as any).treatmentFee)
+    } else if (visit?.reasonForVisit) {
+      setReason(visit.reasonForVisit)
     }
-  }, [consultation])
+  }, [consultation, visit?.reasonForVisit])
+
 
   useEffect(() => {
     if (prescription) {
@@ -435,7 +438,7 @@ export function DoctorWorkspacePage() {
     <div>
       <div className="max-w-5xl mx-auto space-y-6 pb-24 pt-4">
         {/* Header Back & Action Buttons */}
-        <div className="mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="mb-2 flex flex-col sm:flex-row sm:items-center justify-start gap-4">
           <Button variant="ghost" onClick={() => navigate('/queue')} className="text-slate-500 hover:text-slate-900 -ml-3 h-8">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Queue
           </Button>

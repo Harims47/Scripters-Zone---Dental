@@ -223,3 +223,52 @@ export const cancelVisit = async (req: Request, res: Response, next: NextFunctio
     next(error);
   }
 };
+
+export const updateVisit = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const { reasonForVisit, doctorId, isUrgent, amountDue } = req.body;
+
+    const existingVisit = await prisma.visit.findUnique({
+      where: { id },
+      include: { queueEntry: true }
+    });
+
+
+    if (!existingVisit) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+
+    const updatedVisit = await prisma.$transaction(async (tx) => {
+      const visitData: any = {};
+      if (reasonForVisit !== undefined) visitData.reasonForVisit = reasonForVisit;
+      if (doctorId !== undefined) visitData.doctorId = doctorId;
+      if (amountDue !== undefined) visitData.amountDue = amountDue;
+
+      const v = await tx.visit.update({
+        where: { id },
+        data: visitData,
+        include: {
+          queueEntry: true,
+          consultation: true,
+          prescription: { include: { items: true } },
+          dispensing: { include: { items: true } }
+        }
+      });
+
+      if (isUrgent !== undefined && existingVisit.queueEntry) {
+        await tx.queueEntry.update({
+          where: { visitId: id },
+          data: { priority: isUrgent }
+        });
+      }
+
+      return v;
+    });
+
+    return res.json(updatedVisit);
+  } catch (error) {
+    next(error);
+  }
+};
+

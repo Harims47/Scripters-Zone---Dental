@@ -8,7 +8,7 @@ import type { ColumnDef, PaginationState } from '@tanstack/react-table';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { 
   PatientProfileHeader,
   DrawerSection,
@@ -25,9 +25,12 @@ import { useClinicContext } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { DEMO_STAFF } from '../lib/mock-data';
 import { api } from '../lib/api';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
 
+const MySwal = withReactContent(Swal);
 export function PatientsPage() {
-  const { visits, addPatient, updatePatient, startVisit, normalizePhone } = useClinicContext();
+  const { visits, addPatient, updatePatient, startVisit, updateVisit, normalizePhone } = useClinicContext();
   const { currentUser } = useAuth();
   const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Head Doctor';
   const [search, setSearch] = useState('');
@@ -104,7 +107,8 @@ export function PatientsPage() {
       phone: isNumber ? rawSearch : '',
       age: '',
       gender: 'Male',
-      photoUrl: ''
+      photoUrl: '',
+      address: ''
     });
     setVisitReason('');
     setIsCameraOpen(false);
@@ -127,7 +131,17 @@ export function PatientsPage() {
     const normPhone = normalizePhone(newPatient.phone);
     const existing = patients.find(p => normalizePhone(p.phone) === normPhone);
     if (existing) {
-      toast.error(`Patient with phone number ${newPatient.phone} is already registered (${existing.name}).`);
+      MySwal.fire({
+        title: 'Duplicate Phone Number',
+        html: `A patient is already registered with this phone number: <br/><br/><b>${existing.name}</b> (${existing.phone})<br/><br/>Please edit this patient instead of registering a new one to avoid duplicate records.`,
+        icon: 'warning',
+        confirmButtonText: 'Understood',
+        confirmButtonColor: '#0d9488',
+        customClass: {
+          popup: 'rounded-2xl',
+          confirmButton: 'rounded-lg font-semibold px-8 py-2'
+        }
+      });
       return;
     }
 
@@ -172,6 +186,10 @@ export function PatientsPage() {
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
         } : prev);
+      }
+      const activeVisit = getActiveVisit(selectedPatient.id);
+      if (activeVisit && updateVisit && visitReason !== undefined) {
+        await updateVisit(activeVisit.id, { reasonForVisit: visitReason });
       }
       toast.success('Patient details updated.');
       setDrawerMode('view');
@@ -348,7 +366,14 @@ export function PatientsPage() {
 
       {/* Universal Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
+        <SheetContent 
+          side="right" 
+          size="lg" 
+          className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300"
+          onInteractOutside={(e) => {
+            if (isCameraOpen) e.preventDefault();
+          }}
+        >
           
           {(selectedPatient || drawerMode === 'create') && (
             <>
@@ -419,15 +444,18 @@ export function PatientsPage() {
                             ) : (
                                 <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
                                   {newPatient.photoUrl ? (
-                                    <div className="relative flex flex-col items-center">
+                                    <div className="flex flex-col items-center gap-3">
                                       <img src={newPatient.photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
-                                      <button 
+                                      <Button 
                                         type="button"
-                                        onClick={() => setNewPatient({...newPatient, photoUrl: undefined})}
-                                        className="absolute top-0 right-0 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setIsCameraOpen(true)}
+                                        className="text-teal-600 border-teal-200 hover:bg-teal-50"
                                       >
-                                        <X className="w-4 h-4" />
-                                      </button>
+                                        <Camera className="w-4 h-4 mr-2" />
+                                        Replace Photo
+                                      </Button>
                                     </div>
                                   ) : (
                                     <div className="cursor-pointer flex flex-col items-center gap-2" onClick={() => setIsCameraOpen(true)}>
@@ -445,21 +473,21 @@ export function PatientsPage() {
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Full Name <span className="text-red-500">*</span></label>
                           <Input 
-                            value={drawerMode === 'create' ? newPatient.name : selectedPatient?.name} 
-                            onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, name: e.target.value})}
+                            value={drawerMode === 'create' ? newPatient.name : (newPatient.name || selectedPatient?.name || '')} 
+                            onChange={e => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, name: e.target.value})}
                             className="bg-white" 
                             placeholder="e.g. John Doe"
-                            autoFocus={drawerMode === 'create'}
+                            autoFocus={drawerMode === 'create' || drawerMode === 'edit'}
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700">Phone <span className="text-red-500">*</span></label>
                             <Input 
-                              value={drawerMode === 'create' ? newPatient.phone : selectedPatient?.phone} 
+                              value={drawerMode === 'create' ? newPatient.phone : (newPatient.phone || selectedPatient?.phone || '')} 
                               onChange={e => {
                                 const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                drawerMode === 'create' && setNewPatient({...newPatient, phone: val})
+                                (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, phone: val})
                               }}
                               className="bg-white" 
                               placeholder="10 digit number"
@@ -469,25 +497,34 @@ export function PatientsPage() {
                           <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700">Age <span className="text-red-500">*</span></label>
                             <Input 
-                              value={drawerMode === 'create' ? newPatient.age : selectedPatient?.age} 
-                              onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, age: e.target.value})}
-                              type="number" 
+                              value={drawerMode === 'create' ? newPatient.age : (newPatient.age || selectedPatient?.age || '')} 
+                              onChange={e => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 3);
+                                (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, age: val})
+                              }}
+                              type="text" 
                               placeholder="e.g. 35"
                               className="bg-white" 
+                              maxLength={3}
                             />
                           </div>
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Gender <span className="text-red-500">*</span></label>
-                          <select 
-                            value={drawerMode === 'create' ? newPatient.gender : selectedPatient?.gender}
-                            onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, gender: e.target.value as any})}
-                            className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
+                          <Select 
+                            value={drawerMode === 'create' ? newPatient.gender : (newPatient.gender || selectedPatient?.gender)} 
+                            onValueChange={(val) => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, gender: val as any})}
+                            disabled={drawerMode === 'view' as any}
                           >
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                          </select>
+                            <SelectTrigger className="w-full h-10 rounded-xl bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                              <SelectValue placeholder="Select Gender" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Male">Male</SelectItem>
+                              <SelectItem value="Female">Female</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Reason for Visit</label>
@@ -501,9 +538,9 @@ export function PatientsPage() {
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Address (Optional)</label>
                           <textarea 
-                            value={drawerMode === 'create' ? (newPatient as any).address : selectedPatient?.address}
-                            onChange={e => drawerMode === 'create' && setNewPatient({...newPatient, address: e.target.value})}
-                            disabled={drawerMode === 'view'}
+                            value={drawerMode === 'create' ? (newPatient as any).address : ((newPatient as any).address || selectedPatient?.address || '')}
+                            onChange={e => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, address: e.target.value})}
+                            disabled={drawerMode === 'view' as any}
                             placeholder="Patient address"
                             className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
                           />

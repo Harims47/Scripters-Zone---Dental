@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/authMiddleware';
 import { validateRequest } from '../middleware/validateRequest';
-import { startWalkInVisitSchema, checkInAppointmentSchema } from '../schemas/visitSchema';
+import { startWalkInVisitSchema, checkInAppointmentSchema, updateVisitSchema } from '../schemas/visitSchema';
 import {
   getVisits,
   getVisitById,
   startWalkInVisit,
   checkInAppointment,
-  cancelVisit
+  cancelVisit,
+  updateVisit
 } from '../controllers/visitController';
 
 const router = Router();
@@ -24,7 +25,11 @@ router.post('/walk-in', requireRole('Head Doctor', 'Receptionist'), validateRequ
 // Check-in appointment (Receptionist, Head Doctor)
 router.post('/check-in', requireRole('Head Doctor', 'Receptionist'), validateRequest(checkInAppointmentSchema), checkInAppointment);
 
+// Update visit (Receptionist, Head Doctor, Duty Doctor)
+router.patch('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), validateRequest(updateVisitSchema), updateVisit);
+
 // Cancel visit
 router.patch('/:id/cancel', requireRole('Head Doctor', 'Receptionist'), cancelVisit);
+
 
 export default router;

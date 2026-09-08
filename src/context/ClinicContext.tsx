@@ -25,7 +25,9 @@ interface ClinicContextType {
   updateAppointment: (appointment: Partial<Appointment>) => Promise<void>
   confirmAppointmentArrival: (appointmentId: string) => Promise<{ success: boolean, visitId?: string, error?: string }>
   startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
+  updateVisit: (visitId: string, updates: Partial<Visit>) => Promise<{ success: boolean, error?: string }>
   cancelVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
+
   assignDoctor: (queueId: string, doctorId: string) => Promise<{ success: boolean, error?: string }>
   normalizePhone: (phone: string) => string
 
@@ -199,7 +201,23 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return { visit: newVisit as unknown as Visit, queueEntry: newQueueEntry as QueueEntry }
   }
 
+  const updateVisit = async (visitId: string, updates: Partial<Visit>) => {
+    try {
+      const response = await api.patch(`/api/visits/${visitId}`, updates);
+      const updatedVisit = (response as any).data || response;
+      if (updatedVisit && updatedVisit.id) {
+        setVisits(prev => prev.map(v => v.id === visitId ? { ...v, ...updatedVisit } : v));
+        return { success: true };
+      }
+      return { success: false, error: 'Failed to update visit' };
+    } catch (err: any) {
+      console.error('Failed to update visit:', err);
+      return { success: false, error: err.response?.data?.error || err.message || 'Error updating visit' };
+    }
+  }
+
   const cancelVisit = async (visitId: string) => {
+
     try {
       const response = await api.patch(`/api/visits/${visitId}/cancel`);
       const updatedVisit = (response as any).data || response;
@@ -304,6 +322,24 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
           }
           return [...prev, savedConsultation]
         })
+
+        if (data.consultationFee !== undefined || data.treatmentFee !== undefined) {
+          setVisits(prev => prev.map(v => {
+            if (v.id === visitId) {
+              const consultationFee = data.consultationFee !== undefined ? data.consultationFee : (v.consultationFee || 0);
+              const treatmentFee = data.treatmentFee !== undefined ? data.treatmentFee : (v.treatmentFee || 0);
+              const medicineCost = v.medicineCost || 0;
+              return {
+                ...v,
+                consultationFee,
+                treatmentFee,
+                amountDue: consultationFee + treatmentFee + medicineCost
+              };
+            }
+            return v;
+          }));
+        }
+
         return { success: true }
       }
     } catch (err: any) {
@@ -399,7 +435,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
       staff,
-      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, cancelVisit,
+      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit,
         assignDoctor,
         normalizePhone,
         callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, adjustMedicineStock

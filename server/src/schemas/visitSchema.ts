@@ -14,3 +14,13 @@ export const checkInAppointmentSchema = z.object({
     appointmentId: z.string().min(1, 'Invalid appointment ID')
   })
 });
+
+export const updateVisitSchema = z.object({
+  body: z.object({
+    reasonForVisit: z.string().optional(),
+    doctorId: z.string().nullable().optional(),
+    isUrgent: z.boolean().optional(),
+    amountDue: z.number().optional(),
+  })
+});
+

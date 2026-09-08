@@ -28,7 +28,7 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, startVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations } = useClinicContext();
+  const { queue, visits, patients, staff, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations } = useClinicContext();
 
   const navigate = useNavigate();
 
@@ -39,11 +39,13 @@ export function ReceptionDeskPage() {
   const [isEditPatientOpen, setIsEditPatientOpen] = useState(false);
   const [editDrawerMode, setEditDrawerMode] = useState<'edit' | 'view'>('edit');
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
+  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+
 
   const [regType, setRegType] = useState<'walk-in' | 'appointment'>('walk-in');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  const [regData, setRegData] = useState({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
+  const [regData, setRegData] = useState({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
   const [apptData, setApptData] = useState({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
 
   const [isNewPatient, setIsNewPatient] = useState(false);
@@ -118,7 +120,7 @@ export function ReceptionDeskPage() {
       const visitPayments = payments.filter(pay => pay.visitId === v?.id);
       const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
       const amountDue = v?.amountDue || 0;
-      
+
       let paymentStatus = '—';
       if (stage === 'Ready at Reception' || stage === 'Completed') {
         paymentStatus = 'Unpaid';
@@ -138,6 +140,7 @@ export function ReceptionDeskPage() {
         visitType: isAppointment ? 'Appointment' : 'Walk-in',
         token: q.position || '-',
         doctor: d?.name || '-',
+        reasonForVisit: v?.reasonForVisit,
         stage: stage,
         paymentStatus,
         rawStatus: q.status, // keep raw for action logic
@@ -159,7 +162,7 @@ export function ReceptionDeskPage() {
       const visitPayments = payments.filter(pay => pay.visitId === v.id);
       const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
       const amountDue = v.amountDue || 0;
-      
+
       let paymentStatus = '—';
       if (v.status === 'COMPLETED') {
         paymentStatus = 'Unpaid';
@@ -179,6 +182,7 @@ export function ReceptionDeskPage() {
         visitType: isAppointment ? 'Appointment' : 'Walk-in',
         token: '-',
         doctor: d?.name || '-',
+        reasonForVisit: v.reasonForVisit,
         stage: v.status === 'CANCELLED' ? 'Cancelled' : 'Completed',
         paymentStatus,
         rawStatus: v.status === 'CANCELLED' ? 'Cancelled' : 'Completed',
@@ -223,8 +227,8 @@ export function ReceptionDeskPage() {
       header: () => <div className="text-center font-semibold text-slate-600">Patient Name</div>,
       cell: ({ row }) => (
         <div className="flex justify-center">
-          <div 
-            className="font-medium text-slate-900 truncate max-w-[150px] text-center" 
+          <div
+            className="font-medium text-slate-900 truncate max-w-[150px] text-center"
             title={row.original.patientName}
           >
             {row.original.patientName}
@@ -248,8 +252,8 @@ export function ReceptionDeskPage() {
       header: () => <div className="text-center font-semibold text-slate-600">Doctor Name</div>,
       cell: ({ row }) => (
         <div className="flex justify-center">
-          <div 
-            className="text-slate-600 truncate max-w-[120px] text-center" 
+          <div
+            className="text-slate-600 truncate max-w-[120px] text-center"
             title={row.original.doctor === '-' ? '' : row.original.doctor}
           >
             {row.original.doctor === '-' ? '—' : row.original.doctor}
@@ -266,7 +270,7 @@ export function ReceptionDeskPage() {
         if (s === 'Paid') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>;
         else if (s === 'Partial') badge = <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>;
         else if (s === 'Unpaid') badge = <Badge className="bg-rose-100 text-rose-800 border-rose-200">Unpaid</Badge>;
-        
+
         return <div className="text-center">{badge}</div>;
       }
     },
@@ -282,7 +286,7 @@ export function ReceptionDeskPage() {
         else if (s === 'Ready at Reception') badge = <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
         else if (s === 'Completed') badge = <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
         else if (s === 'Cancelled') badge = <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
-        
+
         return <div className="text-center">{badge}</div>;
       }
     },
@@ -308,12 +312,14 @@ export function ReceptionDeskPage() {
                 const patient = patients.find(p => p.id === row.original.patientId);
                 if (patient) {
                   setEditingPatientId(patient.id);
+                  setEditingVisitId(row.original.visitId || null);
                   setRegData({
                     name: patient.name,
                     phone: patient.phone,
                     age: patient.age.toString(),
                     gender: patient.gender,
-                    reasonForVisit: row.original.reasonForVisit || 'Routine Checkup',
+                    address: patient.address || '',
+                    reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
                     photoUrl: patient.photoUrl || ''
                   });
                   setEditDrawerMode('edit');
@@ -335,12 +341,14 @@ export function ReceptionDeskPage() {
                 const patient = patients.find(p => p.id === row.original.patientId);
                 if (patient) {
                   setEditingPatientId(patient.id);
+                  setEditingVisitId(row.original.visitId || null);
                   setRegData({
                     name: patient.name,
                     phone: patient.phone,
                     age: patient.age.toString(),
                     gender: patient.gender,
-                    reasonForVisit: row.original.reasonForVisit || 'Routine Checkup',
+                    address: patient.address || '',
+                    reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
                     photoUrl: patient.photoUrl || ''
                   });
                   setEditDrawerMode('view');
@@ -358,9 +366,9 @@ export function ReceptionDeskPage() {
               disabled={!isWaiting}
               className={`w-8 h-8 ${isWaiting ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
               title={isWaiting ? "Send to Doctor" : "Cannot send to doctor at this stage"}
-              onClick={(e) => { 
-                e.preventDefault(); e.stopPropagation(); 
-                if (isWaiting) setAssignQueueId(row.original.id); 
+              onClick={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (isWaiting) setAssignQueueId(row.original.id);
               }}
             >
               <Send className="w-4 h-4" />
@@ -373,9 +381,9 @@ export function ReceptionDeskPage() {
               disabled={!isReadyForReception}
               className={`w-8 h-8 ${isReadyForReception ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
               title={isReadyForReception ? "Checkout & Billing" : "Not ready for processing"}
-              onClick={(e) => { 
-                e.preventDefault(); e.stopPropagation(); 
-                if (isReadyForReception) handleOpenProcess(row.original); 
+              onClick={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (isReadyForReception) handleOpenProcess(row.original);
               }}
             >
               <CreditCard className="w-4 h-4" />
@@ -388,9 +396,9 @@ export function ReceptionDeskPage() {
               disabled={isCancelledOrCompleted || row.original.doctor !== '-'}
               className={`w-8 h-8 ${!(isCancelledOrCompleted || row.original.doctor !== '-') ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
               title={!(isCancelledOrCompleted || row.original.doctor !== '-') ? "Cancel Visit" : "Cannot cancel once doctor is assigned"}
-              onClick={(e) => { 
-                e.preventDefault(); e.stopPropagation(); 
-                if (!(isCancelledOrCompleted || row.original.doctor !== '-')) handleCancelVisit(row.original.visitId); 
+              onClick={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (!(isCancelledOrCompleted || row.original.doctor !== '-')) handleCancelVisit(row.original.visitId);
               }}
             >
               <XCircle className="w-4 h-4" />
@@ -443,9 +451,20 @@ export function ReceptionDeskPage() {
         return;
       }
 
-      const existing = patients.find(p => p.phone === regData.phone);
+      const normPhone = regData.phone.replace(/\D/g, '').slice(-10);
+      const existing = patients.find(p => p.phone.replace(/\D/g, '').slice(-10) === normPhone);
       if (existing) {
-        toast.error("A patient with this phone number already exists.");
+        MySwal.fire({
+          title: 'Duplicate Phone Number',
+          html: `A patient is already registered with this phone number: <br/><br/><b>${existing.name}</b> (${existing.phone})<br/><br/>Please search for this patient instead of registering a new one to avoid duplicate records.`,
+          icon: 'warning',
+          confirmButtonText: 'Understood',
+          confirmButtonColor: '#0d9488',
+          customClass: {
+            popup: 'rounded-2xl',
+            confirmButton: 'rounded-lg font-semibold px-8 py-2'
+          }
+        });
         return;
       }
 
@@ -456,6 +475,7 @@ export function ReceptionDeskPage() {
           age: parseInt(regData.age) || 30,
           gender: regData.gender as any,
           status: 'Active',
+          address: (regData as any).address || '',
           photoUrl: (regData as any).photoUrl || ''
         });
         finalPatientId = newPatient.id;
@@ -506,7 +526,7 @@ export function ReceptionDeskPage() {
         await startVisit(finalPatientId, undefined, false, regData.reasonForVisit || 'General Consultation');
         showSuccessModal('Registration Complete', isNewPatient ? "Patient registered and added to Waiting list" : "Walk-in added to Waiting list");
         setIsRegisterOpen(false);
-        setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
+        setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
         setSelectedExistingPatientId('');
       } else {
         const appointment = await addAppointment({
@@ -527,7 +547,7 @@ export function ReceptionDeskPage() {
         }
 
         setIsRegisterOpen(false);
-        setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
+        setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
         setSelectedExistingPatientId('');
       }
     } catch (err: any) {
@@ -637,7 +657,8 @@ export function ReceptionDeskPage() {
 
     const visitPayments = payments.filter(p => p.visitId === processVisitId);
     const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-    const amountDue = activeProcessVisit?.amountDue || 0;
+    const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+    const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
     const balance = amountDue - totalPaid;
 
     if (amt > balance) {
@@ -710,14 +731,14 @@ export function ReceptionDeskPage() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
           <p className="text-sm text-slate-500">Register patients, manage today's visits, and complete reception tasks.</p>
         </div>
-        <Button 
+        <Button
           onClick={() => {
-            setRegData({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '', photoUrl: '' });
+            setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
             setIsNewPatient(false);
             setSelectedExistingPatientId('');
             setPatientSearch('');
             setIsRegisterOpen(true);
-          }} 
+          }}
           className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white"
         >
           <Users className="w-4 h-4 mr-2" />
@@ -739,7 +760,7 @@ export function ReceptionDeskPage() {
                 const avail = doctorAvailability[doc.id];
                 const isLeave = avail === 'Leave';
                 const isAvailable = avail === 'Available';
-                
+
                 const bgClass = isAvailable ? 'bg-emerald-600 border-emerald-700' : isLeave ? 'bg-slate-200 border-slate-300' : 'bg-rose-600 border-rose-700';
                 const textClass = isLeave ? 'text-slate-700' : 'text-white';
                 const textSubClass = isLeave ? 'text-slate-600' : 'text-white/90';
@@ -813,7 +834,7 @@ export function ReceptionDeskPage() {
               const avail = doctorAvailability[doc.id];
               const isAvail = avail === 'Available';
               const isLeave = avail === 'Leave';
-              
+
               return (
                 <div key={doc.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${isAvail ? 'border-emerald-200 bg-emerald-50' : isLeave ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-red-200 bg-red-50 opacity-70'}`}>
                   <div>
@@ -905,7 +926,13 @@ export function ReceptionDeskPage() {
           setRegType('walk-in');
         }
       }}>
-        <SheetContent side="right" className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full">
+        <SheetContent 
+          side="right" 
+          className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full"
+          onInteractOutside={(e) => {
+            if (isCameraOpen) e.preventDefault();
+          }}
+        >
           <SheetTitle className="sr-only">Register Patient</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -1022,11 +1049,11 @@ export function ReceptionDeskPage() {
                       {/* Photo Capture */}
                       <div className="mt-2 mb-4">
                         <label className="text-sm font-medium text-slate-700 mb-2 block">Patient Photo</label>
-                        
+
                         {isCameraOpen ? (
-                          <CameraCapture 
+                          <CameraCapture
                             onCapture={(imageSrc) => {
-                              setRegData({...regData, photoUrl: imageSrc});
+                              setRegData({ ...regData, photoUrl: imageSrc });
                               setIsCameraOpen(false);
                             }}
                             onCancel={() => setIsCameraOpen(false)}
@@ -1034,14 +1061,18 @@ export function ReceptionDeskPage() {
                         ) : (
                           <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
                             {(regData as any).photoUrl ? (
-                              <div className="relative flex flex-col items-center">
-                                <img src={(regData as any).photoUrl} alt="Patient" className="w-20 h-20 rounded-md object-cover border-4 border-white shadow-sm" />
-                                <button 
-                                  onClick={() => setRegData({...regData, photoUrl: ''})}
-                                  className="absolute top-0 right-0 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                              <div className="flex flex-col items-center gap-3 mt-2 mb-2">
+                                <img src={(regData as any).photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setIsCameraOpen(true)}
+                                  className="text-teal-600 border-teal-200 hover:bg-teal-50"
                                 >
-                                  <X className="w-4 h-4" />
-                                </button>
+                                  <Camera className="w-4 h-4 mr-2" />
+                                  Replace Photo
+                                </Button>
                               </div>
                             ) : (
                               <div className="cursor-pointer flex flex-col items-center gap-2" onClick={() => setIsCameraOpen(true)}>
@@ -1056,29 +1087,30 @@ export function ReceptionDeskPage() {
                       </div>
 
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name *</label>
+                        <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name <span className="text-red-500">*</span></label>
                         <Input placeholder="Enter patient name" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number *</label>
-                        <Input placeholder="10-digit mobile number" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value })} />
+                        <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number <span className="text-red-500">*</span></label>
+                        <Input placeholder="10-digit mobile number" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} maxLength={10} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-sm font-medium text-slate-700 mb-1 block">Age</label>
-                          <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value })} />
+                          <label className="text-sm font-medium text-slate-700 mb-1 block">Age <span className="text-red-500">*</span></label>
+                          <Input placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value.replace(/\D/g, '').slice(0, 3) })} maxLength={3} />
                         </div>
                         <div>
                           <label className="text-sm font-medium text-slate-700 mb-1 block">Gender</label>
-                          <select
-                            className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            value={regData.gender}
-                            onChange={e => setRegData({ ...regData, gender: e.target.value })}
-                          >
-                            <option>Male</option>
-                            <option>Female</option>
-                            <option>Other</option>
-                          </select>
+                          <Select value={regData.gender} onValueChange={(val) => setRegData({ ...regData, gender: val })}>
+                            <SelectTrigger className="w-full bg-white border-slate-200">
+                              <SelectValue placeholder="Select Gender" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Male">Male</SelectItem>
+                              <SelectItem value="Female">Female</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                       <div>
@@ -1120,8 +1152,8 @@ export function ReceptionDeskPage() {
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium text-slate-700 mb-1 block">Date</label>
-                        <Input type="date" value={apptData.date} onChange={e => setApptData({ ...apptData, date: e.target.value })} />
+                        <label className="text-sm font-medium text-slate-700 mb-1 block">Date <span className="text-red-500">*</span></label>
+                        <Input type="date" min={new Date().toISOString().split('T')[0]} value={apptData.date} onChange={e => setApptData({ ...apptData, date: e.target.value })} />
                       </div>
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Time</label>
@@ -1129,18 +1161,19 @@ export function ReceptionDeskPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">Type</label>
-                      <select
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
-                        value={apptData.type}
-                        onChange={e => setApptData({ ...apptData, type: e.target.value })}
-                      >
-                        <option value="Consultation">Consultation</option>
-                        <option value="Follow-up">Follow-up</option>
-                        <option value="Routine Checkup">Routine Checkup</option>
-                        <option value="Emergency">Emergency</option>
-                        <option value="Surgery">Surgery</option>
-                      </select>
+                      <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
+                      <Select value={apptData.type} onValueChange={(val) => setApptData({ ...apptData, type: val })}>
+                        <SelectTrigger className="w-full bg-white border-slate-200">
+                          <SelectValue placeholder="Select Reason for Visit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Consultation">Consultation</SelectItem>
+                          <SelectItem value="Follow-up">Follow-up</SelectItem>
+                          <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
+                          <SelectItem value="Emergency">Emergency</SelectItem>
+                          <SelectItem value="Surgery">Surgery</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Notes (Optional)</label>
@@ -1170,7 +1203,13 @@ export function ReceptionDeskPage() {
 
       {/* Edit/View Patient Sheet */}
       <Sheet open={isEditPatientOpen} onOpenChange={setIsEditPatientOpen}>
-        <SheetContent side="right" className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full">
+        <SheetContent 
+          side="right" 
+          className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full"
+          onInteractOutside={(e) => {
+            if (isCameraOpen) e.preventDefault();
+          }}
+        >
           <SheetTitle className="sr-only">{editDrawerMode === 'view' ? 'View Patient Details' : 'Edit Patient Details'}</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -1181,7 +1220,7 @@ export function ReceptionDeskPage() {
 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6">
-              <DrawerSection title="Basic Details">
+              <DrawerSection >
                 <div className="space-y-4">
                   <div className="flex justify-center mb-6">
                     {editDrawerMode === 'view' ? (
@@ -1194,9 +1233,9 @@ export function ReceptionDeskPage() {
                       )
                     ) : (
                       isCameraOpen ? (
-                        <CameraCapture 
+                        <CameraCapture
                           onCapture={(photoUrl) => {
-                            setRegData({...regData, photoUrl});
+                            setRegData({ ...regData, photoUrl });
                             setIsCameraOpen(false);
                           }}
                           onCancel={() => setIsCameraOpen(false)}
@@ -1204,15 +1243,18 @@ export function ReceptionDeskPage() {
                       ) : (
                         <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
                           {(regData as any).photoUrl ? (
-                            <div className="relative flex flex-col items-center">
+                            <div className="flex flex-col items-center gap-3">
                               <img src={(regData as any).photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
-                              <button 
+                              <Button
                                 type="button"
-                                onClick={() => setRegData({...regData, photoUrl: undefined})}
-                                className="absolute top-0 right-0 bg-rose-500 text-white rounded-full p-1 shadow-sm hover:bg-rose-600"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsCameraOpen(true)}
+                                className="text-teal-600 border-teal-200 hover:bg-teal-50"
                               >
-                                <X className="w-4 h-4" />
-                              </button>
+                                <Camera className="w-4 h-4 mr-2" />
+                                Replace Photo
+                              </Button>
                             </div>
                           ) : (
                             <div className="cursor-pointer flex flex-col items-center gap-2" onClick={() => setIsCameraOpen(true)}>
@@ -1227,30 +1269,30 @@ export function ReceptionDeskPage() {
                     )}
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name *</label>
+                    <label className="text-sm font-medium text-slate-700 mb-1 block">Full Name <span className="text-red-500">*</span></label>
                     <Input disabled={editDrawerMode === 'view'} placeholder="e.g. John Doe" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number *</label>
-                    <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value })} />
+                    <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number <span className="text-red-500">*</span></label>
+                    <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} maxLength={10} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">Age</label>
-                      <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value })} />
+                      <label className="text-sm font-medium text-slate-700 mb-1 block">Age <span className="text-red-500">*</span></label>
+                      <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 30" value={regData.age} onChange={e => setRegData({ ...regData, age: e.target.value.replace(/\D/g, '').slice(0, 3) })} maxLength={3} />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Gender</label>
-                      <select
-                        disabled={editDrawerMode === 'view'}
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        value={regData.gender}
-                        onChange={e => setRegData({ ...regData, gender: e.target.value })}
-                      >
-                        <option>Male</option>
-                        <option>Female</option>
-                        <option>Other</option>
-                      </select>
+                      <Select disabled={editDrawerMode === 'view'} value={regData.gender} onValueChange={(val) => setRegData({ ...regData, gender: val })}>
+                        <SelectTrigger className="w-full bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                          <SelectValue placeholder="Select Gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div>
@@ -1300,6 +1342,11 @@ export function ReceptionDeskPage() {
                         photoUrl: (regData as any).photoUrl,
                         address: (regData as any).address
                       });
+                      if (editingVisitId && updateVisit) {
+                        await updateVisit(editingVisitId, {
+                          reasonForVisit: regData.reasonForVisit
+                        });
+                      }
                       toast.success('Patient details updated successfully!');
                       setIsEditPatientOpen(false);
                     }
@@ -1332,7 +1379,8 @@ export function ReceptionDeskPage() {
 
               const visitPayments = payments.filter(p => p.visitId === processVisitId);
               const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-              const amountDue = activeProcessVisit?.amountDue || 0;
+              const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+              const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
               const balance = amountDue - totalPaid;
 
               const hasCompletedPayment = activeProcessVisit?.status === 'COMPLETED' && balance <= 0;
@@ -1353,19 +1401,19 @@ export function ReceptionDeskPage() {
                         <div>
                           <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Fees</span>
                           <span className="text-slate-900 font-medium leading-relaxed">
-                            Consulting: ₹{activeConsultation?.consultationFee || 0} <br/>
+                            Consulting: ₹{activeConsultation?.consultationFee || 0} <br />
                             Treatment: ₹{activeProcessVisit?.treatmentFee || 0}
                           </span>
                         </div>
                       </div>
-                      
+
                       {activeConsultation?.clinicalNotes && (
                         <div>
                           <span className="text-slate-500 block text-xs font-semibold uppercase tracking-wider mb-1">Clinical Notes</span>
                           <span className="text-slate-700 whitespace-pre-wrap">{activeConsultation.clinicalNotes}</span>
                         </div>
                       )}
-                      
+
                       {(() => {
                         const activePrescription = prescriptions.find(p => p.visitId === processVisitId);
                         if (!activePrescription || activePrescription.items.length === 0) return null;
@@ -1478,12 +1526,12 @@ export function ReceptionDeskPage() {
                             />
                           </div>
                           <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
-                          
+
                           {paymentAmount && paymentAmount > 0 && paymentAmount < balance && (
                             <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
                               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-                                <input 
-                                  type="checkbox" 
+                                <input
+                                  type="checkbox"
                                   className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
                                   checked={isFinalPayment}
                                   onChange={(e) => setIsFinalPayment(e.target.checked)}
@@ -1492,7 +1540,7 @@ export function ReceptionDeskPage() {
                               </label>
                             </div>
                           )}
-                          
+
                           {paymentAmount && paymentAmount > 0 && paymentAmount < balance && isFinalPayment && (
                             <div className="mt-3 space-y-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
                               <label className="text-sm font-medium text-amber-900 block">Reason for Partial Payment <span className="text-red-500">*</span></label>
@@ -1508,7 +1556,7 @@ export function ReceptionDeskPage() {
                                   <SelectItem value="Other">Other</SelectItem>
                                 </SelectContent>
                               </Select>
-                              
+
                               {paymentReason === 'Other' && (
                                 <Input
                                   placeholder="Specify reason..."
@@ -1521,16 +1569,16 @@ export function ReceptionDeskPage() {
                           )}
                         </div>
 
-                        <Button 
-                          onClick={handleMarkAsPaid} 
+                        <Button
+                          onClick={handleMarkAsPaid}
                           disabled={
-                            !activeMethod || 
-                            !paymentAmount || 
-                            paymentAmount <= 0 || 
+                            !activeMethod ||
+                            !paymentAmount ||
+                            paymentAmount <= 0 ||
                             paymentAmount > balance ||
                             (paymentAmount < balance && isFinalPayment && !paymentReason) ||
                             (paymentAmount < balance && isFinalPayment && paymentReason === 'Other' && !paymentReasonOther.trim())
-                          } 
+                          }
                           className="w-full bg-teal-600 hover:bg-teal-700 mt-4"
                         >
                           Add Payment

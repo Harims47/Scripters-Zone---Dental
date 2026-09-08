@@ -95,11 +95,12 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
         data: {
           status: 'READY_FOR_PAYMENT',
           medicineCost,
-          amountDue: (visit.consultationFee || 0) + medicineCost
+          amountDue: (visit.consultationFee || 0) + (visit.treatmentFee || 0) + medicineCost
         }
       });
 
       return { dispensing, visit: updatedVisit };
+
     });
 
     return res.json(result);
