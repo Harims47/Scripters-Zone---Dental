@@ -52,7 +52,7 @@ export interface QueueEntry {
   patientId: string // Denormalized for easy display
   assignedDoctorId: string
   position: number
-  status: 'Waiting' | 'Called' | 'In Progress' | 'Completed' | 'Skipped'
+  status: 'Waiting' | 'Called' | 'In Progress' | 'With Doctor' | 'Completed' | 'Skipped' | 'Transferred' | 'Cancelled' | 'Ready at Reception' | 'Dispensing' | 'Payment'
   priority: boolean
   arrivalTime: string // e.g. ISO string or "10:00 AM"
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X, AlertTriangle } from 'lucide-react';
+import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
@@ -30,13 +30,27 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations } = useClinicContext();
+  const { queue, visits, patients, staff, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations, transferVisitsToNextDay } = useClinicContext();
 
   const navigate = useNavigate();
 
+  // Selected Queue Date (defaults to today)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [visitTypeFilter, setVisitTypeFilter] = useState('all');
+
+  // Multi-select for transferring waiting patients
+  const [selectedWaitingIds, setSelectedWaitingIds] = useState<string[]>([]);
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState<boolean>(false);
+  const [transferTargetDate, setTransferTargetDate] = useState<string>(tomorrowStr);
+  const [transferReason, setTransferReason] = useState<string>('Clinic closing / High waiting time');
+  const [isTransferring, setIsTransferring] = useState<boolean>(false);
 
   // Registration Drawer
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -129,19 +143,68 @@ export function ReceptionDeskPage() {
 
   // Unified Table Data
   const unifiedData = useMemo(() => {
+    const isViewingToday = selectedDate === todayStr;
+
+    // If viewing a future date (e.g. Tomorrow), show appointments scheduled for that date
+    if (!isViewingToday) {
+      const dateAppointments = appointments.filter(a => a.date === selectedDate && a.status !== 'Cancelled');
+      let data = dateAppointments.map((appt, idx) => {
+        const p = patients.find(pat => pat.id === appt.patientId);
+        const d = doctors.find(doc => doc.id === appt.providerId);
+        const isPriority = appt.notes?.includes('[Transferred');
+
+        return {
+          id: appt.id,
+          visitId: '',
+          patientId: appt.patientId,
+          patientName: p?.name || 'Unknown',
+          patientPhone: p?.phone || '',
+          visitType: 'Appointment',
+          token: isPriority ? `P${idx + 1}` : `${idx + 1}`,
+          doctor: d?.name || 'Unassigned',
+          reasonForVisit: appt.notes || appt.type || 'Consultation',
+          stage: isPriority ? 'Transferred Priority' : 'Scheduled',
+          paymentStatus: '—',
+          rawStatus: appt.status,
+          arrivalTime: appt.time || '09:00',
+          rawVisit: null,
+          rawQueue: null,
+          isTransferred: isPriority
+        };
+      });
+
+      if (stageFilter && stageFilter !== 'all') {
+        data = data.filter(d => d.stage.toLowerCase().includes(stageFilter.toLowerCase()));
+      }
+
+      if (search) {
+        const s = search.toLowerCase();
+        data = data.filter(d =>
+          d.patientName.toLowerCase().includes(s) ||
+          d.patientPhone.includes(s) ||
+          d.doctor.toLowerCase().includes(s)
+        );
+      }
+
+      return data;
+    }
+
+    // Default: Today's live queue
     let data = queue.map(q => {
       const v = visits.find(v => v.id === q.visitId);
       const p = patients.find(p => p.id === q.patientId);
       const d = doctors.find(doc => doc.id === q.assignedDoctorId);
       const isAppointment = v?.appointmentId != null;
+      const isTransferred = v?.reasonForVisit?.startsWith('[Transferred') || q.status === 'Transferred';
 
       // Translate queue status to receptionist stage
       let stage = 'Waiting';
-      if (q.status === 'Waiting') stage = 'Waiting';
+      if (isTransferred) stage = 'Next Day';
+      else if (q.status === 'Waiting') stage = 'Waiting';
       else if (q.status === 'In Progress' || q.status === 'With Doctor' || q.status === 'Called') stage = 'With Doctor';
-      else if (q.status === 'Transferred') stage = 'Transferred';
       else if (q.status === 'Completed' && v?.status !== 'COMPLETED') stage = 'Ready at Reception';
       else if (q.status === 'Dispensing' || q.status === 'Payment' || q.status === 'Ready at Reception') stage = 'Ready at Reception';
+      else if (q.status === 'Cancelled') stage = 'Cancelled';
       else stage = q.status; // fallback to raw status instead of incorrectly showing Waiting
 
       const visitPayments = payments.filter(pay => pay.visitId === v?.id);
@@ -170,10 +233,10 @@ export function ReceptionDeskPage() {
         reasonForVisit: v?.reasonForVisit,
         stage: stage,
         paymentStatus,
-        rawStatus: q.status, // keep raw for action logic
+        rawStatus: isTransferred ? 'Transferred' : q.status, // keep raw for action logic
         arrivalTime: q.arrivalTime,
         rawVisit: v,
-        rawQueue: q,
+        rawQueue: q as (QueueEntry | null),
       };
     });
 
@@ -185,6 +248,8 @@ export function ReceptionDeskPage() {
       const p = patients.find(p => p.id === v.patientId);
       const d = doctors.find(doc => doc.id === v.doctorId);
       const isAppointment = v.appointmentId != null;
+      const isTransferred = v.reasonForVisit?.startsWith('[Transferred');
+      const oldQueueEntry = queue.find(q => q.visitId === v.id);
 
       const visitPayments = payments.filter(pay => pay.visitId === v.id);
       const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
@@ -195,7 +260,7 @@ export function ReceptionDeskPage() {
         paymentStatus = 'Unpaid';
         if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
         else if (totalPaid > 0) paymentStatus = 'Partial';
-        else if (amountDue === 0) paymentStatus = 'Paid';
+        else if (amountDue === 0 && v) paymentStatus = 'Paid';
       } else if (totalPaid > 0) {
         paymentStatus = 'Partial';
       }
@@ -207,20 +272,25 @@ export function ReceptionDeskPage() {
         patientName: p?.name || 'Unknown',
         patientPhone: p?.phone || '',
         visitType: isAppointment ? 'Appointment' : 'Walk-in',
-        token: '-',
+        token: oldQueueEntry?.position || '-',
         doctor: d?.name || '-',
         reasonForVisit: v.reasonForVisit,
-        stage: v.status === 'CANCELLED' ? 'Cancelled' : 'Completed',
+        stage: isTransferred ? 'Next Day' : (v.status === 'CANCELLED' ? 'Cancelled' : 'Completed'),
         paymentStatus,
-        rawStatus: v.status === 'CANCELLED' ? 'Cancelled' : 'Completed',
+        rawStatus: isTransferred ? 'Transferred' : (v.status === 'CANCELLED' ? 'Cancelled' : 'Completed'),
         arrivalTime: '-',
         rawVisit: v,
-        rawQueue: null,
+        rawQueue: oldQueueEntry || null,
       });
     });
 
     if (stageFilter && stageFilter !== 'all') {
-      data = data.filter(d => d.stage.toLowerCase() === stageFilter.toLowerCase());
+      data = data.filter(d => {
+        if (stageFilter.toLowerCase() === 'next day' || stageFilter.toLowerCase() === 'transferred') {
+          return d.stage.toLowerCase() === 'next day' || d.stage.toLowerCase().includes('transferred');
+        }
+        return d.stage.toLowerCase() === stageFilter.toLowerCase();
+      });
     }
 
     if (visitTypeFilter && visitTypeFilter !== 'all') {
@@ -243,9 +313,61 @@ export function ReceptionDeskPage() {
     });
 
     return data;
-  }, [queue, visits, patients, doctors, search, stageFilter, visitTypeFilter]);
+  }, [queue, visits, patients, doctors, appointments, search, stageFilter, visitTypeFilter, selectedDate, todayStr]);
 
   const columns: ColumnDef<any>[] = [
+    {
+      id: 'select',
+      header: () => {
+        const waitingPatients = unifiedData.filter(d => d.stage === 'Waiting');
+        const isAllSelected = waitingPatients.length > 0 && waitingPatients.every(d => selectedWaitingIds.includes(d.visitId));
+        const isSomeSelected = waitingPatients.some(d => selectedWaitingIds.includes(d.visitId));
+
+        if (selectedDate !== todayStr) return null;
+
+        return (
+          <div className="flex justify-center items-center">
+            <Checkbox
+              checked={isAllSelected ? true : isSomeSelected ? 'indeterminate' : false}
+              disabled={waitingPatients.length === 0}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  setSelectedWaitingIds(waitingPatients.map(d => d.visitId));
+                } else {
+                  setSelectedWaitingIds([]);
+                }
+              }}
+              aria-label="Select all waiting patients"
+              title="Select all waiting patients to transfer"
+            />
+          </div>
+        );
+      },
+      cell: ({ row }) => {
+        const isWaiting = row.original.stage === 'Waiting';
+        const visitId = row.original.visitId;
+
+        if (selectedDate !== todayStr || !visitId) return null;
+
+        return (
+          <div className="flex justify-center items-center">
+            <Checkbox
+              checked={selectedWaitingIds.includes(visitId)}
+              disabled={!isWaiting}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  setSelectedWaitingIds(prev => [...prev, visitId]);
+                } else {
+                  setSelectedWaitingIds(prev => prev.filter(id => id !== visitId));
+                }
+              }}
+              aria-label={`Select patient ${row.original.patientName}`}
+              title={isWaiting ? "Select to transfer to next day" : "Only waiting patients can be transferred"}
+            />
+          </div>
+        );
+      }
+    },
     {
       accessorKey: 'token',
       header: () => <div className="text-center font-semibold text-slate-600">Token No.</div>,
@@ -306,7 +428,9 @@ export function ReceptionDeskPage() {
         let badge = <Badge variant="outline" className="whitespace-nowrap">{s}</Badge>;
         if (s === 'Waiting') badge = <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 whitespace-nowrap">🟡 Waiting</Badge>;
         else if (s === 'With Doctor') badge = <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 whitespace-nowrap">🔵 With Doctor</Badge>;
-        else if (s === 'Transferred') badge = <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 whitespace-nowrap">🔄 Transferred</Badge>;
+        else if (s === 'Next Day' || s === 'Transferred') badge = <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 whitespace-nowrap">📅 Next Day</Badge>;
+        else if (s === 'Transferred Priority') badge = <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 whitespace-nowrap">⚡ Priority Transferred</Badge>;
+        else if (s === 'Scheduled') badge = <Badge className="bg-sky-100 text-sky-800 border-sky-200 hover:bg-sky-100 whitespace-nowrap">📅 Scheduled</Badge>;
         else if (s === 'Ready at Reception') badge = <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
         else if (s === 'Completed') badge = <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
         else if (s === 'Cancelled') badge = <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
@@ -319,7 +443,7 @@ export function ReceptionDeskPage() {
       header: () => <div className="text-center font-semibold text-slate-600">Action</div>,
       cell: ({ row }) => {
         const stage = row.original.stage;
-        const isCancelledOrCompleted = stage === 'Cancelled' || stage === 'Completed';
+        const isCancelledOrCompleted = stage === 'Cancelled' || stage === 'Completed' || stage === 'Next Day' || stage === 'Transferred';
         const isWaiting = stage === 'Waiting';
         const isReadyForReception = stage === 'Ready at Reception';
 
@@ -829,21 +953,73 @@ export function ReceptionDeskPage() {
 
   return (
     <div className="flex-1 bg-slate-50/50 flex flex-col h-screen overflow-hidden">
-      <div className="h-16 shrink-0  px-8 flex items-center justify-between">
+      <div className="h-auto py-3 shrink-0 px-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 bg-white/60 backdrop-blur-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
-          <p className="text-sm text-slate-500">Register patients, manage today's visits, and complete reception tasks.</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
+            {selectedDate !== todayStr && (
+              <Badge className="bg-purple-100 text-purple-800 border-purple-200 font-semibold px-2.5 py-0.5 animate-pulse">
+                Viewing: {selectedDate === tomorrowStr ? 'Tomorrow' : selectedDate}
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-slate-500">
+            {selectedDate === todayStr 
+              ? "Register patients, manage today's visits, and complete reception tasks." 
+              : `Reviewing scheduled queue and transferred patients for ${selectedDate}.`}
+          </p>
         </div>
-        <Button
-          onClick={() => {
-            resetRegistrationForm();
-            setIsRegisterOpen(true);
-          }}
-          className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white"
-        >
-          <Users className="w-4 h-4 mr-2" />
-          Register Patient
-        </Button>
+
+        <div className="flex items-center gap-3">
+          {/* Quick Date Switcher */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setSelectedDate(todayStr)}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                selectedDate === todayStr
+                  ? 'bg-white text-teal-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(tomorrowStr)}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                selectedDate === tomorrowStr
+                  ? 'bg-white text-purple-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tomorrow
+            </button>
+            <div className="relative flex items-center ml-1 border-l border-slate-200 pl-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-500 ml-1.5 pointer-events-none absolute" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(e.target.value);
+                }}
+                className="pl-7 pr-2 py-1 bg-transparent text-slate-700 font-medium text-xs focus:outline-none cursor-pointer"
+                title="Choose custom date"
+              />
+            </div>
+          </div>
+
+          <Button
+            onClick={() => {
+              resetRegistrationForm();
+              setIsRegisterOpen(true);
+            }}
+            className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            Register Patient
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-8">
@@ -915,7 +1091,7 @@ export function ReceptionDeskPage() {
                       <SelectItem value="all">All Stages</SelectItem>
                       <SelectItem value="Waiting">Waiting</SelectItem>
                       <SelectItem value="With Doctor">With Doctor</SelectItem>
-                      <SelectItem value="Transferred">Transferred</SelectItem>
+                      <SelectItem value="Next Day">Next Day</SelectItem>
                       <SelectItem value="Ready at Reception">Ready at Reception</SelectItem>
                       <SelectItem value="Completed">Completed</SelectItem>
                       <SelectItem value="Cancelled">Cancelled</SelectItem>
@@ -954,6 +1130,44 @@ export function ReceptionDeskPage() {
                 }
               }}
             />
+            {/* Multi-select Action Bar for Transferring Patients */}
+            {selectedWaitingIds.length > 0 && selectedDate === todayStr && (
+              <div className="bg-purple-50 border-b border-purple-200 px-6 py-3 flex items-center justify-between flex-wrap gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-sm">
+                    {selectedWaitingIds.length}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-purple-950 text-sm">
+                      {selectedWaitingIds.length} Waiting Patient{selectedWaitingIds.length > 1 ? 's' : ''} Selected
+                    </h4>
+                    <p className="text-xs text-purple-700">
+                      Unserved at closing? Transfer them directly to tomorrow's list with priority tokens.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-purple-700 hover:bg-purple-100 font-medium text-xs"
+                    onClick={() => setSelectedWaitingIds([])}
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1.5"
+                    onClick={() => setIsTransferDialogOpen(true)}
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    Transfer to Next Day
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="p-4">
               <DataTable
                 columns={columns}
@@ -965,6 +1179,153 @@ export function ReceptionDeskPage() {
 
         </div>
       </div>
+
+      {/* Transfer to Next Day Dialog */}
+      <Dialog open={isTransferDialogOpen} onOpenChange={open => !open && !isTransferring && setIsTransferDialogOpen(false)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center mb-2">
+              <ArrowRightLeft className="w-5 h-5" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-slate-900">
+              Transfer Patients to Next Day Queue
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500">
+              Selected waiting patients will be transferred to scheduled priority appointments for the target date.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            {/* Selected Patients List */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-2">
+                Patients to Transfer ({selectedWaitingIds.length})
+              </label>
+              <div className="max-h-[140px] overflow-y-auto space-y-1.5 pr-1">
+                {selectedWaitingIds.map((visitId, idx) => {
+                  const item = unifiedData.find(d => d.visitId === visitId);
+                  return (
+                    <div key={visitId} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-200/70">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-[10px]">
+                          P{idx + 1}
+                        </span>
+                        <span className="font-semibold text-slate-800">{item?.patientName || 'Patient'}</span>
+                        <span className="text-slate-400">({item?.patientPhone})</span>
+                      </div>
+                      <span className="text-slate-500 font-medium">{item?.doctor || 'Any Doctor'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Target Date Picker */}
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Target Date *
+              </label>
+              <Input
+                type="date"
+                min={tomorrowStr}
+                value={transferTargetDate}
+                onChange={(e) => setTransferTargetDate(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Defaults to tomorrow ({tomorrowStr}). You can pick another date if needed.
+              </p>
+            </div>
+
+            {/* Reason */}
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Transfer Reason
+              </label>
+              <Input
+                value={transferReason}
+                onChange={(e) => setTransferReason(e.target.value)}
+                placeholder="Reason for transferring patients"
+                className="w-full text-xs"
+              />
+            </div>
+
+            {/* Notice / Priority Highlight */}
+            <div className="bg-purple-50/70 border border-purple-200/80 rounded-lg p-3 text-xs text-purple-900 flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold">Priority Booking Enabled:</span> These patients will appear at the top of tomorrow's queue with priority tags so they are served first without waiting again.
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsTransferDialogOpen(false)}
+              disabled={isTransferring}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold flex items-center gap-1.5"
+              disabled={isTransferring || selectedWaitingIds.length === 0}
+              onClick={async () => {
+                if (!transferTargetDate) {
+                  toast.error('Please choose a target date');
+                  return;
+                }
+                setIsTransferring(true);
+                try {
+                  const res = await transferVisitsToNextDay(
+                    selectedWaitingIds,
+                    transferTargetDate,
+                    transferReason,
+                    true
+                  );
+
+                  if (res.success) {
+                    toast.success(res.message || 'Transferred patients to next day successfully!');
+                    setSelectedWaitingIds([]);
+                    setIsTransferDialogOpen(false);
+
+                    // Ask receptionist if they want to view tomorrow's queue
+                    const checkTomorrow = await MySwal.fire({
+                      title: 'Transferred Successfully!',
+                      text: `${res.transferredCount || selectedWaitingIds.length} patients transferred to ${transferTargetDate}. Would you like to view that day's list now?`,
+                      icon: 'success',
+                      showCancelButton: true,
+                      confirmButtonText: 'View Tomorrow',
+                      cancelButtonText: 'Stay on Today',
+                      confirmButtonColor: '#9333ea', // purple-600
+                      cancelButtonColor: '#94a3b8',
+                      customClass: {
+                        popup: 'rounded-2xl',
+                        confirmButton: 'rounded-lg font-semibold px-6 py-2',
+                        cancelButton: 'rounded-lg font-semibold px-6 py-2'
+                      }
+                    });
+
+                    if (checkTomorrow.isConfirmed) {
+                      setSelectedDate(transferTargetDate);
+                    }
+                  } else {
+                    toast.error(res.error || 'Failed to transfer patients');
+                  }
+                } catch (err: any) {
+                  toast.error(err.message || 'Error occurred while transferring');
+                } finally {
+                  setIsTransferring(false);
+                }
+              }}
+            >
+              {isTransferring ? 'Transferring...' : `Transfer ${selectedWaitingIds.length} Patients`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Doctor Assignment Modal */}
       <Dialog open={!!assignQueueId && !confirmAssignData} onOpenChange={open => !open && setAssignQueueId(null)}>

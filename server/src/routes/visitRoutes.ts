@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/authMiddleware';
 import { validateRequest } from '../middleware/validateRequest';
-import { startWalkInVisitSchema, checkInAppointmentSchema, updateVisitSchema } from '../schemas/visitSchema';
+import { startWalkInVisitSchema, checkInAppointmentSchema, updateVisitSchema, transferVisitsSchema } from '../schemas/visitSchema';
 import {
   getVisits,
   getVisitById,
@@ -9,7 +9,8 @@ import {
   checkInAppointment,
   cancelVisit,
   updateVisit,
-  exportVisits
+  exportVisits,
+  transferVisits
 } from '../controllers/visitController';
 
 const router = Router();
@@ -19,6 +20,9 @@ router.use(requireAuth);
 router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportVisits);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getVisits);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getVisitById);
+
+// Transfer visits to next day
+router.post('/transfer', requireRole('Head Doctor', 'Receptionist'), validateRequest(transferVisitsSchema), transferVisits);
 
 // Start walk-in visit (Receptionist, Head Doctor)
 // Depending on frontend 'Patients'/'Queue' permissions

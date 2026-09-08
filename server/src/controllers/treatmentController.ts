@@ -19,7 +19,7 @@ export const getTreatmentCatalog = async (req: Request, res: Response, next: Nex
 
 export const getPatientTreatmentPlan = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { patientId } = req.params;
+    const patientId = req.params.patientId as string;
     
     // Ensure patient exists
     const patient = await prisma.patient.findUnique({ where: { id: patientId } });
@@ -50,7 +50,7 @@ export const getPatientTreatmentPlan = async (req: Request, res: Response, next:
 
 export const addTreatmentPlanItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { patientId } = req.params;
+    const patientId = req.params.patientId as string;
     const { treatmentCatalogId, notes, completedVisitId } = req.body;
 
     const patient = await prisma.patient.findUnique({ where: { id: patientId } });
@@ -84,7 +84,8 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
 
 export const updateTreatmentPlanItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { patientId, itemId } = req.params;
+    const patientId = req.params.patientId as string;
+    const itemId = req.params.itemId as string;
     const { status, completedVisitId, notes } = req.body;
 
     const item = await prisma.treatmentPlanItem.findUnique({
@@ -135,7 +136,8 @@ export const updateTreatmentPlanItem = async (req: Request, res: Response, next:
 
 export const deleteTreatmentPlanItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { patientId, itemId } = req.params;
+    const patientId = req.params.patientId as string;
+    const itemId = req.params.itemId as string;
 
     const item = await prisma.treatmentPlanItem.findUnique({
       where: { id: itemId },

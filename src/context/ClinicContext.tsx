@@ -29,6 +29,7 @@ interface ClinicContextType {
   startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
   updateVisit: (visitId: string, updates: Partial<Visit>) => Promise<{ success: boolean, error?: string }>
   cancelVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
+  transferVisitsToNextDay: (visitIds: string[], targetDate: string, reason?: string, isPriority?: boolean) => Promise<{ success: boolean, count?: number, error?: string }>
 
   assignDoctor: (queueId: string, doctorId: string) => Promise<{ success: boolean, error?: string }>
   normalizePhone: (phone: string) => string
@@ -257,6 +258,61 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const transferVisitsToNextDay = async (visitIds: string[], targetDate: string, reason?: string, isPriority = true) => {
+    try {
+      const res = await api.post<{ success: boolean, message: string, data: any[] }>('/api/visits/transfer', {
+        visitIds,
+        targetDate,
+        reason,
+        isPriority
+      });
+
+      // Update visits and queue locally
+      setVisits(prev => prev.map(v => {
+        if (visitIds.includes(v.id)) {
+          return {
+            ...v,
+            status: 'CANCELLED',
+            reasonForVisit: `[Transferred to ${targetDate}] ${v.reasonForVisit || ''}`.trim()
+          };
+        }
+        return v;
+      }));
+
+      setQueue(prev => prev.map(q => {
+        if (visitIds.includes(q.visitId)) {
+          return { ...q, status: 'Cancelled' };
+        }
+        return q;
+      }));
+
+      // Directly update appointments state from server response and also fetch latest appointments
+      const returnedList = (res as any)?.data || (Array.isArray(res) ? res : []);
+      if (Array.isArray(returnedList) && returnedList.length > 0) {
+        setAppointments(prev => {
+          const newIds = new Set(returnedList.map((a: any) => a.id));
+          return [...returnedList, ...prev.filter(a => !newIds.has(a.id))];
+        });
+      }
+
+      // Proactively re-fetch appointments to ensure 100% sync
+      try {
+        const freshAppts = await api.get<Appointment[]>('/api/appointments');
+        const list = (freshAppts as any).data || freshAppts;
+        if (Array.isArray(list)) {
+          setAppointments(list);
+        }
+      } catch (fetchErr) {
+        console.warn('Failed to re-fetch appointments after transfer:', fetchErr);
+      }
+
+      return { success: true, count: visitIds.length };
+    } catch (err: any) {
+      console.error('Failed to transfer visits:', err);
+      return { success: false, error: err.response?.data?.error || err.message || 'Error transferring visits' };
+    }
+  }
+
   const assignDoctor = async (queueId: string, doctorId: string) => {
     try {
       const res = await api.patch<{ data: { queueEntry: QueueEntry, visit: Visit } }>(`/api/queue/${queueId}/assign`, {
@@ -457,7 +513,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
       staff, reloadStaff, updateStaffAttendance,
-      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit,
+      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit, transferVisitsToNextDay,
         assignDoctor,
         normalizePhone,
         callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, adjustMedicineStock

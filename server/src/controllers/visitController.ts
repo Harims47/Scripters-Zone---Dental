@@ -187,7 +187,7 @@ export const getVisitById = async (req: Request, res: Response, next: NextFuncti
 
 export const cancelVisit = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const visit = await prisma.visit.findUnique({
       where: { id },
@@ -275,6 +275,71 @@ export const updateVisit = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const transferVisits = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { visitIds, targetDate, reason, isPriority } = req.body;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const transferredAppointments: any[] = [];
+
+      for (let i = 0; i < visitIds.length; i++) {
+        const visitId = visitIds[i];
+        const visit = await tx.visit.findUnique({
+          where: { id: visitId },
+          include: { patient: true, queueEntry: true, appointment: true }
+        });
+
+        if (!visit) continue;
+
+        const transferReason = reason || 'Transferred from previous day queue due to clinic wait time';
+        const priorityTime = `09:${String(i * 10).padStart(2, '0')}`; // Priority morning time slot
+
+        // 1. Create priority appointment for target date
+        const newAppt = await tx.appointment.create({
+          data: {
+            patientId: visit.patientId,
+            providerId: visit.doctorId,
+            date: targetDate,
+            time: priorityTime,
+            type: visit.reasonForVisit || 'Consultation',
+            status: 'Scheduled',
+            notes: `[Transferred - Token #${i + 1}] ${transferReason}`
+          }
+        });
+
+        // 2. Mark current visit as CANCELLED with transfer note
+        await tx.visit.update({
+          where: { id: visit.id },
+          data: {
+            status: 'CANCELLED',
+            reasonForVisit: `[Transferred to ${targetDate}] ${visit.reasonForVisit || ''}`.trim()
+          }
+        });
+
+        // 3. Mark queueEntry as Cancelled
+        if (visit.queueEntry) {
+          await tx.queueEntry.update({
+            where: { visitId: visit.id },
+            data: { status: 'Cancelled' }
+          });
+        }
+
+        transferredAppointments.push(newAppt);
+      }
+
+      return transferredAppointments;
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `${result.length} patients successfully transferred to ${targetDate}`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
 
 export const exportVisits = async (req: Request, res: Response, next: NextFunction) => {
@@ -298,7 +363,9 @@ export const exportVisits = async (req: Request, res: Response, next: NextFuncti
 
     const flatData = visits.map(v => {
       let calcStage = 'Waiting';
-      if (v.status === 'CANCELLED') calcStage = 'Cancelled';
+      const isTransferred = v.reasonForVisit?.startsWith('[Transferred') || v.queueEntry?.status === 'Transferred';
+      if (isTransferred) calcStage = 'Next Day';
+      else if (v.status === 'CANCELLED') calcStage = 'Cancelled';
       else if (v.status === 'COMPLETED') calcStage = 'Completed';
       else if (v.queueEntry) {
         if (v.queueEntry.status === 'Waiting') calcStage = 'Waiting';
