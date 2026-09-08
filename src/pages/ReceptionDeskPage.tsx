@@ -70,6 +70,19 @@ export function ReceptionDeskPage() {
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentReason, setPaymentReason] = useState<string>('');
   const [paymentReasonOther, setPaymentReasonOther] = useState<string>('');
+  const [altPhone, setAltPhone] = useState<string>('');
+  const [hasPrintedReceipt, setHasPrintedReceipt] = useState<boolean>(false);
+  const [pendingPaymentConfirmation, setPendingPaymentConfirmation] = useState<{
+    visitId: string;
+    amount: number;
+    method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card';
+    finalNotes?: string;
+    isPartial: boolean;
+    remainingBalance: number;
+    reasonText?: string;
+    altPhoneText?: string;
+  } | null>(null);
+  const [isRecordingPayment, setIsRecordingPayment] = useState<boolean>(false);
   const [processTreatmentPlan, setProcessTreatmentPlan] = useState<any | null>(null);
 
   // Assignment Modal
@@ -374,8 +387,7 @@ export function ReceptionDeskPage() {
             <Button
               size="icon"
               variant="ghost"
-              disabled={!isWaiting}
-              className={`w-8 h-8 ${isWaiting ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
+              className={`w-8 h-8 text-indigo-600 ${isWaiting ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-not-allowed opacity-75 hover:bg-transparent'}`}
               title={isWaiting ? "Send to Doctor" : "Cannot send to doctor at this stage"}
               onClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
@@ -385,35 +397,43 @@ export function ReceptionDeskPage() {
               <Send className="w-4 h-4" />
             </Button>
 
-            {/* Process Visit */}
-            <Button
-              size="icon"
-              variant="ghost"
-              disabled={!isReadyForReception}
-              className={`w-8 h-8 ${isReadyForReception ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
-              title={isReadyForReception ? "Checkout & Billing" : "Not ready for processing"}
-              onClick={(e) => {
-                e.preventDefault(); e.stopPropagation();
-                if (isReadyForReception) handleOpenProcess(row.original);
-              }}
-            >
-              <CreditCard className="w-4 h-4" />
-            </Button>
+            {/* Process Visit / View Billing & Receipt */}
+            {(() => {
+              const canProcess = isReadyForReception || stage === 'Completed';
+              return (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={`w-8 h-8 text-emerald-600 ${canProcess ? 'hover:bg-emerald-50 cursor-pointer' : 'cursor-not-allowed opacity-75 hover:bg-transparent'}`}
+                  title={isReadyForReception ? "Checkout & Billing" : stage === 'Completed' ? "View Billing & Receipt" : "Checkout & Billing not ready for this stage"}
+                  onClick={(e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (canProcess) handleOpenProcess(row.original);
+                  }}
+                >
+                  <CreditCard className="w-4 h-4" />
+                </Button>
+              );
+            })()}
 
             {/* Cancel Visit */}
-            <Button
-              size="icon"
-              variant="ghost"
-              disabled={isCancelledOrCompleted || row.original.doctor !== '-'}
-              className={`w-8 h-8 ${!(isCancelledOrCompleted || row.original.doctor !== '-') ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-300 opacity-50 cursor-not-allowed'}`}
-              title={!(isCancelledOrCompleted || row.original.doctor !== '-') ? "Cancel Visit" : "Cannot cancel once doctor is assigned"}
-              onClick={(e) => {
-                e.preventDefault(); e.stopPropagation();
-                if (!(isCancelledOrCompleted || row.original.doctor !== '-')) handleCancelVisit(row.original.visitId);
-              }}
-            >
-              <XCircle className="w-4 h-4" />
-            </Button>
+            {(() => {
+              const canCancel = !(isCancelledOrCompleted || row.original.doctor !== '-');
+              return (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={`w-8 h-8 text-rose-600 ${canCancel ? 'hover:bg-rose-50 cursor-pointer' : 'cursor-not-allowed opacity-75 hover:bg-transparent'}`}
+                  title={canCancel ? "Cancel Visit" : isCancelledOrCompleted ? "Visit is already finished" : "Cannot cancel once doctor is assigned"}
+                  onClick={(e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (canCancel) handleCancelVisit(row.original.visitId);
+                  }}
+                >
+                  <XCircle className="w-4 h-4" />
+                </Button>
+              );
+            })()}
           </div>
         );
       }
@@ -638,6 +658,8 @@ export function ReceptionDeskPage() {
     setPaymentAmount('');
     setPaymentReason('');
     setPaymentReasonOther('');
+    setAltPhone('');
+    setHasPrintedReceipt(false);
     setProcessTreatmentPlan(null);
     setProcessVisitId(row.visitId);
 
@@ -717,26 +739,59 @@ export function ReceptionDeskPage() {
         toast.error('A reason is required when leaving a balance.');
         return;
       }
-      if (paymentReason === 'Other') {
-        if (!paymentReasonOther.trim()) {
-          toast.error('Please specify the reason.');
-          return;
-        }
-        finalNotes = `Other: ${paymentReasonOther.trim()}`;
-      } else {
-        finalNotes = paymentReason;
+      if (paymentReason === 'Other' && !paymentReasonOther.trim()) {
+        toast.error('Please specify the reason for partial payment.');
+        return;
       }
+      if (!altPhone.trim()) {
+        toast.error('Please provide an alternative phone number for partial payment.');
+        return;
+      }
+      if (altPhone.trim().length !== 10) {
+        toast.error('Please enter a valid 10-digit alternative phone number.');
+        return;
+      }
+
+      const reasonText = paymentReason === 'Other' ? `Other: ${paymentReasonOther.trim()}` : paymentReason;
+      finalNotes = `${reasonText} | Alt Phone: ${altPhone.trim()}`;
     }
 
-    const result = await recordPayment(processVisitId, amt, activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', finalNotes);
-    if (result.success) {
-      toast.success('Payment recorded successfully');
-      setPaymentAmount(''); // Reset for next payment if balance remains
-      setPaymentReason('');
-      setPaymentReasonOther('');
-      setActiveMethod(null);
-    } else {
-      toast.error(result.error || 'Failed to record payment');
+    // Set pending confirmation modal state (clean React dialog, no DOM/portal or SweetAlert backdrop issues)
+    setPendingPaymentConfirmation({
+      visitId: processVisitId,
+      amount: amt,
+      method: activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card',
+      finalNotes,
+      isPartial,
+      remainingBalance: balance - amt,
+      reasonText: paymentReason === 'Other' ? paymentReasonOther.trim() : paymentReason,
+      altPhoneText: altPhone.trim()
+    });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pendingPaymentConfirmation || isRecordingPayment) return;
+    setIsRecordingPayment(true);
+
+    try {
+      const { visitId, amount, method, finalNotes } = pendingPaymentConfirmation;
+      const result = await recordPayment(visitId, amount, method, finalNotes);
+      if (result.success) {
+        toast.success(`Payment of ₹${amount} via ${method} recorded successfully!`, { duration: 4000 });
+        setPendingPaymentConfirmation(null);
+        setPaymentAmount(''); // Reset for next payment if balance remains
+        setPaymentReason('');
+        setPaymentReasonOther('');
+        setAltPhone('');
+        setActiveMethod(null);
+      } else {
+        toast.error(result.error || 'Failed to record payment');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Unexpected error while recording payment');
+    } finally {
+      setIsRecordingPayment(false);
     }
   };
 
@@ -752,10 +807,19 @@ export function ReceptionDeskPage() {
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+
+      if (type === 'receipt') {
+        setHasPrintedReceipt(true);
+        toast.success('Receipt generated! You can now click Done to complete checkout.');
+      }
     } catch (err) {
       console.error(err);
       toast.error(`Failed to load ${type} document.`);
     }
+  };
+
+  const handleCloseProcessVisit = () => {
+    setProcessVisitId(null);
   };
 
   const activeProcessVisit = visits.find(v => v.id === processVisitId);
@@ -938,6 +1002,70 @@ export function ReceptionDeskPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignQueueId(null)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Confirmation Modal */}
+      <Dialog open={!!pendingPaymentConfirmation} onOpenChange={open => {
+        if (!open && !isRecordingPayment) setPendingPaymentConfirmation(null);
+      }}>
+        <DialogContent className="sm:max-w-[440px] p-6">
+          <DialogHeader className="text-center pb-2">
+            <div className="w-12 h-12 rounded-full bg-teal-50 border border-teal-200 text-teal-600 flex items-center justify-center mx-auto mb-3">
+              <CreditCard className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-slate-900">Confirm Payment</DialogTitle>
+            <DialogDescription className="text-sm text-slate-500">
+              Are you sure you want to record the following payment?
+            </DialogDescription>
+          </DialogHeader>
+
+          {pendingPaymentConfirmation && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 my-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Amount:</span>
+                <strong className="text-slate-900 text-lg font-bold">₹{pendingPaymentConfirmation.amount}</strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Payment Method:</span>
+                <Badge className="bg-teal-100 text-teal-800 border-teal-200 font-semibold px-2.5 py-0.5">
+                  {pendingPaymentConfirmation.method}
+                </Badge>
+              </div>
+              {pendingPaymentConfirmation.isPartial && (
+                <>
+                  <div className="border-t border-dashed border-slate-200 pt-2.5 flex justify-between items-center">
+                    <span className="text-amber-700 font-medium">Remaining Balance:</span>
+                    <strong className="text-amber-700 font-bold">₹{pendingPaymentConfirmation.remainingBalance}</strong>
+                  </div>
+                  <div className="text-xs text-slate-500 space-y-1 pt-1 bg-amber-50/50 p-2.5 rounded-lg border border-amber-200/60">
+                    <div><span className="font-semibold text-slate-700">Reason:</span> {pendingPaymentConfirmation.reasonText}</div>
+                    <div><span className="font-semibold text-slate-700">Alt Phone:</span> {pendingPaymentConfirmation.altPhoneText}</div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="mt-3 flex sm:justify-between gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPendingPaymentConfirmation(null)}
+              disabled={isRecordingPayment}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmPayment}
+              disabled={isRecordingPayment}
+              className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+            >
+              {isRecordingPayment ? 'Recording...' : 'Yes, Record Payment'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1435,11 +1563,21 @@ export function ReceptionDeskPage() {
       </Sheet>
 
       {/* Process Visit Drawer */}
-      <Sheet open={!!processVisitId} onOpenChange={open => !open && setProcessVisitId(null)}>
-        <SheetContent side="right" className="w-[480px] sm:w-[680px] p-0 flex flex-col bg-slate-50 h-full">
+      <Sheet open={!!processVisitId} onOpenChange={open => {
+        if (!open) {
+          handleCloseProcessVisit();
+        }
+      }}>
+        <SheetContent 
+          side="right" 
+          className="w-[480px] sm:w-[680px] p-0 flex flex-col bg-slate-50 h-full"
+        >
           <SheetTitle className="sr-only">Checkout & Billing</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
             <h2 className="text-lg font-semibold text-slate-900">Checkout & Billing</h2>
+            <p className="text-xs text-slate-500">
+              {activeProcessPatient?.name ? `${activeProcessPatient.name} • ` : ''}Doctor: {activeProcessDoctor?.name || 'Not assigned'}
+            </p>
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -1456,10 +1594,11 @@ export function ReceptionDeskPage() {
               const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
               const balance = amountDue - totalPaid;
 
-              const hasCompletedPayment = activeProcessVisit?.status === 'COMPLETED' && balance <= 0;
+              const hasCompletedPayment = activeProcessVisit?.status === 'COMPLETED' || (balance <= 0 && (!hasPrescription || hasCompletedDispensing));
               // Only a step if dispensing is done AND balance is still > 0
               const isPaymentStep = (!hasPrescription || hasCompletedDispensing) && balance > 0;
-              const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED';
+              // Workflow is completed only when visit is COMPLETED or when both dispensing is done AND payment is completely paid (balance <= 0)
+              const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED' || ((!hasPrescription || hasCompletedDispensing) && balance <= 0);
               const activeConsultation = consultations.find(c => c.visitId === processVisitId);
 
               return (
@@ -1548,35 +1687,37 @@ export function ReceptionDeskPage() {
                   <DrawerSection title="1. Medicines">
                     {isDispensingStep ? (
                       <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Prescribed Items</h4>
+                          <span className="text-xs text-slate-400">Review & update dispensed quantities</span>
+                        </div>
+
                         {activeItems.length > 0 ? (
-                          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                            <table className="w-full text-left text-xs table-fixed">
-                              <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
+                          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-xs">
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500">
                                 <tr>
-                                  <th className="py-2.5 px-3">Medicine</th>
-                                  <th className="py-2.5 px-2 text-center w-16 whitespace-nowrap">Rx</th>
-                                  <th className="py-2.5 px-2 text-center w-16 whitespace-nowrap">Disp</th>
-                                  <th className="py-2.5 px-2 text-center w-20 whitespace-nowrap">Qty</th>
-                                  <th className="py-2.5 px-3 text-right w-20 whitespace-nowrap">Cost</th>
+                                  <th className="py-2.5 px-3 text-left font-semibold">Medicine</th>
+                                  <th className="py-2.5 px-2 text-center font-semibold w-12">Rx</th>
+                                  <th className="py-2.5 px-2 text-center font-semibold w-12">Disp</th>
+                                  <th className="py-2.5 px-2 text-center font-semibold w-14">Qty</th>
+                                  <th className="py-2.5 px-3 text-right font-semibold w-16">Cost</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
                                 {activeItems.map((item, index) => {
-                                  const hasStockShortage = item.isDispensed && item.availableStock < item.prescribedQty;
                                   const exceedsStock = item.isDispensed && item.dispensedQty > item.availableStock;
                                   const exceedsPrescribed = item.isDispensed && item.dispensedQty > item.prescribedQty;
                                   const itemCost = item.isDispensed ? (item.dispensedQty || 0) * (item.unitPrice || 0) : 0;
 
                                   return (
-                                    <tr key={item.id} className={item.isDispensed ? 'bg-white' : 'bg-slate-50/70 text-slate-400'}>
-                                      <td className="py-2.5 px-3 align-middle truncate">
-                                        <div className={`font-medium truncate ${item.isDispensed ? 'text-slate-900 font-semibold' : 'text-slate-500'}`} title={item.name}>
-                                          {item.name}
+                                    <tr key={item.id} className={item.isDispensed ? 'bg-white' : 'bg-slate-50/60 opacity-60'}>
+                                      <td className="py-2.5 px-3 align-middle">
+                                        <span className="font-semibold text-slate-900 line-clamp-1">{item.name}</span>
+                                        <div className="text-[11px] text-slate-400">
+                                          {item.strength} • ₹{item.unitPrice}
                                         </div>
-                                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                                          {item.strength || 'Unit'} • ₹{item.unitPrice || 0}/unit
-                                        </div>
-                                        {hasStockShortage && (
+                                        {item.availableStock <= 5 && (
                                           <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded px-1.5 py-0.5 w-fit">
                                             <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                                             <span>Stock: {item.availableStock}/{item.prescribedQty}</span>
@@ -1682,8 +1823,8 @@ export function ReceptionDeskPage() {
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Payments</h4>
                         <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden shadow-xs">
                           {visitPayments.map((p, idx) => (
-                            <div key={p.id || idx} className="p-3 flex justify-between items-start">
-                              <div className="space-y-0.5">
+                            <div key={p.id || idx} className="p-3 flex justify-between items-start gap-2">
+                              <div className="space-y-0.5 flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-slate-800 text-sm">{p.method}</span>
                                   <span className="text-[11px] text-slate-400">
@@ -1691,10 +1832,23 @@ export function ReceptionDeskPage() {
                                   </span>
                                 </div>
                                 {p.notes && (
-                                  <p className="text-xs text-slate-600 italic">{p.notes}</p>
+                                  <p className="text-xs text-slate-600 italic break-words">{p.notes}</p>
                                 )}
                               </div>
-                              <span className="font-bold text-slate-900 text-sm">₹{p.amount}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-bold text-slate-900 text-sm">₹{p.amount}</span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handlePrintDocument('receipt')}
+                                  title="Print Receipt for this payment"
+                                  className="h-7 px-2 text-teal-600 hover:bg-teal-50 text-xs flex items-center gap-1"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Receipt</span>
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1773,6 +1927,21 @@ export function ReceptionDeskPage() {
                                   className="bg-white border-amber-200 text-xs h-9"
                                 />
                               )}
+
+                              <div>
+                                <label className="text-xs font-semibold text-amber-900 block mb-1">
+                                  Alternative Phone Number <span className="text-red-500">*</span>
+                                  <span className="text-[10px] font-normal text-amber-700 ml-1">(for pending balance follow-up)</span>
+                                </label>
+                                <Input
+                                  type="tel"
+                                  maxLength={10}
+                                  placeholder="10-digit mobile number"
+                                  value={altPhone}
+                                  onChange={(e) => setAltPhone(e.target.value.replace(/\D/g, ''))}
+                                  className="bg-white border-amber-200 text-xs h-9"
+                                />
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1785,7 +1954,8 @@ export function ReceptionDeskPage() {
                             Number(paymentAmount) <= 0 ||
                             Number(paymentAmount) > balance ||
                             (Number(paymentAmount) < balance && !paymentReason) ||
-                            (Number(paymentAmount) < balance && paymentReason === 'Other' && !paymentReasonOther.trim())
+                            (Number(paymentAmount) < balance && paymentReason === 'Other' && !paymentReasonOther.trim()) ||
+                            (Number(paymentAmount) < balance && altPhone.trim().length !== 10)
                           }
                           className="w-full bg-teal-600 hover:bg-teal-700 h-10 font-medium text-sm"
                         >
@@ -1803,17 +1973,43 @@ export function ReceptionDeskPage() {
                     )}
                   </DrawerSection>
 
-                  {isWorkflowCompleted && (
+                  {(visitPayments.length > 0 || isWorkflowCompleted) && (
                     <DrawerSection title="3. Print">
                       <div className="p-5 bg-white border border-slate-200 rounded-lg space-y-4">
-                        <div className="flex items-center gap-3 text-emerald-600 mb-4">
-                          <CheckCircle2 className="w-5 h-5" />
-                          <span className="font-medium">Workflow Completed</span>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            {isWorkflowCompleted ? (
+                              <>
+                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                <span className="font-semibold text-sm text-emerald-700">Workflow Completed</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-5 h-5 text-teal-600" />
+                                <span className="font-semibold text-sm text-slate-800">
+                                  Payment Recorded (Balance: ₹{balance})
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {hasPrintedReceipt ? (
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs py-0.5">
+                              Receipt Printed
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-teal-50 text-teal-800 border-teal-300 text-xs py-0.5">
+                              Receipt Ready
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex gap-3">
-                          <Button variant="outline" className="w-full" onClick={() => handlePrintDocument('receipt')}>
-                            <Receipt className="w-4 h-4 mr-2" />
-                            Print Receipt
+                        <div>
+                          <Button 
+                            variant="outline"
+                            className="w-full border-teal-600 text-teal-700 hover:bg-teal-50 font-medium shadow-xs"
+                            onClick={() => handlePrintDocument('receipt')}
+                          >
+                            <Receipt className="w-4 h-4 mr-2 text-teal-600" />
+                            {hasPrintedReceipt ? 'Reprint Receipt' : 'Print Receipt'}
                           </Button>
                         </div>
                       </div>
@@ -1825,10 +2021,28 @@ export function ReceptionDeskPage() {
 
           </div>
 
-          <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex items-center justify-end gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
-            <Button onClick={() => setProcessVisitId(null)} className="w-full">
-              {activeProcessQueue?.status === 'Completed' || activeProcessVisit?.status === 'COMPLETED' ? 'Done' : 'Close'}
-            </Button>
+          <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex flex-col gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
+            {(() => {
+              const visitPayments = payments.filter(p => p.visitId === processVisitId);
+              const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
+              const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+              const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
+              const balance = amountDue - totalPaid;
+              const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
+              const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
+
+              // Only true when payment is fully completed and dispensing is done
+              const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED' || ((!hasPrescription || hasCompletedDispensing) && balance <= 0);
+
+              return (
+                <Button 
+                  onClick={handleCloseProcessVisit} 
+                  className="w-full bg-teal-600 hover:bg-teal-700 text-white font-medium"
+                >
+                  {isWorkflowCompleted ? 'Done' : 'Close'}
+                </Button>
+              );
+            })()}
           </div>
         </SheetContent>
       </Sheet>
