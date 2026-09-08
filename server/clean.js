@@ -21,7 +21,10 @@ async function main() {
   await prisma.visit.deleteMany({});
   await prisma.appointment.deleteMany({});
   await prisma.patient.deleteMany({});
-  console.log('Database cleaned successfully! Mock operational data has been wiped.');
+  await prisma.staff.updateMany({
+    data: { attendance: 'Present' }
+  });
+  console.log('Database cleaned successfully! Mock operational data has been wiped and staff attendance reset to Present.');
 }
 
 main()

@@ -61,11 +61,27 @@ export const generatePrescriptionPDF = (data: any): Promise<Buffer> => {
     const GRN_LIGHT = '#E6F4E6';
     const BDR = 12;               // page margin for border
 
-    // ── Frequency → time slots ──────────────────────────────────────────
-    const resolveSlots = (freq: string, dosage: string) => {
+    // ── Frequency / Instructions → time slots ────────────────────────────
+    const resolveSlots = (freq: string, dosage: string, instructions?: string) => {
       const f = (freq || '').toLowerCase().trim();
+      const inst = (instructions || '').toLowerCase().trim();
       const qty = (dosage || '').match(/^(\d+)/)?.[1] ?? '1';
       const e = (s: string) => s ? qty : '';
+
+      // If specific meal slots are selected in instructions:
+      const hasBreakfast = /breakfast/i.test(inst);
+      const hasLunch = /lunch/i.test(inst);
+      const hasDinner = /dinner/i.test(inst);
+
+      if (hasBreakfast || hasLunch || hasDinner) {
+        return {
+          m: hasBreakfast ? qty : '',
+          a: hasLunch ? qty : '',
+          ev: '',
+          n: hasDinner ? qty : ''
+        };
+      }
+
       if (/four|qid|4.time|1-1-1-1/i.test(f)) return { m: qty, a: qty, ev: qty, n: qty };
       if (/three|tds|tid|thrice|1-1-1/i.test(f)) return { m: qty, a: qty, ev: '',  n: qty };
       if (/twice|two|bd|bid|1-0-1/i.test(f))     return { m: qty, a: '',   ev: '',  n: qty };
@@ -80,9 +96,12 @@ export const generatePrescriptionPDF = (data: any): Promise<Buffer> => {
 
     const resolveFood = (instructions: string) => {
       const i = (instructions || '').toLowerCase();
-      if (/before\s*food|before\s*meal|empty|bf/i.test(i)) return { bf: '\u2714', af: '' };
-      if (/after\s*food|after\s*meal|pc|af/i.test(i))      return { bf: '',  af: '\u2714' };
-      return { bf: '', af: '' };
+      const hasBefore = /before/i.test(i) || /empty|bf/i.test(i);
+      const hasAfter = /after/i.test(i) || /pc|af/i.test(i);
+      return {
+        bf: hasBefore ? '\u2714' : '',
+        af: hasAfter ? '\u2714' : ''
+      };
     };
 
     // ── Doctor display ──────────────────────────────────────────────────
@@ -221,7 +240,7 @@ export const generatePrescriptionPDF = (data: any): Promise<Buffer> => {
       doc.fillColor(i % 2 === 0 ? '#FAFFF8' : '#FFFFFF').rect(tblLeft, ry, tblW, rowH).fill();
 
       if (item) {
-        const slots = resolveSlots(item.frequency || '', item.dosage || '1');
+        const slots = resolveSlots(item.frequency || '', item.dosage || '1', item.instructions || '');
         const food  = resolveFood(item.instructions || '');
 
         // Medicine name + dosage/duration sub-line

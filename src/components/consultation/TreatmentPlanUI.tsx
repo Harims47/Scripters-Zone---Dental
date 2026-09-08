@@ -9,20 +9,31 @@ import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem } from '../../t
 
 export function TreatmentPlanUI({
   patientId,
-  currentVisitId
+  currentVisitId,
+  treatmentFee,
+  onSaveTreatmentFee
 }: {
   patientId: string
   currentVisitId?: string
+  treatmentFee?: number
+  onSaveTreatmentFee?: (fee: number) => void
 }) {
   const [plan, setPlan] = useState<TreatmentPlan | null>(null)
   const [catalog, setCatalog] = useState<TreatmentCatalog[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [localTreatmentFee, setLocalTreatmentFee] = useState<number>(treatmentFee || 0)
   
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [selectedProcedure, setSelectedProcedure] = useState<string>('')
   const [notes, setNotes] = useState('')
   const [isAdding, setIsAdding] = useState(false)
+
+  useEffect(() => {
+    if (treatmentFee !== undefined) {
+      setLocalTreatmentFee(treatmentFee)
+    }
+  }, [treatmentFee])
 
   useEffect(() => {
     async function load() {
@@ -178,10 +189,35 @@ export function TreatmentPlanUI({
           
           <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs flex gap-2 items-start mt-4">
              <Info className="w-4 h-4 shrink-0 mt-0.5" />
-             <p>Marking a treatment as completed links it to the current visit. <strong>This does not automatically bill the patient.</strong> Please enter any applicable fees in the Treatment Fee input below.</p>
+             <p>Marking a treatment as completed links it to the current visit. <strong>This does not automatically bill the patient.</strong> Please enter the treatment fee below for this procedure.</p>
           </div>
         </div>
       )}
+
+      {/* Treatment Fee Section */}
+      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-4">
+        <div className="space-y-0.5">
+          <label className="text-sm font-semibold text-slate-800">Treatment Fee (₹)</label>
+          <p className="text-xs text-slate-500">Applicable procedure or treatment charge for this visit</p>
+        </div>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-44">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">₹</span>
+            <Input
+              type="number"
+              min="0"
+              step="50"
+              className="pl-7 bg-white font-semibold text-slate-900"
+              value={localTreatmentFee}
+              onChange={(e) => {
+                const val = Number(e.target.value) || 0
+                setLocalTreatmentFee(val)
+                if (onSaveTreatmentFee) onSaveTreatmentFee(val)
+              }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

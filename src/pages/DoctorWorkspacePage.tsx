@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 
@@ -116,6 +116,34 @@ const INSTRUCTION_OPTIONS = [
 ]
 
 function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; onRemove: (id: string) => void }) {
+  const selectedInstructions = item.instructions
+    ? item.instructions.split(',').map(s => s.trim()).filter(Boolean)
+    : []
+
+  const toggleInstruction = (inst: string) => {
+    let next: string[]
+    if (selectedInstructions.includes(inst)) {
+      next = selectedInstructions.filter(i => i !== inst)
+    } else {
+      next = [...selectedInstructions, inst]
+    }
+    const joined = next.join(', ')
+    onUpdateField(item.id, 'instructions', joined)
+
+    // Automatically calculate and sync frequency based on meal instruction count
+    let autoFreq = 'Once daily'
+    if (next.length === 2) autoFreq = 'Twice daily'
+    else if (next.length === 3) autoFreq = 'Three times daily'
+    else if (next.length >= 4) autoFreq = 'Four times daily'
+    else if (next.length === 1) {
+      if (next[0].includes('Dinner')) autoFreq = 'At bedtime'
+      else autoFreq = 'Once daily'
+    }
+    onUpdateField(item.id, 'frequency', autoFreq)
+  }
+
+  const isLowStock = item.currentStock <= (item.stockWarningLevel || 10)
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
       {/* Header */}
@@ -155,17 +183,23 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
             </SelectContent>
           </Select>
         </div>
-        {/* Frequency */}
+        {/* Available Stock (Count only) */}
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Frequency</label>
-          <Select value={item.frequency || ''} onValueChange={v => onUpdateField(item.id, 'frequency', v)}>
-            <SelectTrigger className="h-9 bg-slate-50 text-sm">
-              <SelectValue placeholder="Select..." />
-            </SelectTrigger>
-            <SelectContent>
-              {FREQ_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Available Stock</label>
+          <div className={cn(
+            "h-9 px-3 rounded-md border flex items-center justify-between text-xs font-semibold",
+            isLowStock
+              ? "bg-amber-50 text-amber-800 border-amber-200"
+              : "bg-emerald-50 text-emerald-800 border-emerald-200"
+          )}>
+            <span className="font-bold text-sm">{item.currentStock}</span>
+            <span className={cn(
+              "text-[10px] uppercase font-bold px-1.5 py-0.5 rounded",
+              isLowStock ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-900"
+            )}>
+              {isLowStock ? 'Low' : 'In Stock'}
+            </span>
+          </div>
         </div>
         {/* Duration */}
         <div className="space-y-1">
@@ -180,24 +214,36 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
           </Select>
         </div>
       </div>
-      {/* Instructions */}
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Instructions</label>
+      {/* Instructions (Multi-select) */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Instructions (Select All That Apply)</label>
+          {selectedInstructions.length > 0 && (
+            <span className="text-[11px] text-indigo-600 font-medium">
+              {item.frequency || (selectedInstructions.length === 1 ? 'Once daily' : selectedInstructions.length === 2 ? 'Twice daily' : `${selectedInstructions.length} times daily`)}
+            </span>
+          )}
+        </div>
         <div className="flex gap-1.5 flex-wrap">
-          {INSTRUCTION_OPTIONS.map(o => (
-            <button
-              key={o}
-              onClick={() => onUpdateField(item.id, 'instructions', o)}
-              className={cn(
-                'text-xs px-2.5 py-1 rounded-full border transition-colors',
-                item.instructions === o
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-              )}
-            >
-              {o}
-            </button>
-          ))}
+          {INSTRUCTION_OPTIONS.map(o => {
+            const isSelected = selectedInstructions.includes(o)
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggleInstruction(o)}
+                className={cn(
+                  'text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium',
+                  isSelected
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                )}
+              >
+                {isSelected && <span className="text-[10px]">✓</span>}
+                {o}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -221,8 +267,11 @@ export function DoctorWorkspacePage() {
   const visitDoctor = staff.find(s => s.id === visit?.doctorId)
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false)
+  const [viewTreatmentModalOpen, setViewTreatmentModalOpen] = useState(false)
   const [consultationModalOpen, setConsultationModalOpen] = useState(false)
+  const [viewConsultationModalOpen, setViewConsultationModalOpen] = useState(false)
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false)
+  const [viewPrescriptionModalOpen, setViewPrescriptionModalOpen] = useState(false)
   const [completeModalOpen, setCompleteModalOpen] = useState(false)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferDoctorId, setTransferDoctorId] = useState<string>('')
@@ -427,10 +476,10 @@ export function DoctorWorkspacePage() {
       stockWarningLevel: med.stockWarningLevel,
       currentStock: med.currentStock,
       quantity: 1,
-      dosage: '1 tablet',
+      dosage: '1 Tablet',
       frequency: 'Twice daily',
       duration: '5 days',
-      instructions: 'After meals'
+      instructions: 'After Breakfast, After Dinner'
     }
     setActivePrescription(prev => [...prev, newItem])
   }
@@ -562,19 +611,44 @@ export function DoctorWorkspacePage() {
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-500" /> Treatment Plan
                   </h3>
-                  <Button variant="secondary" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
-                    <Edit className="h-4 w-4 mr-1.5" /> Edit
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => setViewTreatmentModalOpen(true)} className="h-8 px-3 text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800">
+                      <Eye className="h-4 w-4 mr-1.5" /> View
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                      <Edit className="h-4 w-4 mr-1.5" /> Edit
+                    </Button>
+                  </div>
                 </div>
-                <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 space-y-3">
-                  {treatmentPlan.items.map((item: any) => (
-                    <div key={item.id} className="flex justify-between items-center text-sm">
-                      <span className="font-medium text-slate-800">
-                        {item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'}
-                      </span>
-                      <span className="px-2 py-1 rounded text-xs font-semibold bg-white border border-slate-200">{item.status}</span>
+                <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 text-sm text-slate-700 space-y-4">
+                  <div>
+                    <strong className="block mb-1 text-slate-900">Procedures</strong>
+                    <div className="space-y-2">
+                      {treatmentPlan.items.map((item: any) => {
+                        const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
+                        const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
+                        const category = item.catalogItem?.category || item.category
+                        const notes = item.notes
+
+                        return (
+                          <div key={item.id} className="text-slate-800">
+                            <div>
+                              <span className="font-medium text-slate-900">{procedure} {variant}</span>
+                              {category && <span className="text-xs text-slate-500 ml-2">({category})</span>}
+                            </div>
+                            {notes && (
+                              <div className="text-xs text-slate-600 mt-0.5 ml-1">
+                                Tooth / Notes: {notes}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
-                  ))}
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <div><strong className="text-slate-900">Treatment Fee:</strong> ₹{treatmentFee}</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -585,9 +659,14 @@ export function DoctorWorkspacePage() {
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-blue-500" /> Consultation
                   </h3>
-                  <Button variant="secondary" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
-                    <Edit className="h-4 w-4 mr-1.5" /> Edit
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => setViewConsultationModalOpen(true)} className="h-8 px-3 text-blue-700 border-blue-200 hover:bg-blue-50 hover:text-blue-800">
+                      <Eye className="h-4 w-4 mr-1.5" /> View
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                      <Edit className="h-4 w-4 mr-1.5" /> Edit
+                    </Button>
+                  </div>
                 </div>
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 text-sm text-slate-700 space-y-4">
                   <div>
@@ -598,9 +677,8 @@ export function DoctorWorkspacePage() {
                     <strong className="block mb-1 text-slate-900">Clinical Notes</strong>
                     <div className="whitespace-pre-wrap">{consultation.clinicalNotes}</div>
                   </div>
-                  <div className="flex gap-6 pt-2 border-t border-slate-200/60">
+                  <div className="pt-2 border-t border-slate-200/60">
                     <div><strong className="text-slate-900">Consultation Fee:</strong> ₹{consultation.consultationFee}</div>
-                    <div><strong className="text-slate-900">Treatment Fee:</strong> ₹{(consultation as any).treatmentFee || 0}</div>
                   </div>
                 </div>
               </div>
@@ -612,7 +690,10 @@ export function DoctorWorkspacePage() {
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
                     <CheckCircle2 className="w-4 h-4 mr-2 text-indigo-500" /> Prescription
                   </h3>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => setViewPrescriptionModalOpen(true)} className="h-8 px-3 text-indigo-700 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-800">
+                      <Eye className="h-4 w-4 mr-1.5" /> View
+                    </Button>
                     <Button variant="secondary" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
                       <Edit className="h-4 w-4 mr-1.5" /> Edit
                     </Button>
@@ -627,7 +708,6 @@ export function DoctorWorkspacePage() {
                       <tr>
                         <th className="pb-2 font-semibold">Medicine</th>
                         <th className="pb-2 font-semibold">Dosage</th>
-                        <th className="pb-2 font-semibold">Freq/Duration</th>
                         <th className="pb-2 font-semibold">Qty</th>
                       </tr>
                     </thead>
@@ -636,9 +716,13 @@ export function DoctorWorkspacePage() {
                         const medName = medicines.find(m => m.id === item.medicineId)?.name || 'Unknown'
                         return (
                           <tr key={item.id}>
-                            <td className="py-3 font-medium text-slate-900">{medName}</td>
+                            <td className="py-3 font-medium text-slate-900">
+                              <div>{medName}</div>
+                              {item.instructions && (
+                                <div className="text-xs text-indigo-600 font-normal mt-0.5">{item.instructions}</div>
+                              )}
+                            </td>
                             <td className="py-3 text-slate-600">{item.dosage}</td>
-                            <td className="py-3 text-slate-600">{item.frequency} for {item.duration}</td>
                             <td className="py-3 font-medium text-slate-700">{item.quantity}</td>
                           </tr>
                         )
@@ -689,6 +773,61 @@ export function DoctorWorkspacePage() {
                   if (!res.isConfirmed) {
                     return
                   }
+
+                  // Ask for the clinical reason why no medicines were prescribed
+                  const reasonRes = await MySwal.fire({
+                    title: 'Reason for No Medication',
+                    text: 'Please select why no medicines are prescribed for this visit:',
+                    icon: 'question',
+                    input: 'select',
+                    inputOptions: {
+                      'Routine checkup / No medication needed': 'Routine checkup / No medication needed',
+                      'Procedure completed under local anesthesia only (No post-op meds required)': 'Procedure completed under local anesthesia only (No post-op meds required)',
+                      'Patient already on existing medication': 'Patient already on existing medication',
+                      'Referred to specialist / external facility': 'Referred to specialist / external facility',
+                      'Diagnostic only (X-ray / Consultation / Impressions)': 'Diagnostic only (X-ray / Consultation / Impressions)',
+                      'Patient declined medication': 'Patient declined medication',
+                      'Other': 'Other (Clinical judgement)'
+                    },
+                    inputPlaceholder: 'Select a reason...',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#4f46e5',
+                    cancelButtonColor: '#94a3b8',
+                    inputValidator: (value) => {
+                      if (!value) {
+                        return 'Please select a reason to proceed'
+                      }
+                      return null
+                    },
+                    customClass: {
+                      popup: 'rounded-2xl',
+                      confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
+                      cancelButton: 'rounded-lg font-semibold px-6 py-2.5',
+                      input: 'rounded-lg border-slate-200 text-sm'
+                    }
+                  })
+
+                  if (!reasonRes.isConfirmed || !reasonRes.value) {
+                    return
+                  }
+
+                  const selectedReason = reasonRes.value === 'Other' ? 'Other clinical judgement' : reasonRes.value
+                  const noMedNote = `[No Medication Prescribed: ${selectedReason}]`
+
+                  // Update notes in state and persist to consultation record
+                  const updatedNotes = notes ? (notes.includes('[No Medication Prescribed:') ? notes.replace(/\[No Medication Prescribed:[^\]]+\]/, noMedNote) : `${notes}\n\n${noMedNote}`) : noMedNote
+                  setNotes(updatedNotes)
+
+                  if (visitId) {
+                    await saveConsultation(visitId, {
+                      reasonForVisit: reason || visit?.reasonForVisit || '',
+                      clinicalNotes: updatedNotes,
+                      consultationFee,
+                      treatmentFee
+                    })
+                  }
                 }
                 setCompleteModalOpen(true)
               }}
@@ -707,10 +846,108 @@ export function DoctorWorkspacePage() {
               <DialogTitle>Treatment Plan</DialogTitle>
             </DialogHeader>
             <div className="p-6 pb-20">
-              <TreatmentPlanUI patientId={patient.id} currentVisitId={visitId!} />
+              <TreatmentPlanUI
+                patientId={patient.id}
+                currentVisitId={visitId!}
+                treatmentFee={treatmentFee}
+                onSaveTreatmentFee={async (newFee) => {
+                  setTreatmentFee(newFee)
+                  if (visitId) {
+                    await saveConsultation(visitId, {
+                      reasonForVisit: reason || visit?.reasonForVisit || '',
+                      clinicalNotes: notes,
+                      consultationFee,
+                      treatmentFee: newFee
+                    })
+                  }
+                }}
+              />
             </div>
             <DialogFooter className="p-4 bg-white border-t border-slate-100 absolute bottom-0 left-0 right-0">
               <Button onClick={() => setTreatmentModalOpen(false)}>Done</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Treatment Plan Modal (Read-only) */}
+        <Dialog open={viewTreatmentModalOpen} onOpenChange={setViewTreatmentModalOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                Treatment Plan Details
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Planned Procedures</label>
+                <div className="space-y-2.5 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                  {treatmentPlan?.items && treatmentPlan.items.length > 0 ? (
+                    treatmentPlan.items.map((item: any) => {
+                      const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
+                      const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
+                      const category = item.catalogItem?.category || item.category
+                      const notes = item.notes
+
+                      return (
+                        <div key={item.id} className="text-sm">
+                          <div className="font-semibold text-slate-900">
+                            {procedure} {variant}
+                            {category && <span className="text-xs font-medium text-slate-500 ml-2">({category})</span>}
+                          </div>
+                          {notes && (
+                            <div className="text-xs text-slate-600 mt-0.5">
+                              Tooth / Notes: <span className="font-medium text-slate-800">{notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <p className="text-sm text-slate-400">No procedures in treatment plan.</p>
+                  )}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-700">Treatment Fee:</span>
+                <span className="font-bold text-emerald-600 text-base">₹{treatmentFee}</span>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setViewTreatmentModalOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Consultation Modal (Read-only) */}
+        <Dialog open={viewConsultationModalOpen} onOpenChange={setViewConsultationModalOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                Consultation Details
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Reason for Visit</label>
+                <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm font-medium text-slate-800">
+                  {reason || 'Not specified'}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Notes</label>
+                <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm text-slate-700 whitespace-pre-wrap min-h-[80px]">
+                  {notes || 'No clinical notes recorded.'}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-700">Consultation Fee:</span>
+                <span className="font-bold text-slate-900 text-base">₹{consultationFee}</span>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setViewConsultationModalOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -733,14 +970,10 @@ export function DoctorWorkspacePage() {
                 <Label htmlFor="clinicalNotes" className="text-sm font-semibold text-slate-700">Clinical Notes</Label>
                 <Textarea id="clinicalNotes" className="min-h-[160px]" value={notes} onChange={e => setNotes(e.target.value)} />
               </div>
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-6">
-                <div className="space-y-3">
+              <div className="border-t border-slate-100 pt-6">
+                <div className="space-y-3 max-w-xs">
                   <Label htmlFor="consultationFee" className="text-sm font-semibold text-slate-700">Consultation Fee (₹)</Label>
                   <Input id="consultationFee" type="number" min="0" step="50" value={consultationFee} onChange={(e) => setConsultationFee(Number(e.target.value) || 0)} />
-                </div>
-                <div className="space-y-3">
-                  <Label htmlFor="treatmentFee" className="text-sm font-semibold text-slate-700">Treatment Fee (₹)</Label>
-                  <Input id="treatmentFee" type="number" min="0" step="50" value={treatmentFee} onChange={(e) => setTreatmentFee(Number(e.target.value) || 0)} />
                 </div>
               </div>
             </div>
@@ -827,6 +1060,62 @@ export function DoctorWorkspacePage() {
               >
                 Save Prescription ({activePrescription.length})
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Prescription Modal (Read-only) */}
+        <Dialog open={viewPrescriptionModalOpen} onOpenChange={setViewPrescriptionModalOpen}>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-indigo-600" />
+                Prescription Details
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-2">
+              <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase border-b border-slate-200/60 bg-white/70">
+                    <tr>
+                      <th className="px-4 py-2.5 font-semibold">Medicine</th>
+                      <th className="px-3 py-2.5 font-semibold">Dosage</th>
+                      <th className="px-3 py-2.5 font-semibold">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100/70">
+                    {prescription?.items && prescription.items.length > 0 ? (
+                      prescription.items.map(item => {
+                        const medName = medicines.find(m => m.id === item.medicineId)?.name || 'Unknown'
+                        return (
+                          <tr key={item.id}>
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              <div>{medName}</div>
+                              {item.instructions && (
+                                <div className="text-xs text-indigo-600 font-normal mt-0.5">{item.instructions}</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-slate-600">{item.dosage || '-'}</td>
+                            <td className="px-3 py-3 font-semibold text-slate-800">{item.quantity}</td>
+                          </tr>
+                        )
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-sm text-slate-400">
+                          No medicines prescribed.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <DialogFooter className="flex sm:justify-between items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
+                <Printer className="h-4 w-4 mr-1.5" /> Print Prescription
+              </Button>
+              <Button onClick={() => setViewPrescriptionModalOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
