@@ -104,10 +104,14 @@ export interface Dispensing {
 export interface Payment {
   id: string
   visitId: string
+  patientId?: string
   amount: number
-  method: 'Cash' | 'GPay'
-  status: 'Pending' | 'Paid'
-  // Strictly no card, gateway, partial payments, installments, or transaction IDs.
+  method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card'
+  status: string
+  notes?: string | null
+  date: string
+  createdAt: string
+  updatedAt?: string
 }
 
 export interface PaginationMeta {

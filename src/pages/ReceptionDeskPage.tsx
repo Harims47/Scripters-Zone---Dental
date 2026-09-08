@@ -57,7 +57,7 @@ export function ReceptionDeskPage() {
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentReason, setPaymentReason] = useState<string>('');
   const [paymentReasonOther, setPaymentReasonOther] = useState<string>('');
-  const [isFinalPayment, setIsFinalPayment] = useState<boolean>(false);
+  const [processTreatmentPlan, setProcessTreatmentPlan] = useState<any | null>(null);
 
   // Assignment Modal
   const [assignQueueId, setAssignQueueId] = useState<string | null>(null);
@@ -627,7 +627,19 @@ export function ReceptionDeskPage() {
     }
 
     setActiveMethod(null);
+    setPaymentAmount('');
+    setPaymentReason('');
+    setPaymentReasonOther('');
+    setProcessTreatmentPlan(null);
     setProcessVisitId(row.visitId);
+
+    const v = visits.find(vis => vis.id === row.visitId);
+    const pId = row.patientId || v?.patientId;
+    if (pId) {
+      api.get<any>(`/api/patients/${pId}/treatment-plan`)
+        .then(res => setProcessTreatmentPlan(res))
+        .catch(() => setProcessTreatmentPlan(null));
+    }
   };
 
   const handleCompleteDispensing = async () => {
@@ -692,7 +704,7 @@ export function ReceptionDeskPage() {
     const isPartial = amt < balance;
     let finalNotes: string | undefined;
 
-    if (isPartial && isFinalPayment) {
+    if (isPartial) {
       if (!paymentReason) {
         toast.error('A reason is required when leaving a balance.');
         return;
@@ -702,23 +714,19 @@ export function ReceptionDeskPage() {
           toast.error('Please specify the reason.');
           return;
         }
-        finalNotes = paymentReasonOther.trim();
+        finalNotes = `Other: ${paymentReasonOther.trim()}`;
       } else {
         finalNotes = paymentReason;
       }
     }
 
-    // recordPayment expects 4 arguments initially. Wait, the `recordPayment` is from context. We need to update context too!
-    // But for now let's check what recordPayment takes. I will view ClinicContext first if needed.
-    // Instead of modifying context, I can just use API directly, or update context next.
-    const result = await recordPayment(processVisitId, amt, activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', finalNotes, isFinalPayment);
+    const result = await recordPayment(processVisitId, amt, activeMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', finalNotes);
     if (result.success) {
-      toast.success('Payment completed successfully');
-      setPaymentAmount(''); // Reset for next partial payment if needed
+      toast.success('Payment recorded successfully');
+      setPaymentAmount(''); // Reset for next payment if balance remains
       setPaymentReason('');
       setPaymentReasonOther('');
       setActiveMethod(null);
-      setIsFinalPayment(false);
     } else {
       toast.error(result.error || 'Failed to record payment');
     }
@@ -1415,24 +1423,81 @@ export function ReceptionDeskPage() {
               return (
                 <>
                   <DrawerSection title="Visit Details">
-                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-2.5">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider mb-0.5">Reason for Visit</span>
-                          <span className="text-slate-900 font-medium text-sm">{activeConsultation?.reasonForVisit || 'Not specified'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider mb-0.5">Fees</span>
-                          <span className="text-slate-900 font-medium">
-                            Consulting: ₹{activeConsultation?.consultationFee || 0} • Treatment: ₹{activeProcessVisit?.treatmentFee || 0}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-3.5 shadow-xs">
+                      {/* Key Details Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Reason for Visit */}
+                        <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-100 flex flex-col justify-center">
+                          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Reason for Visit</span>
+                          <span className="text-slate-900 font-semibold text-sm truncate">
+                            {activeConsultation?.reasonForVisit || activeProcessVisit?.reasonForVisit || 'Not specified'}
                           </span>
+                        </div>
+
+                        {/* Fees Breakdown */}
+                        <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-100 flex flex-col justify-center">
+                          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Fees</span>
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-slate-600">
+                              Consulting: <strong className="text-slate-900 font-semibold">₹{activeConsultation?.consultationFee || 0}</strong>
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-600">
+                              Treatment: <strong className="text-slate-900 font-semibold">₹{activeProcessVisit?.treatmentFee || 0}</strong>
+                            </span>
+                          </div>
                         </div>
                       </div>
 
+                      {/* Clinical Notes */}
                       {activeConsultation?.clinicalNotes && (
-                        <div className="pt-2 border-t border-slate-100">
-                          <span className="text-slate-400 block text-[10px] font-semibold uppercase tracking-wider mb-0.5">Clinical Notes</span>
-                          <span className="text-slate-700 whitespace-pre-wrap leading-relaxed">{activeConsultation.clinicalNotes}</span>
+                        <div className="p-3 bg-slate-50/50 rounded-lg border border-slate-100">
+                          <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider mb-1">Clinical Notes</span>
+                          <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-xs">
+                            {activeConsultation.clinicalNotes}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Treatment Plan Section (if existed) */}
+                      {processTreatmentPlan && processTreatmentPlan.items && processTreatmentPlan.items.length > 0 && (
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                              <Activity className="w-3.5 h-3.5 text-indigo-500" />
+                              Treatment Plan ({processTreatmentPlan.items.length})
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/70 border border-slate-200/80 rounded-lg divide-y divide-slate-100 overflow-hidden">
+                            {processTreatmentPlan.items.map((item: any) => (
+                              <div key={item.id} className="p-2.5 px-3 flex items-center justify-between gap-3 text-xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-medium text-slate-800 truncate">
+                                    {item.catalogItem?.name || item.name || 'Treatment Procedure'}
+                                  </div>
+                                  {item.catalogItem?.category && (
+                                    <span className="text-[10px] text-slate-400">
+                                      {item.catalogItem.category}
+                                      {item.catalogItem.variant ? ` • ${item.catalogItem.variant}` : ''}
+                                    </span>
+                                  )}
+                                  {item.notes && (
+                                    <p className="text-[11px] text-slate-500 italic mt-0.5">{item.notes}</p>
+                                  )}
+                                </div>
+                                <Badge 
+                                  variant="outline"
+                                  className={
+                                    item.status === 'Completed' 
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-medium shrink-0'
+                                      : 'bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-medium shrink-0'
+                                  }
+                                >
+                                  {item.status || 'Planned'}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1572,15 +1637,22 @@ export function ReceptionDeskPage() {
                   <DrawerSection title="2. Payment">
                     {visitPayments.length > 0 && (
                       <div className="mb-4 space-y-2">
-                        <h4 className="text-sm font-semibold text-slate-900">Payment History</h4>
-                        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Payments</h4>
+                        <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden shadow-xs">
                           {visitPayments.map((p, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0">
-                              <div className="text-sm">
-                                <span className="font-medium text-slate-800">{p.method}</span>
-                                <span className="text-slate-500 text-xs ml-2">{new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <div key={p.id || idx} className="p-3 flex justify-between items-start">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-slate-800 text-sm">{p.method}</span>
+                                  <span className="text-[11px] text-slate-400">
+                                    {new Date(p.createdAt || p.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                {p.notes && (
+                                  <p className="text-xs text-slate-600 italic">{p.notes}</p>
+                                )}
                               </div>
-                              <span className="font-semibold text-slate-900">₹{p.amount}</span>
+                              <span className="font-bold text-slate-900 text-sm">₹{p.amount}</span>
                             </div>
                           ))}
                         </div>
@@ -1588,38 +1660,38 @@ export function ReceptionDeskPage() {
                     )}
 
                     {isPaymentStep ? (
-                      <div className="space-y-6 bg-white p-5 rounded-xl border border-slate-200">
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm text-slate-600">
+                      <div className="space-y-5 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between text-slate-600">
                             <span>Consultation Fee</span>
-                            <span>₹{activeProcessVisit?.consultationFee || 0}</span>
+                            <span className="font-medium text-slate-800">₹{activeProcessVisit?.consultationFee || 0}</span>
                           </div>
-                          <div className="flex justify-between text-sm text-slate-600">
+                          <div className="flex justify-between text-slate-600">
                             <span>Treatment Fee</span>
-                            <span>₹{activeProcessVisit?.treatmentFee || 0}</span>
+                            <span className="font-medium text-slate-800">₹{activeProcessVisit?.treatmentFee || 0}</span>
                           </div>
-                          <div className="flex justify-between text-sm text-slate-600">
+                          <div className="flex justify-between text-slate-600">
                             <span>Medicine Cost</span>
-                            <span>₹{activeProcessVisit?.medicineCost || 0}</span>
+                            <span className="font-medium text-slate-800">₹{activeProcessVisit?.medicineCost || 0}</span>
                           </div>
-                          <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-base">
+                          <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-sm">
                             <span>Total Due</span>
                             <span>₹{amountDue}</span>
                           </div>
-                          <div className="flex justify-between font-semibold text-emerald-600 text-base">
+                          <div className="flex justify-between font-semibold text-emerald-600 text-sm">
                             <span>Total Paid</span>
                             <span>₹{totalPaid}</span>
                           </div>
-                          <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-lg">
+                          <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-base">
                             <span>Balance</span>
                             <span>₹{balance}</span>
                           </div>
                         </div>
 
-                        <div className="pt-4 border-t border-slate-100">
-                          <h4 className="text-sm font-medium text-slate-900 mb-3">Add Payment</h4>
-                          <div className="mb-4">
-                            <label className="text-sm text-slate-600 block mb-1">Payment Amount (₹)</label>
+                        <div className="pt-4 border-t border-slate-100 space-y-4">
+                          <h4 className="text-sm font-semibold text-slate-900">Add Payment</h4>
+                          <div>
+                            <label className="text-xs font-medium text-slate-600 block mb-1">Payment Amount (₹)</label>
                             <Input
                               type="number"
                               min="1"
@@ -1629,27 +1701,17 @@ export function ReceptionDeskPage() {
                               onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
                             />
                           </div>
+
                           <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
 
-                          {paymentAmount && paymentAmount > 0 && paymentAmount < balance && (
-                            <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
-                                  checked={isFinalPayment}
-                                  onChange={(e) => setIsFinalPayment(e.target.checked)}
-                                />
-                                Patient is leaving a balance (Final Payment)
+                          {/* Dynamic Partial Payment Reason */}
+                          {paymentAmount !== '' && Number(paymentAmount) > 0 && Number(paymentAmount) < balance && (
+                            <div className="space-y-3 p-3 bg-amber-50/70 rounded-lg border border-amber-200">
+                              <label className="text-xs font-semibold text-amber-900 block">
+                                Reason for Partial Payment <span className="text-red-500">*</span>
                               </label>
-                            </div>
-                          )}
-
-                          {paymentAmount && paymentAmount > 0 && paymentAmount < balance && isFinalPayment && (
-                            <div className="mt-3 space-y-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                              <label className="text-sm font-medium text-amber-900 block">Reason for Partial Payment <span className="text-red-500">*</span></label>
                               <Select value={paymentReason} onValueChange={setPaymentReason}>
-                                <SelectTrigger className="bg-white border-amber-200">
+                                <SelectTrigger className="bg-white border-amber-200 text-xs h-9">
                                   <SelectValue placeholder="Select reason..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1666,7 +1728,7 @@ export function ReceptionDeskPage() {
                                   placeholder="Specify reason..."
                                   value={paymentReasonOther}
                                   onChange={(e) => setPaymentReasonOther(e.target.value)}
-                                  className="mt-2 bg-white border-amber-200"
+                                  className="bg-white border-amber-200 text-xs h-9"
                                 />
                               )}
                             </div>
@@ -1677,13 +1739,13 @@ export function ReceptionDeskPage() {
                           onClick={handleMarkAsPaid}
                           disabled={
                             !activeMethod ||
-                            !paymentAmount ||
-                            paymentAmount <= 0 ||
-                            paymentAmount > balance ||
-                            (paymentAmount < balance && isFinalPayment && !paymentReason) ||
-                            (paymentAmount < balance && isFinalPayment && paymentReason === 'Other' && !paymentReasonOther.trim())
+                            paymentAmount === '' ||
+                            Number(paymentAmount) <= 0 ||
+                            Number(paymentAmount) > balance ||
+                            (Number(paymentAmount) < balance && !paymentReason) ||
+                            (Number(paymentAmount) < balance && paymentReason === 'Other' && !paymentReasonOther.trim())
                           }
-                          className="w-full bg-teal-600 hover:bg-teal-700 mt-4"
+                          className="w-full bg-teal-600 hover:bg-teal-700 h-10 font-medium text-sm"
                         >
                           Add Payment
                         </Button>

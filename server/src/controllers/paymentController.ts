@@ -98,6 +98,22 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
         throw { status: 400, message: `Payment amount (₹${amount}) exceeds remaining balance (₹${balance}).` };
       }
 
+      const isPartial = amount < balance;
+
+      // Partial payment authoritative validation
+      if (isPartial) {
+        const trimmedNotes = notes ? notes.trim() : '';
+        if (!trimmedNotes) {
+          throw { status: 400, message: 'A reason is required for partial payment.' };
+        }
+        if (trimmedNotes.toLowerCase() === 'other' || trimmedNotes.toLowerCase() === 'other:') {
+          throw { status: 400, message: 'Please provide an explanation when selecting Other.' };
+        }
+        if (trimmedNotes.toLowerCase().startsWith('other:') && !trimmedNotes.slice(6).trim()) {
+          throw { status: 400, message: 'Please provide an explanation when selecting Other.' };
+        }
+      }
+
       // Create Payment
       const payment = await tx.payment.create({
         data: {
@@ -105,7 +121,7 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
           patientId: visit.patientId,
           amount,
           method,
-          notes: notes || undefined,
+          notes: notes ? notes.trim() : undefined,
           status: 'Completed',
           date: new Date().toISOString()
         }
@@ -114,14 +130,16 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
       let updatedVisit: any = visit;
       const newBalance = balance - amount;
       
-      if (newBalance === 0 || isFinalPayment) {
+      // A partial payment must NOT complete the visit.
+      // Only when the authoritative backend balance becomes exactly 0 does the visit complete.
+      if (newBalance === 0) {
         updatedVisit = await tx.visit.update({
           where: { id: visit.id },
           data: { status: 'COMPLETED' },
           include: { patient: true, payments: true, prescription: true }
         });
         
-        // Also ensure QueueEntry is marked Completed if we auto-completed the visit
+        // Ensure QueueEntry is marked Completed
         const qEntry = await tx.queueEntry.findUnique({ where: { visitId: visit.id } });
         if (qEntry && qEntry.status !== 'Completed') {
           await tx.queueEntry.update({
@@ -130,8 +148,6 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
           });
         }
       }
-
-      // Note: Do NOT touch stock here. It was deducted in Dispensing.
 
       return { payment, visit: updatedVisit };
     });
