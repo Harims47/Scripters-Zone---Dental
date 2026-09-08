@@ -27,11 +27,13 @@ export function TreatmentPlanUI({
   useEffect(() => {
     async function load() {
       try {
-        const catRes = await api.get<TreatmentCatalog[]>('/api/treatments/catalog')
-        setCatalog(catRes)
+        const catRes = await api.get<any>('/api/treatments/catalog')
+        const catList = Array.isArray(catRes) ? catRes : (catRes?.data || [])
+        setCatalog(catList)
         
-        const planRes = await api.get<TreatmentPlan>(`/api/patients/${patientId}/treatment-plan`)
-        setPlan(planRes)
+        const planRes = await api.get<any>(`/api/patients/${patientId}/treatment-plan`)
+        const planData = planRes?.data || planRes
+        setPlan(planData)
       } catch (err) {
         console.error("Failed to load treatment plan", err)
       } finally {
@@ -41,7 +43,7 @@ export function TreatmentPlanUI({
     load()
   }, [patientId])
 
-  const categories = Array.from(new Set(catalog.map(c => c.category)))
+  const categories = Array.from(new Set(catalog.map(c => c.category))).filter(Boolean)
   const procedures = catalog.filter(c => c.category === selectedCategory)
 
   const handleAdd = async () => {
