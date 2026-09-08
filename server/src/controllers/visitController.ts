@@ -109,12 +109,15 @@ export const checkInAppointment = async (req: Request, res: Response, next: Next
       }) + 1;
       const arrivalTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+      const reasonForVisit = req.body.reasonForVisit || appointment.type || appointment.notes || 'General Consultation';
+
       // Create Visit linked to Appointment
       const visit = await tx.visit.create({
         data: {
           patientId: appointment.patientId,
           doctorId: null,
           appointmentId: appointment.id,
+          reasonForVisit,
           status: 'WAITING',
           amountDue: 1500,
           queueEntry: {

@@ -23,7 +23,7 @@ interface ClinicContextType {
   updatePatient?: (id: string, updates: Partial<Patient>) => Promise<void>
   addAppointment: (appointment: Omit<Appointment, 'id'>) => Promise<Appointment>
   updateAppointment: (appointment: Partial<Appointment>) => Promise<void>
-  confirmAppointmentArrival: (appointmentId: string) => Promise<{ success: boolean, visitId?: string, error?: string }>
+  confirmAppointmentArrival: (appointmentId: string, reasonForVisit?: string) => Promise<{ success: boolean, visitId?: string, error?: string }>
   startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
   updateVisit: (visitId: string, updates: Partial<Visit>) => Promise<{ success: boolean, error?: string }>
   cancelVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
@@ -155,7 +155,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     setAppointments(prev => prev.map(a => a.id === appointmentData.id ? appointment : a))
   }
 
-  const confirmAppointmentArrival = async (appointmentId: string) => {
+  const confirmAppointmentArrival = async (appointmentId: string, reasonForVisit?: string) => {
     // Try to find locally first, but don't fail immediately if not found because 
     // it might have just been created in the same render cycle
     const appointment = appointments.find(a => a.id === appointmentId)
@@ -164,7 +164,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Phase 3.2: Complete the check-in transaction via backend
-    const res = await api.post<{ data: { visit: Visit, queueEntry: QueueEntry } }>('/api/visits/check-in', { appointmentId })
+    const res = await api.post<{ data: { visit: Visit, queueEntry: QueueEntry } }>('/api/visits/check-in', { 
+      appointmentId,
+      reasonForVisit: reasonForVisit || appointment?.type || appointment?.notes
+    })
     
     // Refetch queue and visits to maintain full context, or append directly
     const data = (res as any).data || res;

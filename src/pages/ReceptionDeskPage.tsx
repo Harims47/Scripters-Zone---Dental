@@ -541,7 +541,7 @@ export function ReceptionDeskPage() {
 
         const today = new Date().toISOString().split('T')[0];
         if (apptData.date === today) {
-          await confirmAppointmentArrival(appointment.id);
+          await confirmAppointmentArrival(appointment.id, apptData.type || 'General Consultation');
           showSuccessModal('Checked In', isNewPatient ? "Patient registered and checked in for today's appointment." : "Checked in for today's appointment.");
         } else {
           showSuccessModal('Appointment Booked', isNewPatient ? "Patient registered and appointment created." : "Appointment created successfully.");
@@ -1215,6 +1215,7 @@ export function ReceptionDeskPage() {
                           <SelectItem value="Follow-up">Follow-up</SelectItem>
                           <SelectItem value="Emergency">Emergency</SelectItem>
                           <SelectItem value="Consultation">Consultation</SelectItem>
+                          <SelectItem value="Surgery">Surgery</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1242,10 +1243,12 @@ export function ReceptionDeskPage() {
                           <SelectValue placeholder="Select Reason for Visit" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Consultation">Consultation</SelectItem>
-                          <SelectItem value="Follow-up">Follow-up</SelectItem>
                           <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
+                          <SelectItem value="Toothache">Toothache</SelectItem>
+                          <SelectItem value="Cleaning">Cleaning</SelectItem>
+                          <SelectItem value="Follow-up">Follow-up</SelectItem>
                           <SelectItem value="Emergency">Emergency</SelectItem>
+                          <SelectItem value="Consultation">Consultation</SelectItem>
                           <SelectItem value="Surgery">Surgery</SelectItem>
                         </SelectContent>
                       </Select>
@@ -1295,7 +1298,7 @@ export function ReceptionDeskPage() {
 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6">
-              <DrawerSection >
+              <DrawerSection title="Patient Information">
                 <div className="space-y-4">
                   <div className="flex justify-center mb-6">
                     {editDrawerMode === 'view' ? (
@@ -1393,6 +1396,7 @@ export function ReceptionDeskPage() {
                         <SelectItem value="Follow-up">Follow-up</SelectItem>
                         <SelectItem value="Emergency">Emergency</SelectItem>
                         <SelectItem value="Consultation">Consultation</SelectItem>
+                        <SelectItem value="Surgery">Surgery</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1413,7 +1417,7 @@ export function ReceptionDeskPage() {
                         name: regData.name,
                         phone: regData.phone,
                         age: parseInt(regData.age as string) || 0,
-                        gender: regData.gender,
+                        gender: regData.gender as any,
                         photoUrl: (regData as any).photoUrl,
                         address: (regData as any).address
                       });

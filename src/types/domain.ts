@@ -20,7 +20,7 @@ export interface Appointment {
   providerId?: string
   date: string // e.g. "2026-08-27"
   time: string // e.g. "10:30 AM"
-  type: 'Consultation' | 'Surgery' | 'Follow-up' | 'Routine Checkup' | 'Emergency'
+  type: 'Consultation' | 'Surgery' | 'Follow-up' | 'Routine Checkup' | 'Emergency' | 'Toothache' | 'Cleaning'
   status: 'Scheduled' | 'Confirmed' | 'Checked In' | 'Completed' | 'Cancelled' | 'No Show'
   notes?: string
   photoUrl?: string // Optional capture during appointment booking
