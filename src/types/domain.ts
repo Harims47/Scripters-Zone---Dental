@@ -225,3 +225,47 @@ export interface StockMovement {
   createdAt: string
 }
 
+export interface HistoricalVisitFinancialSummary {
+  amountDue: number
+  totalPaid: number
+  balance: number
+  status: 'Paid' | 'Partial' | 'Unpaid'
+  consultationFee: number
+  treatmentFee: number
+  medicineCost: number
+}
+
+export interface HistoricalVisit extends Visit {
+  createdAt: string
+  updatedAt?: string
+  doctor: { id: string; name: string; role: string } | null
+  appointment?: Appointment | null
+  consultation?: Consultation | null
+  prescription?: (Prescription & {
+    items: Array<PrescriptionItem & {
+      medicine?: { id: string; name: string; unit?: string; form?: string }
+    }>
+  }) | null
+  dispensing?: (Dispensing & {
+    items: Array<DispensingItem & {
+      medicine?: { id: string; name: string; unit?: string; form?: string }
+    }>
+  }) | null
+  completedTreatmentItems?: Array<TreatmentPlanItem & {
+    catalogItem?: TreatmentCatalog
+  }>
+  payments: Payment[]
+  financialSummary: HistoricalVisitFinancialSummary
+}
+
+export interface PatientHistoryData {
+  patient: Patient
+  treatmentPlan: (TreatmentPlan & {
+    items: Array<TreatmentPlanItem & {
+      catalogItem?: TreatmentCatalog
+      completedVisit?: Visit
+    }>
+  }) | null
+  visits: HistoricalVisit[]
+}
+

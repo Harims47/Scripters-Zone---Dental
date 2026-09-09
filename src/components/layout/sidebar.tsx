@@ -49,23 +49,18 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
     
     // Phase 9: Hide modules that are merged into Reception Desk
     if (currentUser.role === 'Receptionist') {
-      const hiddenForMerged = ['/patients', '/appointments', '/queue', '/billing']
+      const hiddenForMerged = ['/appointments', '/queue', '/billing']
       if (hiddenForMerged.includes(item.href)) {
         return false
       }
     }
     
-    // Head Doctor uses Reception Desk for Billing/Appointments, and does not need Patients menu
+    // Head Doctor uses Reception Desk for Billing/Appointments
     if (currentUser.role === 'Head Doctor') {
-      const hiddenForMerged = ['/patients', '/appointments', '/billing']
+      const hiddenForMerged = ['/appointments', '/billing']
       if (hiddenForMerged.includes(item.href)) {
         return false
       }
-    }
-    
-    // Hide Patients for Duty Doctor as requested
-    if (currentUser.role === 'Duty Doctor' && item.href === '/patients') {
-      return false
     }
     
     return canAccessRoute(currentUser.role, item.href)

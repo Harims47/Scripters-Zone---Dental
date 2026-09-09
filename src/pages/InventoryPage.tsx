@@ -20,7 +20,7 @@ import type { ColumnDef, PaginationState } from "@tanstack/react-table"
 import { cn } from '../lib/utils'
 import { type Medicine } from '../lib/mock-data'
 import { api } from '../lib/api'
-import type { PaginationMeta, PaginatedResponse } from '../types/domain'
+import type { PaginationMeta, PaginatedResponse, MedicineCategory } from '../types/domain'
 
 import { StockAdjustmentDialog } from '../components/inventory/StockAdjustmentDialog'
 import { StockHistoryTable } from '../components/inventory/StockHistoryTable'

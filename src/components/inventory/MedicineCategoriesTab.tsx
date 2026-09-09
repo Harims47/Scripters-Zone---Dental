@@ -279,7 +279,7 @@ export function MedicineCategoriesTab({ onCategoriesChanged }: MedicineCategorie
       {/* Category Toolbar */}
       <DataTableToolbar
         searchPlaceholder="Search categories by name or description..."
-        searchValue={search}
+        searchQuery={search}
         onSearchChange={setSearch}
         filterSlot={
           <Select value={statusFilter} onValueChange={setStatusFilter}>

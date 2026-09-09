@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, UserPlus, AlertCircle, Calendar, Camera, X, Eye, Pen } from 'lucide-react';
+import { UserPlus, AlertCircle, Calendar, Camera, Eye } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
@@ -15,9 +15,10 @@ import {
   DrawerFooterActions,
   ReadOnlyField
 } from '../components/ui/drawer-patterns';
-import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components';
+import { PatientVisitHistory } from '../components/consultation/consultation-components';
 import { CameraCapture } from '../components/ui/camera-capture';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
+import { PatientCompleteHistory } from '../components/history/PatientCompleteHistory';
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
@@ -76,6 +77,7 @@ export function PatientsPage() {
   const [drawerMode, setDrawerMode] = useState<'view' | 'edit' | 'create' | 'startVisit'>('view');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [historicalVisitId, setHistoricalVisitId] = useState<string | null>(null);
+  const [historyModalPatient, setHistoryModalPatient] = useState<Patient | null>(null);
 
   // Form states
   const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '', address: '' });
@@ -276,24 +278,9 @@ export function PatientsPage() {
       header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button size="icon" className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); handleRowClick(row.original); }} aria-label="View patient">
+          <Button size="icon" className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); setHistoryModalPatient(row.original); }} aria-label="View patient history">
             <Eye className="h-4 w-4" />
           </Button>
-          <Button size="icon" className="h-8 w-8 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg" onClick={(e) => { 
-            e.stopPropagation(); 
-            setSelectedPatient(row.original);
-            setDrawerMode('edit');
-            const activeVisit = getActiveVisit(row.original.id);
-            setVisitReason(activeVisit?.reasonForVisit || '');
-            setDrawerOpen(true);
-          }} aria-label="Edit patient">
-            <Pen className="h-4 w-4" />
-          </Button>
-          {!isDoctor && (
-            <Button size="icon" className="h-8 w-8 shadow-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); handleOpenStartVisit(row.original); }} aria-label="Start visit">
-              <Play className="h-4 w-4 ml-0.5 fill-current" />
-            </Button>
-          )}
         </div>
       )
     }
@@ -306,13 +293,9 @@ export function PatientsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patient Directory</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {isDoctor ? "Doctor workflow: search patients and view clinical history." : "Reception workflow: search patients, register new arrivals, and begin visits."}
+            Search patients and review their complete visit-by-visit clinical records.
           </p>
         </div>
-        <Button onClick={handleNewPatient} className="shrink-0 shadow-sm gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-          <UserPlus className="w-4 h-4" />
-          Register Patient
-        </Button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
@@ -370,11 +353,10 @@ export function PatientsPage() {
               <DataTableEmpty 
                 icon={UserPlus} 
                 title="No patient found" 
-                description={`There is no patient matching "${search}". Register them to begin their visit.`}
-                action={<Button onClick={handleNewPatient} className="shadow-sm">Register New Patient</Button>}
+                description={`There is no patient matching "${search}".`}
               />
             ) : (
-              <DataTableEmpty title="No patients yet" description="Start by registering a new patient." />
+              <DataTableEmpty title="No patients yet" description="No patient records found in the system." />
             )
           }
         />
@@ -671,7 +653,38 @@ export function PatientsPage() {
               Review the read-only clinical records for this completed visit.
             </DialogDescription>
           </DialogHeader>
-          {historicalVisitId && <HistoricalVisitDetails visitId={historicalVisitId} />}
+          {historicalVisitId && (
+            <HistoricalVisitDetails 
+              visitId={historicalVisitId} 
+              onViewHistory={() => {
+                const p = selectedPatient || patients.find(pat => visits.some(v => v.id === historicalVisitId && v.patientId === pat.id));
+                if (p) {
+                  setHistoricalVisitId(null);
+                  setHistoryModalPatient(p);
+                }
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Patient History Dialog (Desktop-optimized Full Record View) */}
+      <Dialog open={!!historyModalPatient} onOpenChange={(open) => !open && setHistoryModalPatient(null)}>
+        <DialogContent className="sm:max-w-5xl w-[95vw] h-[90vh] max-h-[90vh] p-0 flex flex-col overflow-hidden bg-slate-50 border-slate-200">
+          {historyModalPatient && (
+            <PatientCompleteHistory 
+              patientId={historyModalPatient.id}
+              onClose={() => setHistoryModalPatient(null)}
+              onEditPatient={() => {
+                setSelectedPatient(historyModalPatient);
+                setDrawerMode('edit');
+                const activeVisit = getActiveVisit(historyModalPatient.id);
+                setVisitReason(activeVisit?.reasonForVisit || '');
+                setHistoryModalPatient(null);
+                setDrawerOpen(true);
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

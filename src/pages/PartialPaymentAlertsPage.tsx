@@ -10,7 +10,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { ArrowRight, AlertTriangle, Banknote, CreditCard, Smartphone, CheckCircle, Eye, Receipt, Phone, User, Calendar, FileText, Activity } from 'lucide-react';
-import { API_BASE_URL } from '../lib/api';
+import { API_BASE_URL, api } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export function PartialPaymentAlertsPage() {

@@ -34,7 +34,7 @@ export const getBillingQueue = async (req: Request, res: Response, next: NextFun
             include: { items: true }
           },
           dispensing: true,
-          payment: true
+          payments: true
         },
         orderBy: { updatedAt: 'desc' }
       }),
