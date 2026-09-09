@@ -2,6 +2,24 @@ import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/authMiddleware';
 import {
   getReportsSummary,
+  getOverviewReport,
+  getVisitsReport,
+  exportVisitsReport,
+  getRevenueReport,
+  exportRevenueReport,
+  getPatientsReport,
+  exportPatientsReport,
+  getTreatmentsReport,
+  exportTreatmentsReport,
+  getDoctorActivityReport,
+  exportDoctorActivityReport,
+  getMedicinesReport,
+  exportMedicinesReport,
+  getInventoryMovementsReport,
+  exportInventoryMovementsReport,
+  getProcurementReport,
+  exportProcurementReport,
+  // Legacy aliases
   getClinicActivityReport,
   exportClinicActivityReport,
   getPaymentReport,
@@ -12,11 +30,48 @@ const router = Router();
 
 router.use(requireAuth);
 
-// Head Doctor only
+// All reports are strictly restricted to Head Doctor
 router.get('/summary', requireRole('Head Doctor'), getReportsSummary);
+
+// 1. Overview
+router.get('/overview', requireRole('Head Doctor'), getOverviewReport);
+
+// 2. Visits
+router.get('/visits', requireRole('Head Doctor'), getVisitsReport);
+router.get('/visits/export', requireRole('Head Doctor'), exportVisitsReport);
+// Legacy compatibility routes
 router.get('/clinic-activity', requireRole('Head Doctor'), getClinicActivityReport);
 router.get('/clinic-activity/export', requireRole('Head Doctor'), exportClinicActivityReport);
+
+// 3. Revenue & Payments
+router.get('/revenue', requireRole('Head Doctor'), getRevenueReport);
+router.get('/revenue/export', requireRole('Head Doctor'), exportRevenueReport);
+// Legacy compatibility routes
 router.get('/payments', requireRole('Head Doctor'), getPaymentReport);
 router.get('/payments/export', requireRole('Head Doctor'), exportPaymentReport);
+
+// 4. Patients
+router.get('/patients', requireRole('Head Doctor'), getPatientsReport);
+router.get('/patients/export', requireRole('Head Doctor'), exportPatientsReport);
+
+// 5. Treatments
+router.get('/treatments', requireRole('Head Doctor'), getTreatmentsReport);
+router.get('/treatments/export', requireRole('Head Doctor'), exportTreatmentsReport);
+
+// 6. Doctor Activity
+router.get('/doctors', requireRole('Head Doctor'), getDoctorActivityReport);
+router.get('/doctors/export', requireRole('Head Doctor'), exportDoctorActivityReport);
+
+// 7. Medicines & Dispensing
+router.get('/medicines', requireRole('Head Doctor'), getMedicinesReport);
+router.get('/medicines/export', requireRole('Head Doctor'), exportMedicinesReport);
+
+// 8. Inventory Movements
+router.get('/inventory-movements', requireRole('Head Doctor'), getInventoryMovementsReport);
+router.get('/inventory-movements/export', requireRole('Head Doctor'), exportInventoryMovementsReport);
+
+// 9. Procurement & Purchase Orders
+router.get('/procurement', requireRole('Head Doctor'), getProcurementReport);
+router.get('/procurement/export', requireRole('Head Doctor'), exportProcurementReport);
 
 export default router;

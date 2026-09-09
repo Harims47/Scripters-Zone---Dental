@@ -1,14 +1,17 @@
 const { PrismaClient } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const { Pool } = require('pg');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('Cleaning database...');
+  console.log('Cleaning operational/transactional data...');
+  
+  // 1. Operational transactions & dispensing
   await prisma.payment.deleteMany({});
   await prisma.queueEntry.deleteMany({});
   await prisma.dispensingItem.deleteMany({});
@@ -21,10 +24,23 @@ async function main() {
   await prisma.visit.deleteMany({});
   await prisma.appointment.deleteMany({});
   await prisma.patient.deleteMany({});
+
+  // 2. Inventory movements & purchase orders
+  await prisma.stockMovement.deleteMany({});
+  await prisma.purchaseOrderItem.deleteMany({});
+  await prisma.purchaseOrder.deleteMany({});
+
+  // 3. Reset medicine currentStock to 0 so the user can enter real stock
+  await prisma.medicine.updateMany({
+    data: { currentStock: 0 }
+  });
+
+  // 4. Reset staff attendance
   await prisma.staff.updateMany({
     data: { attendance: 'Present' }
   });
-  console.log('Database cleaned successfully! Mock operational data has been wiped and staff attendance reset to Present.');
+
+  console.log('Database cleaned successfully! All operational records, visits, patients, payments, movements, and POs wiped.');
 }
 
 main()

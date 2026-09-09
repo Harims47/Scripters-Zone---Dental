@@ -1,16 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
+import {
+  getOverviewReportData,
+  getVisitsReportData,
+  getVisitsExportData,
+  getRevenueReportData,
+  getRevenueExportData,
+  getPatientsReportData,
+  getPatientsExportData,
+  getTreatmentsReportData,
+  getTreatmentsExportData,
+  getDoctorActivityReportData,
+  getMedicinesReportData,
+  getMedicinesExportData,
+  getInventoryMovementsReportData,
+  getInventoryMovementsExportData,
+  getProcurementReportData,
+  getProcurementExportData
+} from '../services/reportsService';
+import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
 
+/**
+ * 0. LEGACY SUMMARY (Maintained for backward-compatibility with current ReportsPage UI)
+ */
 export const getReportsSummary = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
     
     let dateFilter: any = undefined;
     if (startDate && endDate) {
       dateFilter = {
         createdAt: {
-          gte: new Date(startDate as string),
-          lte: new Date(endDate as string)
+          gte: new Date(startDate),
+          lte: new Date(endDate)
         }
       };
     }
@@ -28,34 +50,46 @@ export const getReportsSummary = async (req: Request, res: Response, next: NextF
       where: dateFilter
     });
 
-    // 2. Payment Summary
-    const payments = await prisma.payment.findMany({
-      where: dateFilter
+    // 2. Payment Summary directly from Payment model
+    const paymentWhere: any = { status: 'Completed' };
+    if (dateFilter) paymentWhere.createdAt = dateFilter;
+
+    const paymentAgg = await prisma.payment.aggregate({
+      where: paymentWhere,
+      _sum: { amount: true },
+      _count: { id: true }
     });
-    // Use actual status from DB logic
-    const isPaid = (p: any) => p.status === 'Paid' || p.status === 'Completed'; 
-    const totalRevenue = payments.reduce((sum, p) => isPaid(p) ? sum + p.amount : sum, 0);
-    const cashCollected = payments.reduce((sum, p) => (isPaid(p) && p.method === 'Cash') ? sum + p.amount : sum, 0);
-    const gpayCollected = payments.reduce((sum, p) => (isPaid(p) && p.method === 'GPay') ? sum + p.amount : sum, 0);
-    const paymentCount = payments.filter(isPaid).length;
+
+    const cashAgg = await prisma.payment.aggregate({
+      where: { ...paymentWhere, method: 'Cash' },
+      _sum: { amount: true }
+    });
+
+    const gpayAgg = await prisma.payment.aggregate({
+      where: { ...paymentWhere, method: 'GPay' },
+      _sum: { amount: true }
+    });
 
     // 3. Medicine Dispensing Summary
-    const dispensings = await prisma.dispensing.findMany({
-      where: dateFilter,
-      include: {
-        items: { include: { medicine: true } }
-      }
+    const dispWhere: any = {};
+    if (dateFilter) dispWhere.dispensing = { createdAt: dateFilter };
+
+    const dispAgg = await prisma.dispensingItem.aggregate({
+      where: dispWhere,
+      _sum: { dispensedQuantity: true }
     });
-    
-    const dispensingTransactions = dispensings.length;
-    const totalItemsDispensed = dispensings.reduce((sum, d) => sum + d.items.reduce((itemSum, item) => itemSum + item.dispensedQuantity, 0), 0);
-    
+
+    const totalDispensingTx = await prisma.dispensing.count({
+      where: dateFilter ? { createdAt: dateFilter } : undefined
+    });
 
     // 4. Inventory Snapshot
-    const medicines = await prisma.medicine.findMany();
-    const totalItems = medicines.length;
-    const lowStockItems = medicines.filter(i => i.currentStock > 0 && i.currentStock < i.stockWarningLevel).length;
-    const outOfStockItems = medicines.filter(i => i.currentStock === 0).length;
+    const totalItems = await prisma.medicine.count();
+    const allStockItems = await prisma.medicine.findMany({
+      select: { currentStock: true, stockWarningLevel: true }
+    });
+    const lowStockItems = allStockItems.filter(i => i.currentStock > 0 && i.currentStock < i.stockWarningLevel).length;
+    const outOfStockItems = allStockItems.filter(i => i.currentStock === 0).length;
 
     return res.json({
       clinicSummary: {
@@ -65,14 +99,14 @@ export const getReportsSummary = async (req: Request, res: Response, next: NextF
         totalAppointments
       },
       paymentSummary: {
-        totalRevenue,
-        cashCollected,
-        gpayCollected,
-        paymentCount
+        totalRevenue: paymentAgg._sum.amount || 0,
+        cashCollected: cashAgg._sum.amount || 0,
+        gpayCollected: gpayAgg._sum.amount || 0,
+        paymentCount: paymentAgg._count.id || 0
       },
       dispensingSummary: {
-        dispensingTransactions,
-        totalItemsDispensed
+        dispensingTransactions: totalDispensingTx,
+        totalItemsDispensed: dispAgg._sum.dispensedQuantity || 0
       },
       inventorySnapshot: {
         totalItems,
@@ -80,354 +114,452 @@ export const getReportsSummary = async (req: Request, res: Response, next: NextF
         outOfStockItems
       }
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
-
-export const getClinicActivityReport = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * 1. OVERVIEW REPORT
+ */
+export const getOverviewReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = req.query.search as string;
-    const status = req.query.status as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
-    const skip = (page - 1) * limit;
-
-    const where: any = {};
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
-    }
-    if (status && status !== 'all') {
-      where.status = status;
-    }
-    if (search) {
-      where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { reasonForVisit: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } }
-      ];
-    }
-
-    const staffMembers = await prisma.staff.findMany();
-    const staffMap = new Map(staffMembers.map(s => [s.id, s.name]));
-
-    const [visits, totalRecords] = await Promise.all([
-      prisma.visit.findMany({
-        where,
-        skip,
-        take: limit,
-        include: {
-          patient: true,
-          queueEntry: true,
-          payments: true
-        },
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.visit.count({ where })
-    ]);
-
-    const mapped = visits.map(v => {
-      const docName = v.doctorId ? (staffMap.get(v.doctorId) || '—') : '—';
-      const visitType = v.appointmentId ? 'Appointment' : 'Walk-in';
-      const totalPaid = (v.payments || []).reduce((sum, p) => sum + p.amount, 0);
-      const balance = (v.amountDue || 0) - totalPaid;
-
-      return {
-        id: v.id,
-        patientName: v.patient?.name || 'Unknown',
-        visitDate: v.createdAt.toISOString(),
-        doctorName: docName,
-        visitType,
-        reasonForVisit: v.reasonForVisit || '—',
-        status: v.status,
-        amountDue: v.amountDue || 0,
-        totalPaid,
-        balance: Math.max(0, balance)
-      };
-    });
-
-    return res.json({
-      data: mapped,
-      meta: {
-        currentPage: page,
-        pageSize: limit,
-        totalRecords,
-        totalPages: Math.ceil(totalRecords / limit)
-      }
-    });
+    const data = await getOverviewReportData(req.query as any);
+    return res.json(data);
   } catch (error) {
     next(error);
   }
 };
 
-export const exportClinicActivityReport = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * 2. VISITS REPORT
+ */
+export const getVisitsReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const search = req.query.search as string;
-    const status = req.query.status as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
-    const format = req.query.format as string;
+    const data = await getVisitsReportData(req.query as any);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const where: any = {};
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
-    }
-    if (status && status !== 'all') {
-      where.status = status;
-    }
-    if (search) {
-      where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { reasonForVisit: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } }
-      ];
-    }
-
-    const staffMembers = await prisma.staff.findMany();
-    const staffMap = new Map(staffMembers.map(s => [s.id, s.name]));
-
-    const visits = await prisma.visit.findMany({
-      where,
-      include: {
-        patient: true,
-        queueEntry: true,
-        payments: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const flatData = visits.map(v => {
-      const docName = v.doctorId ? (staffMap.get(v.doctorId) || '—') : '—';
-      const visitType = v.appointmentId ? 'Appointment' : 'Walk-in';
-      const totalPaid = (v.payments || []).reduce((sum, p) => sum + p.amount, 0);
-      const balance = Math.max(0, (v.amountDue || 0) - totalPaid);
-
-      return {
-        id: v.id,
-        patientName: v.patient?.name || 'Unknown',
-        visitDate: new Date(v.createdAt).toLocaleDateString(),
-        doctorName: docName,
-        visitType,
-        reasonForVisit: v.reasonForVisit || '—',
-        status: v.status,
-        amountDue: `₹${v.amountDue || 0}`,
-        totalPaid: `₹${totalPaid}`,
-        balance: `₹${balance}`
-      };
-    });
+export const exportVisitsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getVisitsExportData(req.query as any);
 
     const columns: ExportColumn[] = [
+      { key: 'visitDateTime', label: 'Visit Date & Time' },
       { key: 'patientName', label: 'Patient Name' },
-      { key: 'visitDate', label: 'Visit Date' },
-      { key: 'doctorName', label: 'Doctor Name' },
+      { key: 'patientId', label: 'Patient ID' },
       { key: 'visitType', label: 'Visit Type' },
+      { key: 'doctorName', label: 'Doctor' },
       { key: 'reasonForVisit', label: 'Reason for Visit' },
-      { key: 'status', label: 'Visit Status' },
+      { key: 'status', label: 'Status' },
       { key: 'amountDue', label: 'Amount Due' },
       { key: 'totalPaid', label: 'Total Paid' },
       { key: 'balance', label: 'Balance' }
     ];
 
-    const dateSub = (startDate && endDate)
-      ? `Period: ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()} | Records: ${flatData.length}`
-      : `All Time | Records: ${flatData.length}`;
+    const subtitle = `Total Records: ${rows.length}`;
 
     if (format === 'csv') {
-      const csv = generateCSV(columns, flatData);
+      const csv = generateCSV(columns, rows);
       res.header('Content-Type', 'text/csv');
-      res.attachment('clinic_activity_report.csv');
+      res.attachment('visits_report.csv');
       return res.send(csv);
     } else if (format === 'xlsx') {
-      const xlsx = await generateXLSX(columns, flatData, 'Clinic Activity');
+      const xlsx = await generateXLSX(columns, rows, 'Visits');
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.attachment('clinic_activity_report.xlsx');
+      res.attachment('visits_report.xlsx');
       return res.send(xlsx);
     } else if (format === 'pdf') {
-      const pdf = await generatePDF(columns, flatData, 'Clinic Activity Report', dateSub);
+      const pdf = await generatePDF(columns, rows, 'Clinic Visits Report', subtitle);
       res.header('Content-Type', 'application/pdf');
-      res.attachment('clinic_activity_report.pdf');
+      res.attachment('visits_report.pdf');
       return res.send(pdf);
     } else {
-      return res.status(400).json({ error: 'Invalid export format' });
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
     }
   } catch (error) {
     next(error);
   }
 };
 
-export const getPaymentReport = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * 3. REVENUE / PAYMENTS REPORT
+ */
+export const getRevenueReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = req.query.search as string;
-    const method = req.query.method as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
-    const skip = (page - 1) * limit;
-
-    const where: any = {};
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
-    }
-    if (method && method !== 'all') {
-      where.method = method;
-    }
-    if (search) {
-      where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } }
-      ];
-    }
-
-    const staffMembers = await prisma.staff.findMany();
-    const staffMap = new Map(staffMembers.map(s => [s.id, s.name]));
-
-    const [payments, totalRecords] = await Promise.all([
-      prisma.payment.findMany({
-        where,
-        skip,
-        take: limit,
-        include: {
-          patient: true,
-          visit: true
-        },
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.payment.count({ where })
-    ]);
-
-    const mapped = payments.map(p => {
-      const docName = p.visit?.doctorId ? (staffMap.get(p.visit.doctorId) || '—') : '—';
-      return {
-        id: p.id,
-        patientName: p.patient?.name || 'Unknown',
-        doctorName: docName,
-        visitId: p.visitId,
-        paymentDate: p.createdAt.toISOString(),
-        method: p.method,
-        amount: p.amount,
-        status: p.status,
-        notes: p.notes || '—'
-      };
-    });
-
-    return res.json({
-      data: mapped,
-      meta: {
-        currentPage: page,
-        pageSize: limit,
-        totalRecords,
-        totalPages: Math.ceil(totalRecords / limit)
-      }
-    });
+    const data = await getRevenueReportData(req.query as any);
+    return res.json(data);
   } catch (error) {
     next(error);
   }
 };
 
-export const exportPaymentReport = async (req: Request, res: Response, next: NextFunction) => {
+export const exportRevenueReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const search = req.query.search as string;
-    const method = req.query.method as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
-    const format = req.query.format as string;
-
-    const where: any = {};
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      };
-    }
-    if (method && method !== 'all') {
-      where.method = method;
-    }
-    if (search) {
-      where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } }
-      ];
-    }
-
-    const staffMembers = await prisma.staff.findMany();
-    const staffMap = new Map(staffMembers.map(s => [s.id, s.name]));
-
-    const payments = await prisma.payment.findMany({
-      where,
-      include: {
-        patient: true,
-        visit: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const flatData = payments.map(p => {
-      const docName = p.visit?.doctorId ? (staffMap.get(p.visit.doctorId) || '—') : '—';
-      return {
-        id: p.id,
-        patientName: p.patient?.name || 'Unknown',
-        doctorName: docName,
-        visitId: p.visitId,
-        paymentDate: new Date(p.createdAt).toLocaleDateString(),
-        method: p.method,
-        amount: `₹${p.amount}`,
-        status: p.status,
-        notes: p.notes || '—'
-      };
-    });
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getRevenueExportData(req.query as any);
 
     const columns: ExportColumn[] = [
-      { key: 'id', label: 'Payment ID' },
+      { key: 'paymentId', label: 'Payment ID' },
+      { key: 'paymentDate', label: 'Payment Date & Time' },
       { key: 'patientName', label: 'Patient Name' },
+      { key: 'patientId', label: 'Patient ID' },
+      { key: 'visitId', label: 'Visit ID' },
       { key: 'doctorName', label: 'Doctor' },
-      { key: 'paymentDate', label: 'Payment Date' },
-      { key: 'method', label: 'Method' },
+      { key: 'paymentMethod', label: 'Payment Method' },
       { key: 'amount', label: 'Amount' },
-      { key: 'status', label: 'Status' },
-      { key: 'notes', label: 'Notes / Reason' }
+      { key: 'paymentStatus', label: 'Status' },
+      { key: 'notes', label: 'Notes' }
     ];
 
-    const dateSub = (startDate && endDate)
-      ? `Period: ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()} | Records: ${flatData.length}`
-      : `All Time | Records: ${flatData.length}`;
+    const subtitle = `Total Transactions: ${rows.length}`;
 
     if (format === 'csv') {
-      const csv = generateCSV(columns, flatData);
+      const csv = generateCSV(columns, rows);
       res.header('Content-Type', 'text/csv');
-      res.attachment('payment_report.csv');
+      res.attachment('revenue_payments_report.csv');
       return res.send(csv);
     } else if (format === 'xlsx') {
-      const xlsx = await generateXLSX(columns, flatData, 'Payments');
+      const xlsx = await generateXLSX(columns, rows, 'Revenue');
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.attachment('payment_report.xlsx');
+      res.attachment('revenue_payments_report.xlsx');
       return res.send(xlsx);
     } else if (format === 'pdf') {
-      const pdf = await generatePDF(columns, flatData, 'Payment Transactions Report', dateSub);
+      const pdf = await generatePDF(columns, rows, 'Revenue & Payment Transactions Report', subtitle);
       res.header('Content-Type', 'application/pdf');
-      res.attachment('payment_report.pdf');
+      res.attachment('revenue_payments_report.pdf');
       return res.send(pdf);
     } else {
-      return res.status(400).json({ error: 'Invalid export format' });
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
     }
   } catch (error) {
     next(error);
   }
 };
 
+/**
+ * 4. PATIENTS REPORT
+ */
+export const getPatientsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getPatientsReportData(req.query as any);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportPatientsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getPatientsExportData(req.query as any);
+
+    const columns: ExportColumn[] = [
+      { key: 'patientId', label: 'Patient ID' },
+      { key: 'patientName', label: 'Patient Name' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'age', label: 'Age' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'patientType', label: 'Patient Type' },
+      { key: 'totalVisitsAllTime', label: 'Total Visits' },
+      { key: 'lastVisitDate', label: 'Last Visit' },
+      { key: 'registeredDate', label: 'Registered Date' }
+    ];
+
+    const subtitle = `Total Patients: ${rows.length}`;
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, rows);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('patients_report.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, rows, 'Patients');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('patients_report.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, rows, 'Patients Report', subtitle);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('patients_report.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 5. TREATMENTS REPORT
+ */
+export const getTreatmentsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getTreatmentsReportData(req.query as any);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportTreatmentsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getTreatmentsExportData(req.query as any);
+
+    const columns: ExportColumn[] = [
+      { key: 'category', label: 'Category' },
+      { key: 'treatmentName', label: 'Treatment Name' },
+      { key: 'variant', label: 'Variant' },
+      { key: 'plannedCount', label: 'Planned' },
+      { key: 'completedCount', label: 'Completed' },
+      { key: 'uniquePatients', label: 'Unique Patients' }
+    ];
+
+    const subtitle = `Total Treatments: ${rows.length}`;
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, rows);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('treatments_report.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, rows, 'Treatments');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('treatments_report.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, rows, 'Treatments Report', subtitle);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('treatments_report.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 6. DOCTORS ACTIVITY REPORT
+ */
+export const getDoctorActivityReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+    const rows = await getDoctorActivityReportData(startDate, endDate);
+    return res.json({ data: rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportDoctorActivityReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { startDate, endDate, format } = req.query as { startDate?: string; endDate?: string; format?: string };
+    const rows = await getDoctorActivityReportData(startDate, endDate);
+
+    const columns: ExportColumn[] = [
+      { key: 'doctorName', label: 'Doctor Name' },
+      { key: 'role', label: 'Role' },
+      { key: 'totalAssignedVisits', label: 'Assigned Visits' },
+      { key: 'newPatientsSeen', label: 'New Patients' },
+      { key: 'returningPatientsSeen', label: 'Returning Patients' },
+      { key: 'completedVisits', label: 'Completed Visits' },
+      { key: 'cancelledVisits', label: 'Cancelled Visits' }
+    ];
+
+    const subtitle = `Doctor Workload Report | Total Staff: ${rows.length}`;
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, rows);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('doctor_activity_report.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, rows, 'Doctor Activity');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('doctor_activity_report.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, rows, 'Doctor Workload & Activity Report', subtitle);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('doctor_activity_report.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 7. MEDICINES DISPENSING REPORT
+ */
+export const getMedicinesReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getMedicinesReportData(req.query as any);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportMedicinesReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getMedicinesExportData(req.query as any);
+
+    const columns: ExportColumn[] = [
+      { key: 'medicineName', label: 'Medicine' },
+      { key: 'genericName', label: 'Generic Name' },
+      { key: 'category', label: 'Category' },
+      { key: 'totalPrescribedQuantity', label: 'Prescribed Qty' },
+      { key: 'totalDispensedQuantity', label: 'Dispensed Qty' },
+      { key: 'dispensingTransactions', label: 'Transactions' },
+      { key: 'currentStock', label: 'Current Stock' }
+    ];
+
+    const subtitle = `Total Medicines: ${rows.length}`;
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, rows);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('medicines_report.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, rows, 'Medicines');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('medicines_report.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, rows, 'Medicines & Dispensing Report', subtitle);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('medicines_report.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 8. INVENTORY MOVEMENTS REPORT
+ */
+export const getInventoryMovementsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getInventoryMovementsReportData(req.query as any);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportInventoryMovementsReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getInventoryMovementsExportData(req.query as any);
+
+    const columns: ExportColumn[] = [
+      { key: 'dateTime', label: 'Date & Time' },
+      { key: 'medicineName', label: 'Medicine' },
+      { key: 'movementType', label: 'Movement Type' },
+      { key: 'quantity', label: 'Quantity' },
+      { key: 'balanceAfter', label: 'Balance After' },
+      { key: 'referenceType', label: 'Reference' },
+      { key: 'referenceId', label: 'Reference ID' },
+      { key: 'performedBy', label: 'Performed By' },
+      { key: 'reason', label: 'Reason / Notes' }
+    ];
+
+    const subtitle = `Total Stock Movements: ${rows.length}`;
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, rows);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('inventory_movements_report.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, rows, 'Movements');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('inventory_movements_report.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, rows, 'Inventory Movements Ledger Report', subtitle);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('inventory_movements_report.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 9. PROCUREMENT REPORT
+ */
+export const getProcurementReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await getProcurementReportData(req.query as any);
+    return res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportProcurementReport = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const format = (req.query.format as string) || 'csv';
+    const rows = await getProcurementExportData(req.query as any);
+
+    const columns: ExportColumn[] = [
+      { key: 'orderNumber', label: 'PO Number' },
+      { key: 'supplierName', label: 'Supplier' },
+      { key: 'orderDate', label: 'Order Date' },
+      { key: 'lineItemsCount', label: 'Items' },
+      { key: 'orderedQuantity', label: 'Ordered Qty' },
+      { key: 'receivedQuantity', label: 'Received Qty' },
+      { key: 'totalCostValue', label: 'Total Value' },
+      { key: 'status', label: 'Status' }
+    ];
+
+    const subtitle = `Total Purchase Orders: ${rows.length}`;
+
+    if (format === 'csv') {
+      const csv = generateCSV(columns, rows);
+      res.header('Content-Type', 'text/csv');
+      res.attachment('procurement_report.csv');
+      return res.send(csv);
+    } else if (format === 'xlsx') {
+      const xlsx = await generateXLSX(columns, rows, 'Procurement');
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.attachment('procurement_report.xlsx');
+      return res.send(xlsx);
+    } else if (format === 'pdf') {
+      const pdf = await generatePDF(columns, rows, 'Procurement & Purchase Orders Report', subtitle);
+      res.header('Content-Type', 'application/pdf');
+      res.attachment('procurement_report.pdf');
+      return res.send(pdf);
+    } else {
+      return res.status(400).json({ error: 'Invalid export format. Must be csv, xlsx, or pdf.' });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Aliases for legacy compatibility
+export const getClinicActivityReport = getVisitsReport;
+export const exportClinicActivityReport = exportVisitsReport;
+export const getPaymentReport = getRevenueReport;
+export const exportPaymentReport = exportRevenueReport;
