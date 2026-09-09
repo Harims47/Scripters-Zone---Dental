@@ -605,7 +605,7 @@ export function PurchaseOrdersTab() {
                                     <SelectValue placeholder="Select medicine" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {medicines.map((m) => (
+                                    {medicines.filter(m => m.status !== 'Inactive').map((m) => (
                                       <SelectItem key={m.id} value={m.id}>
                                         {m.name} ({m.unit})
                                       </SelectItem>

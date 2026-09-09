@@ -9,7 +9,10 @@ import {
   updateMedicine,
   adjustStock,
   exportInventory,
-  getMedicineStockHistory
+  getMedicineStockHistory,
+  deleteMedicine,
+  deactivateMedicine,
+  reactivateMedicine
 } from '../controllers/inventoryController';
 
 const router = Router();
@@ -31,4 +34,12 @@ import { createMedicineSchema, updateMedicineSchema } from '../schemas/inventory
 router.post('/', requireRole('Head Doctor', 'Duty Doctor'), validateRequest(createMedicineSchema), createMedicine);
 router.put('/:id', requireRole('Head Doctor', 'Duty Doctor'), validateRequest(updateMedicineSchema), updateMedicine);
 
+// Deactivate and Reactivate can be performed by doctors with inventory write access (Head Doctor, Duty Doctor)
+router.patch('/:id/deactivate', requireRole('Head Doctor', 'Duty Doctor'), deactivateMedicine);
+router.patch('/:id/reactivate', requireRole('Head Doctor', 'Duty Doctor'), reactivateMedicine);
+
+// Destructive permanent deletion is strictly restricted to highest-authority inventory management role: Head Doctor
+router.delete('/:id', requireRole('Head Doctor'), deleteMedicine);
+
 export default router;
+

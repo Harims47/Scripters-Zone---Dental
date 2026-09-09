@@ -465,6 +465,7 @@ export function DoctorWorkspacePage() {
 
   // --- Prescription Helpers ---
   const filteredMedicines = medicines.filter(med => {
+    if (med.status === 'Inactive') return false
     const matchesSearch = med.name.toLowerCase().includes(medSearch.toLowerCase()) ||
       med.genericName?.toLowerCase().includes(medSearch.toLowerCase())
     return matchesSearch && med.currentStock > 0

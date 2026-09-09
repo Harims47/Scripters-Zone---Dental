@@ -15,12 +15,14 @@ import { type ClinicRole, ROLE_CONFIG } from '../lib/role-config'
 import type { Staff } from '../lib/mock-data'
 import { api } from '../lib/api'
 import { useClinicContext } from '../context/ClinicContext'
+import { useAuth } from '../context/AuthContext'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import type { PaginationMeta, PaginatedResponse } from '../types/domain'
 
 type StaffStatus = 'Active' | 'Inactive'
 
 export function StaffPage() {
+  const { currentUser } = useAuth()
   const { reloadStaff, updateStaffAttendance } = useClinicContext()
   const [data, setData] = useState<Staff[]>([])
   const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
@@ -186,14 +188,17 @@ export function StaffPage() {
       header: "Attendance",
       accessorKey: "attendance",
       cell: ({ row }) => {
-        if (row.original.role === 'Receptionist' || row.original.status !== 'Active') return <span className="text-slate-400 text-sm">—</span>;
+        if (row.original.status !== 'Active') return <span className="text-slate-400 text-sm">—</span>;
+        
+        const canEditAttendance = currentUser?.role === 'Head Doctor';
         
         return (
           <Select 
             value={row.original.attendance || 'Present'} 
             onValueChange={(val) => handleAttendanceChange(row.original.id, val)}
+            disabled={!canEditAttendance}
           >
-            <SelectTrigger className="h-8 w-32 border-slate-200">
+            <SelectTrigger className="h-8 w-32 border-slate-200" title={!canEditAttendance ? "Only Head Doctor can change attendance" : undefined}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

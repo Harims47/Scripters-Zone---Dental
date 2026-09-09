@@ -104,13 +104,17 @@ export const createPurchaseOrder = async (req: Request, res: Response, next: Nex
       return res.status(400).json({ error: 'Cannot create purchase order for Inactive supplier' });
     }
 
-    // 2. Validate all medicines exist
+    // 2. Validate all medicines exist and are Active
     const medicineIds = items.map((i: any) => i.medicineId);
     const foundMedicines = await prisma.medicine.findMany({
       where: { id: { in: medicineIds } }
     });
     if (foundMedicines.length !== medicineIds.length) {
       return res.status(400).json({ error: 'One or more specified medicines do not exist' });
+    }
+    const inactiveMedicine = foundMedicines.find(m => m.status === 'Inactive');
+    if (inactiveMedicine) {
+      return res.status(400).json({ error: `Cannot order inactive medicine "${inactiveMedicine.name}". Please activate it first or select an active medicine.` });
     }
 
     // 3. Create PO inside transaction to guarantee unique orderNumber and line items
@@ -182,6 +186,10 @@ export const updatePurchaseOrder = async (req: Request, res: Response, next: Nex
       });
       if (foundMedicines.length !== medicineIds.length) {
         return res.status(400).json({ error: 'One or more specified medicines do not exist' });
+      }
+      const inactiveMedicine = foundMedicines.find(m => m.status === 'Inactive');
+      if (inactiveMedicine) {
+        return res.status(400).json({ error: `Cannot order inactive medicine "${inactiveMedicine.name}". Please activate it first or select an active medicine.` });
       }
     }
 

@@ -17,13 +17,13 @@ export const upsertPrescription = async (req: Request, res: Response, next: Next
       return res.status(409).json({ error: 'Visit is not in WITH_DOCTOR state' });
     }
 
-    // Verify all medicines exist and calculate cost
-    let medicineCost = 0;
+    // Verify all medicines exist, are Active, and calculate cost
     for (const item of items) {
       const med = await prisma.medicine.findUnique({ where: { id: item.medicineId } });
       if (!med) return res.status(400).json({ error: `Medicine ID ${item.medicineId} not found` });
-      // Based on ClinicContext, medicine Cost is calculated during Dispensing, 
-      // but let's just make sure medicine exists here. Inventory/stock deduction is explicitly forbidden in this phase.
+      if (med.status === 'Inactive') {
+        return res.status(400).json({ error: `Cannot prescribe inactive medicine "${med.name}". Please choose an active medicine.` });
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {

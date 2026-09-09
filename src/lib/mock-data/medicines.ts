@@ -14,6 +14,13 @@ export interface Medicine {
   stockWarningLevel: number;
   currentStock: number;
   unitPrice: number;
+  status?: 'Active' | 'Inactive';
+  _count?: {
+    prescriptionItems?: number;
+    dispensingItems?: number;
+    purchaseOrderItems?: number;
+    stockMovements?: number;
+  };
 }
 
 export const DEMO_MEDICINES: Medicine[] = [

@@ -49,7 +49,15 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
         take: limit,
         orderBy: { name: 'asc' },
         include: {
-          category: true
+          category: true,
+          _count: {
+            select: {
+              prescriptionItems: true,
+              dispensingItems: true,
+              purchaseOrderItems: true,
+              stockMovements: true
+            }
+          }
         }
       }),
       prisma.medicine.count({ where })
@@ -347,3 +355,118 @@ export const exportInventory = async (req: Request, res: Response, next: NextFun
     next(error);
   }
 };
+
+export const deleteMedicine = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const medicine = await prisma.medicine.findUnique({ where: { id } });
+
+    if (!medicine) {
+      return res.status(404).json({ error: 'Medicine not found' });
+    }
+
+    // CASE 1: currentStock > 0 -> HTTP 400
+    if (medicine.currentStock > 0) {
+      return res.status(400).json({
+        error: `Cannot delete a medicine with available stock (current stock: ${medicine.currentStock}). Adjust stock to 0 first.`
+      });
+    }
+
+    // Inspect all historical/dependent records
+    const [rxCount, dispCount, poCount, movCount] = await Promise.all([
+      prisma.prescriptionItem.count({ where: { medicineId: id } }),
+      prisma.dispensingItem.count({ where: { medicineId: id } }),
+      prisma.purchaseOrderItem.count({ where: { medicineId: id } }),
+      prisma.stockMovement.count({ where: { medicineId: id } })
+    ]);
+
+    const totalDependencies = rxCount + dispCount + poCount + movCount;
+
+    // CASE 3: currentStock = 0 BUT historical/dependent records exist -> HTTP 409 Conflict
+    if (totalDependencies > 0) {
+      const details = [];
+      if (rxCount > 0) details.push(`${rxCount} prescription(s)`);
+      if (dispCount > 0) details.push(`${dispCount} dispensing record(s)`);
+      if (poCount > 0) details.push(`${poCount} purchase order(s)`);
+      if (movCount > 0) details.push(`${movCount} stock movement(s)`);
+
+      return res.status(409).json({
+        error: `Medicine cannot be permanently deleted because historical records exist (${details.join(', ')}). Deactivate it instead.`
+      });
+    }
+
+    // CASE 2: currentStock = 0 AND no historical/dependent records -> Hard delete allowed
+    await prisma.medicine.delete({ where: { id } });
+
+    return res.json({
+      message: `Medicine "${medicine.name}" has been permanently deleted successfully.`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deactivateMedicine = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const medicine = await prisma.medicine.findUnique({ where: { id } });
+
+    if (!medicine) {
+      return res.status(404).json({ error: 'Medicine not found' });
+    }
+
+    if (medicine.status === 'Inactive') {
+      return res.status(400).json({ error: 'Medicine is already inactive' });
+    }
+
+    const updated = await prisma.medicine.update({
+      where: { id },
+      data: { status: 'Inactive' }
+    });
+
+    return res.json({
+      message: `Medicine "${medicine.name}" has been deactivated successfully.`,
+      medicine: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reactivateMedicine = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const medicine = await prisma.medicine.findUnique({
+      where: { id },
+      include: { category: true }
+    });
+
+    if (!medicine) {
+      return res.status(404).json({ error: 'Medicine not found' });
+    }
+
+    if (medicine.status === 'Active') {
+      return res.status(400).json({ error: 'Medicine is already active' });
+    }
+
+    // Prevent reactivating if its category is Inactive
+    if (medicine.category && medicine.category.status === 'Inactive') {
+      return res.status(400).json({
+        error: `Cannot reactivate medicine because its category "${medicine.category.name}" is currently inactive. Please reactivate the category first.`
+      });
+    }
+
+    const updated = await prisma.medicine.update({
+      where: { id },
+      data: { status: 'Active' }
+    });
+
+    return res.json({
+      message: `Medicine "${medicine.name}" has been reactivated successfully.`,
+      medicine: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

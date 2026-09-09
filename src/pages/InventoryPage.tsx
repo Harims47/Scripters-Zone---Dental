@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
-import { Package, Search, Eye, Edit2, Trash2, Plus } from 'lucide-react'
+import { Package, Search, Eye, Edit2, Trash2, Plus, Power, RotateCcw } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import { useAuth } from '../context/AuthContext'
 
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
@@ -14,7 +15,6 @@ import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { Label } from '../components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../components/ui/dialog'
 import { DrawerSection, DrawerFooterActions, ReadOnlyField } from '../components/ui/drawer-patterns'
-import { MEDICINE_CATEGORIES } from '../lib/medicine-categories'
 import { MedicineCategoryBadge } from '../components/prescription/prescription-components'
 import type { ColumnDef, PaginationState } from "@tanstack/react-table"
 import { cn } from '../lib/utils'
@@ -31,6 +31,7 @@ import { MedicineCategoriesTab } from '../components/inventory/MedicineCategorie
 type InventoryItem = Medicine
 
 export function InventoryPage() {
+  const { currentUser } = useAuth()
   const [activeTab, setActiveTab] = useState<'items' | 'orders' | 'suppliers' | 'categories'>('items')
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -51,6 +52,7 @@ export function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -115,7 +117,47 @@ export function InventoryPage() {
       fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus);
     } catch (e: any) {
       console.error(e);
-      toast.error(e.response?.data?.error || 'Failed to save item');
+      toast.error(e.response?.data?.error || e.message || 'Failed to save item');
+    }
+  }
+
+  const handleDeleteItem = async () => {
+    if (!selectedItem) return
+    setIsDeleting(true)
+    try {
+      await api.delete(`/api/inventory/${selectedItem.id}`)
+      toast.success(`${selectedItem.name} has been permanently deleted`)
+      setDeleteDialogOpen(false)
+      setSelectedItem(null)
+      fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus)
+    } catch (e: any) {
+      console.error(e)
+      const errorMsg = e.response?.data?.error || e.message || 'Failed to delete medicine'
+      toast.error(errorMsg)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleDeactivateItem = async (item: InventoryItem) => {
+    try {
+      await api.patch(`/api/inventory/${item.id}/deactivate`)
+      toast.success(`${item.name} has been deactivated`)
+      fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus)
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e.response?.data?.error || e.message || 'Failed to deactivate medicine')
+    }
+  }
+
+  const handleReactivateItem = async (item: InventoryItem) => {
+    try {
+      await api.patch(`/api/inventory/${item.id}/reactivate`)
+      toast.success(`${item.name} has been reactivated`)
+      fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus)
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e.response?.data?.error || e.message || 'Failed to reactivate medicine')
     }
   }
 
@@ -218,51 +260,139 @@ export function InventoryPage() {
     {
       id: "status",
       header: "Status",
-      cell: ({ row }) => getStatusBadge(getStockStatus(row.original.currentStock, row.original.stockWarningLevel))
+      cell: ({ row }) => {
+        const isInactive = row.original.status === 'Inactive'
+        if (isInactive) {
+          return (
+            <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5" /> Inactive
+            </Badge>
+          )
+        }
+        return getStatusBadge(getStockStatus(row.original.currentStock, row.original.stockWarningLevel))
+      }
     },
     {
       id: "actions", 
       header: () => <div className="text-right pr-1">Actions</div>,
-      cell: ({ row }) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button 
-            size="icon" 
-            variant="ghost"
-            className="h-7 w-7 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-md" 
-            title="View item" 
-            onClick={() => openDrawer(row.original, 'view')}
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          <Button 
-            size="icon" 
-            variant="ghost"
-            className="h-7 w-7 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-md" 
-            title="Edit item" 
-            onClick={() => openDrawer(row.original, 'edit')}
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button 
-            size="icon" 
-            variant="ghost"
-            className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-md" 
-            title="Adjust stock" 
-            onClick={() => { setSelectedItem(row.original); setAdjustmentDialogOpen(true); }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-          <Button 
-            size="icon" 
-            variant="ghost"
-            className="h-7 w-7 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-md" 
-            title="Delete item" 
-            onClick={() => { setSelectedItem(row.original); setDeleteDialogOpen(true); }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )
+      cell: ({ row }) => {
+        const item = row.original
+        const isHeadDoctor = currentUser?.role === 'Head Doctor'
+        const canDeactivateReactivate = currentUser?.role === 'Head Doctor' || currentUser?.role === 'Duty Doctor'
+        const isInactive = item.status === 'Inactive'
+
+        // Dependency counts
+        const depCount = (item._count?.prescriptionItems || 0) + 
+                         (item._count?.dispensingItems || 0) + 
+                         (item._count?.purchaseOrderItems || 0) + 
+                         (item._count?.stockMovements || 0)
+
+        // Delete button rules (Correction 4):
+        // If currentStock > 0: Delete disabled ("Cannot delete while stock is available")
+        // If currentStock = 0 but historical records exist: Delete disabled ("Historical records exist — deactivate instead")
+        // If currentStock = 0 and no dependencies: Delete enabled
+        let deleteDisabled = false
+        let deleteTooltip = "Delete item"
+
+        if (!isHeadDoctor) {
+          deleteDisabled = true
+          deleteTooltip = "Only Head Doctor can delete medicines"
+        } else if (item.currentStock > 0) {
+          deleteDisabled = true
+          deleteTooltip = "Cannot delete while stock is available"
+        } else if (depCount > 0) {
+          deleteDisabled = true
+          deleteTooltip = "Historical records exist — deactivate instead"
+        }
+
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <Button 
+              size="icon" 
+              variant="ghost"
+              className="h-7 w-7 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-md" 
+              title="View item" 
+              onClick={() => openDrawer(item, 'view')}
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+            
+            {/* Edit allowed for active medicine */}
+            {!isInactive && (
+              <Button 
+                size="icon" 
+                variant="ghost"
+                className="h-7 w-7 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-md" 
+                title="Edit item" 
+                onClick={() => openDrawer(item, 'edit')}
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+
+            {/* Adjust stock allowed for active medicine */}
+            {!isInactive && (
+              <Button 
+                size="icon" 
+                variant="ghost"
+                className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-md" 
+                title="Adjust stock" 
+                onClick={() => { setSelectedItem(item); setAdjustmentDialogOpen(true); }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            )}
+
+            {/* Inactive medicine: Reactivate action */}
+            {isInactive && canDeactivateReactivate && (
+              <Button 
+                size="icon" 
+                variant="ghost"
+                className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-md" 
+                title="Reactivate medicine" 
+                onClick={() => handleReactivateItem(item)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+
+            {/* Active medicine: Deactivate action */}
+            {!isInactive && canDeactivateReactivate && (
+              <Button 
+                size="icon" 
+                variant="ghost"
+                className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-md" 
+                title="Deactivate medicine" 
+                onClick={() => handleDeactivateItem(item)}
+              >
+                <Power className="h-3.5 w-3.5" />
+              </Button>
+            )}
+
+            {/* Delete button (Only for active medicines or when deletable) */}
+            <Button 
+              size="icon" 
+              variant="ghost"
+              disabled={deleteDisabled}
+              className={cn(
+                "h-7 w-7 rounded-md transition-colors",
+                deleteDisabled 
+                  ? "text-slate-300 hover:bg-transparent cursor-not-allowed" 
+                  : "text-rose-500 hover:text-rose-600 hover:bg-rose-50"
+              )}
+              title={deleteTooltip} 
+              onClick={() => { 
+                if (!deleteDisabled) {
+                  setSelectedItem(item); 
+                  setDeleteDialogOpen(true); 
+                }
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )
+      }
     },
   ]
 
@@ -569,8 +699,10 @@ export function InventoryPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
-            <DialogClose asChild><Button variant="outline" className="font-medium">Cancel</Button></DialogClose>
-            <Button variant="destructive" className="font-medium shadow-sm" onClick={() => setDeleteDialogOpen(false)}>Yes, delete item</Button>
+            <DialogClose asChild><Button variant="outline" className="font-medium" disabled={isDeleting}>Cancel</Button></DialogClose>
+            <Button variant="destructive" className="font-medium shadow-sm" disabled={isDeleting} onClick={handleDeleteItem}>
+              {isDeleting ? 'Deleting...' : 'Yes, delete item'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
