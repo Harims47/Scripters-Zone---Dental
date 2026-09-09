@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { QueueStatus } from '../components/queue/queue-components'
-import { Search, PlayCircle, Users, Download, FileText, FileSpreadsheet, File } from 'lucide-react'
+import { Search, PlayCircle, Users, Download, FileText, FileSpreadsheet, File, Filter } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
+import { Badge } from '../components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
@@ -20,39 +22,48 @@ type QueueRow = {
   assignedDoctorId: string | null
   name: string
   reasonForVisit: string
+  visitType: 'Walk-in' | 'Appointment'
   patientType: 'New Patient' | 'Existing Patient'
   status: string
 }
 
 export function QueuePage() {
-  const { queue, patients, visits, consultations } = useClinicContext()
+  const { queue, patients, visits, consultations, appointments } = useClinicContext()
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
+  const [visitTypeFilter, setVisitTypeFilter] = useState<'all' | 'Walk-in' | 'Appointment'>('all')
   
   const navigate = useNavigate()
 
   // Map Canonical Context Data to UI view model
-  const queueRows: QueueRow[] = queue.map(q => {
-    const p = patients.find(pt => pt.id === q.patientId)
-    const v = visits.find(visit => visit.id === q.visitId)
+  const queueRows: QueueRow[] = useMemo(() => {
+    return queue.map(q => {
+      const p = patients.find(pt => pt.id === q.patientId)
+      const v = visits.find(visit => visit.id === q.visitId)
 
-    // Calculate Patient Type
-    const patientVisits = visits.filter(visit => visit.patientId === q.patientId)
-    const hasPastCompletedVisit = patientVisits.some(visit => visit.id !== q.visitId && visit.status === 'Completed')
-    const patientType = hasPastCompletedVisit ? 'Existing Patient' : 'New Patient'
+      // Determine Visit Type: Appointment if visit is linked to appointment or appointment exists for this visit, else Walk-in
+      const isAppointment = Boolean(v?.appointmentId) || appointments.some(a => a.id === v?.appointmentId)
+      const visitType: 'Walk-in' | 'Appointment' = isAppointment ? 'Appointment' : 'Walk-in'
 
-    return {
-      id: q.id,
-      visitId: q.visitId,
-      patientId: q.patientId,
-      assignedDoctorId: q.assignedDoctorId || null,
-      name: p?.name || 'Unknown Patient',
-      reasonForVisit: v?.reasonForVisit || 'Not Specified',
-      patientType,
-      status: q.status
-    }
-  })
+      // Calculate Patient Type
+      const patientVisits = visits.filter(visit => visit.patientId === q.patientId)
+      const hasPastCompletedVisit = patientVisits.some(visit => visit.id !== q.visitId && (visit.status === 'Completed' || visit.status === 'COMPLETED'))
+      const patientType = hasPastCompletedVisit ? 'Existing Patient' : 'New Patient'
+
+      return {
+        id: q.id,
+        visitId: q.visitId,
+        patientId: q.patientId,
+        assignedDoctorId: q.assignedDoctorId || null,
+        name: p?.name || 'Unknown Patient',
+        reasonForVisit: v?.reasonForVisit || 'Not Specified',
+        visitType,
+        patientType,
+        status: q.status
+      }
+    })
+  }, [queue, patients, visits, appointments])
 
   const handleAction = async (id: string, action: 'Start') => {
     const row = queueRows.find(q => q.id === id)
@@ -63,14 +74,24 @@ export function QueuePage() {
     }
   }
 
-  const filteredQueue = queueRows.filter(q => {
-    // Doctors only see their own assigned patients
-    if (canManageClinical && currentUser?.staffId) {
-      if (q.assignedDoctorId !== currentUser.staffId) return false
-    }
-    // Search filter
-    return q.name.toLowerCase().includes(search.toLowerCase()) || q.patientId.toLowerCase().includes(search.toLowerCase())
-  })
+  const filteredQueue = useMemo(() => {
+    return queueRows.filter(q => {
+      // Doctors only see their own assigned patients
+      if (canManageClinical && currentUser?.staffId) {
+        if (q.assignedDoctorId !== currentUser.staffId) return false
+      }
+
+      // Visit Type Filter (Walk-in vs Appointment)
+      if (visitTypeFilter !== 'all' && q.visitType !== visitTypeFilter) {
+        return false
+      }
+
+      // Search filter
+      return q.name.toLowerCase().includes(search.toLowerCase()) || 
+             q.patientId.toLowerCase().includes(search.toLowerCase()) ||
+             q.reasonForVisit.toLowerCase().includes(search.toLowerCase())
+    })
+  }, [queueRows, canManageClinical, currentUser, visitTypeFilter, search])
 
   const exportQueue = (format: 'pdf' | 'xlsx' | 'csv') => {
     const query = new URLSearchParams({
@@ -92,6 +113,22 @@ export function QueuePage() {
       accessorKey: "reasonForVisit",
       header: "Reason for Visit",
       cell: ({ row }) => <span className="text-sm font-medium text-slate-700">{row.original.reasonForVisit}</span>
+    },
+    {
+      accessorKey: "visitType",
+      header: "Visit Type",
+      cell: ({ row }) => {
+        const type = row.original.visitType
+        return (
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            type === 'Walk-in' 
+              ? 'bg-amber-50 text-amber-700 border border-amber-200/60' 
+              : 'bg-purple-50 text-purple-700 border border-purple-200/60'
+          }`}>
+            {type}
+          </span>
+        )
+      }
     },
     {
       accessorKey: "patientType",
@@ -138,7 +175,11 @@ export function QueuePage() {
                 Transferred
               </span>
             )}
-            {actionButton ? actionButton : <span className="text-sm text-slate-500 italic">Not available</span>}
+            {actionButton ? actionButton : (
+              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-700">
+                {item.status}
+              </span>
+            )}
           </div>
         );
       }
@@ -151,7 +192,24 @@ export function QueuePage() {
         <DataTableToolbar
           searchQuery={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search patient, ID or phone..."
+          searchPlaceholder="Search patient, ID or reason..."
+          filterSlot={
+            <div className="flex items-center gap-2">
+              <Select 
+                value={visitTypeFilter} 
+                onValueChange={(val: 'all' | 'Walk-in' | 'Appointment') => setVisitTypeFilter(val)}
+              >
+                <SelectTrigger className="h-9 w-36 bg-slate-50 border-slate-200 text-xs font-medium text-slate-700">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Walk-in">Walk-in</SelectItem>
+                  <SelectItem value="Appointment">Appointment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
           exportOptions={{
             pdf: true,
             excel: true,
@@ -165,11 +223,11 @@ export function QueuePage() {
             columns={columns} 
             data={filteredQueue}
             emptyState={
-              search !== '' ? (
+              search !== '' || visitTypeFilter !== 'all' ? (
                 <DataTableEmpty 
                   icon={Search} 
                   title="No patients found" 
-                  description={`There are no queue entries matching "${search}".`}
+                  description={`No queue entries matching your filter criteria.`}
                 />
               ) : (
                 <DataTableEmpty 
