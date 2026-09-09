@@ -112,20 +112,33 @@ model Consultation {
   visit           Visit    @relation(fields: [visitId], references: [id])
 }
 
+model MedicineCategory {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  status      String     @default("Active")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  medicines   Medicine[]
+}
+
 model Medicine {
-  id                String             @id @default(uuid())
-  name              String
-  genericName       String?
-  categoryId        String
-  form              String
-  unit              String
-  stockWarningLevel Int
-  currentStock      Int                @default(0)
-  unitPrice         Float
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  dispensingItems   DispensingItem[]
-  prescriptionItems PrescriptionItem[]
+  id                 String              @id @default(uuid())
+  name               String
+  genericName        String?
+  categoryId         String
+  category           MedicineCategory    @relation(fields: [categoryId], references: [id])
+  form               String
+  unit               String
+  stockWarningLevel  Int
+  currentStock       Int                 @default(0)
+  unitPrice          Float
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  dispensingItems    DispensingItem[]
+  prescriptionItems  PrescriptionItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  stockMovements     StockMovement[]
 }
 
 model Prescription {
@@ -229,3 +242,57 @@ model TreatmentPlanItem {
   catalogItem        TreatmentCatalog @relation(fields: [treatmentCatalogId], references: [id])
   completedVisit     Visit?           @relation(fields: [completedVisitId], references: [id])
 }
+
+model Supplier {
+  id             String          @id @default(uuid())
+  name           String
+  contactPerson  String?
+  phone          String?
+  email          String?
+  address        String?
+  status         String          @default("Active") // "Active" | "Inactive"
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  orderNumber String              @unique
+  supplierId  String
+  orderDate   DateTime            @default(now())
+  status      String              @default("Draft") // "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled"
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  items       PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id               String        @id @default(uuid())
+  purchaseOrderId  String
+  medicineId       String
+  orderedQuantity  Int
+  receivedQuantity Int           @default(0)
+  unitCost         Float         @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  medicine         Medicine      @relation(fields: [medicineId], references: [id])
+}
+
+model StockMovement {
+  id            String   @id @default(uuid())
+  medicineId    String
+  movementType  String   // "PURCHASE_RECEIPT" | "DISPENSING" | "ADJUSTMENT"
+  quantity      Int      // Positive for additions, negative for deductions
+  balanceAfter  Int      // Running balance for quick auditing
+  referenceType String?  // "PURCHASE_ORDER" | "VISIT" | "MANUAL"
+  referenceId   String?  // PO ID or Visit ID
+  reason        String?  // Reason for adjustment / receiving note
+  performedBy   String?  // User/Staff identifier / username
+  createdAt     DateTime @default(now())
+  medicine      Medicine @relation(fields: [medicineId], references: [id])
+}
+

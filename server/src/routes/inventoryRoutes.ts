@@ -8,7 +8,8 @@ import {
   createMedicine,
   updateMedicine,
   adjustStock,
-  exportInventory
+  exportInventory,
+  getMedicineStockHistory
 } from '../controllers/inventoryController';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.use(requireAuth);
 
 router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportInventory);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getInventory);
+router.get('/:id/history', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getMedicineStockHistory);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getMedicine);
 
 // According to existing frontend RBAC via role-config.ts:

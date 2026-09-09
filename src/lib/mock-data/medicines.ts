@@ -3,6 +3,12 @@ export interface Medicine {
   name: string;
   genericName?: string;
   categoryId: string;
+  category?: {
+    id: string;
+    name: string;
+    status: 'Active' | 'Inactive';
+    description?: string | null;
+  };
   form: 'Tablet' | 'Capsule' | 'Syrup' | 'Injection' | 'Ointment' | 'Liquid' | 'Mouthwash' | 'Other';
   unit: string;
   stockWarningLevel: number;

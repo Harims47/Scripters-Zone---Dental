@@ -88,9 +88,24 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
           }
 
           // Deduct Stock
+          const newStock = med.currentStock - item.dispensedQuantity;
           await tx.medicine.update({
             where: { id: med.id },
-            data: { currentStock: med.currentStock - item.dispensedQuantity }
+            data: { currentStock: newStock }
+          });
+
+          // Log append-only StockMovement for dispensing audit trail
+          await tx.stockMovement.create({
+            data: {
+              medicineId: med.id,
+              movementType: 'DISPENSING',
+              quantity: -item.dispensedQuantity,
+              balanceAfter: newStock,
+              referenceType: 'VISIT',
+              referenceId: visitId,
+              reason: `Dispensed to patient for Visit #${visitId.slice(0, 8)}`,
+              performedBy: req.user?.username || req.user?.staff?.name || req.user?.id || 'Staff'
+            }
           });
 
           medicineCost += (item.dispensedQuantity * med.unitPrice);

@@ -47,7 +47,10 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
         where,
         skip,
         take: limit,
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
+        include: {
+          category: true
+        }
       }),
       prisma.medicine.count({ where })
     ]);
@@ -90,7 +93,12 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
 export const getMedicine = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const medicine = await prisma.medicine.findUnique({ where: { id } });
+    const medicine = await prisma.medicine.findUnique({
+      where: { id },
+      include: {
+        category: true
+      }
+    });
     if (!medicine) return res.status(404).json({ error: 'Medicine not found' });
     return res.json(medicine);
   } catch (error) {
@@ -100,9 +108,30 @@ export const getMedicine = async (req: Request, res: Response, next: NextFunctio
 
 export const createMedicine = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { currentStock, ...rest } = req.body;
+
+    // Validate category exists and is Active
+    if (rest.categoryId) {
+      const category = await prisma.medicineCategory.findUnique({
+        where: { id: rest.categoryId }
+      });
+      if (!category) {
+        return res.status(400).json({ error: 'Selected category does not exist' });
+      }
+      if (category.status !== 'Active') {
+        return res.status(400).json({ error: 'Cannot assign an inactive category to a new medicine' });
+      }
+    }
+
+    // Current stock is ALWAYS initialized to 0 upon creation.
+    // Stock must only be added via Goods Receive or an explicit Stock Adjustment with a reason.
     const medicine = await prisma.medicine.create({
       data: {
-        ...req.body
+        ...rest,
+        currentStock: 0
+      },
+      include: {
+        category: true
       }
     });
     return res.status(201).json(medicine);
@@ -119,10 +148,29 @@ export const updateMedicine = async (req: Request, res: Response, next: NextFunc
     const existing = await prisma.medicine.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Medicine not found' });
 
+    // Explicitly reject or strip currentStock from direct updates
+    const { currentStock, ...rest } = req.body;
+
+    // If categoryId is being changed, validate it
+    if (rest.categoryId && rest.categoryId !== existing.categoryId) {
+      const category = await prisma.medicineCategory.findUnique({
+        where: { id: rest.categoryId }
+      });
+      if (!category) {
+        return res.status(400).json({ error: 'Selected category does not exist' });
+      }
+      if (category.status !== 'Active') {
+        return res.status(400).json({ error: 'Cannot switch medicine to an inactive category' });
+      }
+    }
+
     const updated = await prisma.medicine.update({
       where: { id },
       data: {
-        ...req.body
+        ...rest
+      },
+      include: {
+        category: true
       }
     });
     return res.json(updated);
@@ -134,22 +182,50 @@ export const updateMedicine = async (req: Request, res: Response, next: NextFunc
 export const adjustStock = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { adjustmentAmount } = req.body;
+    const { quantity, type, reason } = req.body;
+
+    if (!quantity || quantity <= 0 || !Number.isInteger(quantity)) {
+      return res.status(400).json({ error: 'Quantity must be a positive integer' });
+    }
+    if (!type || !['ADD', 'SUBTRACT'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be ADD or SUBTRACT' });
+    }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'A valid reason is required for stock adjustment' });
+    }
+
+    const performer = req.user?.username || req.user?.staff?.name || req.user?.id || 'System';
 
     const result = await prisma.$transaction(async (tx) => {
       // Must read current stock within transaction
       const med = await tx.medicine.findUnique({ where: { id } });
       if (!med) throw { status: 404, message: 'Medicine not found' };
 
-      const newStock = med.currentStock + adjustmentAmount;
+      const delta = type === 'ADD' ? quantity : -quantity;
+      const newStock = med.currentStock + delta;
       if (newStock < 0) {
-        throw { status: 409, message: `Insufficient stock. Cannot adjust by ${adjustmentAmount}. Current stock is ${med.currentStock}.` };
+        throw { status: 400, message: `Insufficient stock. Cannot subtract ${quantity}. Current stock is ${med.currentStock}.` };
       }
 
-      return tx.medicine.update({
+      const updatedMedicine = await tx.medicine.update({
         where: { id },
         data: { currentStock: newStock }
       });
+
+      const movement = await tx.stockMovement.create({
+        data: {
+          medicineId: id,
+          movementType: 'ADJUSTMENT',
+          quantity: delta,
+          balanceAfter: newStock,
+          referenceType: 'MANUAL',
+          referenceId: null,
+          reason: reason.trim(),
+          performedBy: performer
+        }
+      });
+
+      return { medicine: updatedMedicine, movement };
     });
 
     return res.json(result);
@@ -157,6 +233,40 @@ export const adjustStock = async (req: Request, res: Response, next: NextFunctio
     if (error.status) {
       return res.status(error.status).json({ error: error.message });
     }
+    next(error);
+  }
+};
+
+export const getMedicineStockHistory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const skip = (page - 1) * limit;
+
+    const med = await prisma.medicine.findUnique({ where: { id } });
+    if (!med) return res.status(404).json({ error: 'Medicine not found' });
+
+    const [movements, total] = await Promise.all([
+      prisma.stockMovement.findMany({
+        where: { medicineId: id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      }),
+      prisma.stockMovement.count({ where: { medicineId: id } })
+    ]);
+
+    return res.json({
+      data: movements,
+      meta: {
+        currentPage: page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
     next(error);
   }
 };

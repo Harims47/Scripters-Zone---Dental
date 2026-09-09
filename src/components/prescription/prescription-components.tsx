@@ -16,13 +16,20 @@ export interface PrescriptionLineItem extends Medicine {
   instructions?: string
 }
 
-export function MedicineCategoryBadge({ categoryId }: { categoryId: string }) {
+export function MedicineCategoryBadge({ categoryId, categoryName }: { categoryId: string; categoryName?: string }) {
   const cat = MEDICINE_CATEGORIES[categoryId]
-  if (!cat) return null
+  if (cat) {
+    return (
+      <Badge variant="outline" className={cn(cat.bgClass, cat.textClass, cat.borderClass, "font-medium text-[10px] shadow-sm uppercase tracking-wider")}>
+        <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", cat.dotClass)} />
+        {cat.displayName}
+      </Badge>
+    )
+  }
   return (
-    <Badge variant="outline" className={cn(cat.bgClass, cat.textClass, cat.borderClass, "font-medium text-[10px] shadow-sm uppercase tracking-wider")}>
-      <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", cat.dotClass)} />
-      {cat.displayName}
+    <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 font-medium text-[10px] shadow-xs uppercase tracking-wider">
+      <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-slate-400" />
+      {categoryName || categoryId}
     </Badge>
   )
 }

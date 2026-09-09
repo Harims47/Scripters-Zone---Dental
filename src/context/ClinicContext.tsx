@@ -43,7 +43,7 @@ interface ClinicContextType {
   // Phase 0P.5
   completeDispensing: (visitId: string, prescriptionId: string, items: { medicineId: string, prescribedQuantity: number, dispensedQuantity: number }[]) => Promise<{ success: boolean, error?: string }>
   recordPayment: (visitId: string, amount: number, method: 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card', notes?: string, isFinalPayment?: boolean) => Promise<{ success: boolean, error?: string }>
-  adjustMedicineStock: (id: string, adjustmentAmount: number) => Promise<{ success: boolean, error?: string, medicine?: Medicine }>
+  adjustMedicineStock: (id: string, adjustment: number | { quantity: number, type: 'ADD' | 'SUBTRACT', reason: string }, defaultReason?: string) => Promise<{ success: boolean, error?: string, medicine?: Medicine }>
 }
 
 const ClinicContext = createContext<ClinicContextType | null>(null)
@@ -446,16 +446,26 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const adjustMedicineStock = async (id: string, adjustmentAmount: number) => {
+  const adjustMedicineStock = async (id: string, adjustment: number | { quantity: number, type: 'ADD' | 'SUBTRACT', reason: string }, defaultReason?: string) => {
     try {
-      const res = await api.patch<{ data: Medicine }>(`/api/inventory/${id}/adjust`, { adjustmentAmount })
-      // Server returns the updated medicine directly usually, but check if wrapped in `data`
-      const updatedMed = res.data || (res as unknown as Medicine)
-      setMedicines(prev => prev.map(m => m.id === id ? updatedMed : m))
-      return { success: true, medicine: updatedMed }
+      let payload: { quantity: number, type: 'ADD' | 'SUBTRACT', reason: string };
+      if (typeof adjustment === 'number') {
+        payload = {
+          quantity: Math.abs(adjustment),
+          type: adjustment >= 0 ? 'ADD' : 'SUBTRACT',
+          reason: defaultReason || (adjustment >= 0 ? 'Manual Stock Addition' : 'Manual Stock Deduction')
+        };
+      } else {
+        payload = adjustment;
+      }
+
+      const res = await api.patch<{ medicine: Medicine, movement: any }>(`/api/inventory/${id}/adjust`, payload);
+      const updatedMed = (res as any).medicine || (res as any).data?.medicine || (res as unknown as Medicine);
+      setMedicines(prev => prev.map(m => m.id === id ? updatedMed : m));
+      return { success: true, medicine: updatedMed };
     } catch (err: any) {
-      console.error(err)
-      return { success: false, error: err.response?.data?.error || err.message || 'Failed to adjust stock' }
+      console.error(err);
+      return { success: false, error: err.response?.data?.error || err.message || 'Failed to adjust stock' };
     }
   }
 

@@ -41,7 +41,31 @@ async function main() {
     });
   }
 
-  // 2. Medicines Master Data
+  // 2. Medicine Categories Master Data
+  const defaultCategories = [
+    { id: 'cat1', name: 'Antibiotics', description: 'Medicines commonly used to treat bacterial infections.' },
+    { id: 'cat2', name: 'Painkillers', description: 'Analgesics and anti-inflammatory medications for pain management.' },
+    { id: 'cat3', name: 'Anesthetics', description: 'Local anesthetics used during dental procedures.' },
+    { id: 'cat4', name: 'Antiseptics', description: 'Antiseptic solutions and mouthwashes for infection control.' },
+    { id: 'cat5', name: 'Vitamins/Supplements', description: 'Dietary supplements and vitamins.' },
+    { id: 'cat6', name: 'Consumables', description: 'General clinic dental consumables and supplies.' },
+  ];
+
+  for (const cat of defaultCategories) {
+    const existing = await prisma.medicineCategory.findUnique({ where: { id: cat.id } });
+    if (!existing) {
+      await prisma.medicineCategory.create({
+        data: {
+          id: cat.id,
+          name: cat.name,
+          description: cat.description,
+          status: 'Active'
+        }
+      });
+    }
+  }
+
+  // 3. Medicines Master Data
   await prisma.medicine.createMany({
     data: [
       { name: 'Amoxicillin 500mg', categoryId: 'cat1', currentStock: 150, stockWarningLevel: 50, unit: 'Tablets', form: 'Tablet', unitPrice: 15 },

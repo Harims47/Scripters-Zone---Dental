@@ -150,3 +150,78 @@ export interface TreatmentPlan {
   patientId: string
   items: TreatmentPlanItem[]
 }
+
+export interface MedicineCategory {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: 'Active' | 'Inactive';
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    medicines: number;
+  };
+}
+
+export interface Supplier {
+  id: string
+  name: string
+  contactPerson?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  status: 'Active' | 'Inactive'
+  createdAt: string
+  updatedAt?: string
+  _count?: {
+    purchaseOrders: number
+  }
+}
+
+export type PurchaseOrderStatus = 'Draft' | 'Ordered' | 'Partially Received' | 'Received' | 'Cancelled'
+
+export interface PurchaseOrderItem {
+  id: string
+  purchaseOrderId: string
+  medicineId: string
+  orderedQuantity: number
+  receivedQuantity: number
+  unitCost: number
+  createdAt: string
+  updatedAt?: string
+  medicine?: {
+    id: string
+    name: string
+    unit: string
+    currentStock: number
+    form?: string
+    unitPrice?: number
+  }
+}
+
+export interface PurchaseOrder {
+  id: string
+  orderNumber: string
+  supplierId: string
+  orderDate: string
+  status: PurchaseOrderStatus
+  notes?: string | null
+  createdAt: string
+  updatedAt?: string
+  supplier?: Supplier
+  items: PurchaseOrderItem[]
+}
+
+export interface StockMovement {
+  id: string
+  medicineId: string
+  movementType: 'PURCHASE_RECEIPT' | 'DISPENSING' | 'ADJUSTMENT'
+  quantity: number
+  balanceAfter: number
+  referenceType?: string | null
+  referenceId?: string | null
+  reason?: string | null
+  performedBy?: string | null
+  createdAt: string
+}
+

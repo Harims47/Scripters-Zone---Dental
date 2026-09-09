@@ -19,8 +19,8 @@ export function AppShell() {
         <Topbar />
         
         {/* Main Content Area via Router Outlet */}
-        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto w-full max-w-[1400px]">
+        <main className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6">
+          <div className="mx-auto w-full max-w-[1600px]">
             <Outlet />
           </div>
         </main>
