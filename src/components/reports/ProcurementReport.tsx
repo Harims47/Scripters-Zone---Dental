@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
-import { ShoppingBag, Truck, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import { ShoppingBag, Truck, CheckCircle2, AlertCircle, FileText, CreditCard, DollarSign } from 'lucide-react'
 import { api } from '../../lib/api'
 import { ReportChartCard, SvgDonutChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'
@@ -9,7 +9,7 @@ import { Badge } from '../ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import type { ColumnDef, PaginationState } from '@tanstack/react-table'
 import toast from 'react-hot-toast'
-import type { ProcurementReportResponse, ProcurementReportItem, SupplierProcurementSummary } from '../../types/reports'
+import type { ProcurementReportResponse, ProcurementReportItem, ProcurementReportBillItem, ProcurementReportPaymentItem, SupplierProcurementSummary } from '../../types/reports'
 import type { DateRangeState } from './ReportDateRange'
 
 interface ProcurementReportProps {
@@ -21,6 +21,7 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [activeTab, setActiveTab] = useState<'orders' | 'bills' | 'payments'>('orders')
   const [supplierFilter, setSupplierFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
@@ -50,7 +51,7 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
     } catch (err: any) {
       console.error('Failed to load procurement report:', err)
       setError(err.message || 'Failed to load procurement report')
-      toast.error('Failed to load purchase orders report')
+      toast.error('Failed to load procurement report')
     } finally {
       setLoading(false)
     }
@@ -62,26 +63,30 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
 
   useEffect(() => {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
-  }, [supplierFilter, statusFilter, dateRange.startDate, dateRange.endDate])
+  }, [supplierFilter, statusFilter, dateRange.startDate, dateRange.endDate, activeTab])
 
   const handleExport = async (format: 'pdf' | 'xlsx' | 'csv') => {
     try {
       const params = new URLSearchParams()
       params.set('format', format)
+      params.set('section', activeTab)
       if (supplierFilter !== 'all') params.set('supplierId', supplierFilter)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (dateRange.startDate) params.set('startDate', dateRange.startDate)
       if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
       const ext = format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'csv'
-      await api.download(`/api/reports/procurement/export?${params.toString()}`, `procurement_report_${new Date().toISOString().split('T')[0]}.${ext}`)
+      const filename = `${activeTab}_report_${new Date().toISOString().split('T')[0]}.${ext}`
+      await api.download(`/api/reports/procurement/export?${params.toString()}`, filename)
       toast.success(`Exported ${format.toUpperCase()} successfully`)
     } catch (err: any) {
-      toast.error(err.message || 'Failed to export procurement report')
+      toast.error(err.message || 'Failed to export report')
     }
   }
 
   const rows = data?.data || []
+  const bills = data?.bills || []
+  const payments = data?.payments || []
   const s = data?.summary
   const supplierRows = data?.supplierSummary || []
 
@@ -94,7 +99,7 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
     { label: 'Cancelled', value: s?.cancelledPOs || 0, color: '#f43f5e' }
   ].filter(d => d.value > 0)
 
-  const columns: ColumnDef<ProcurementReportItem>[] = [
+  const poColumns: ColumnDef<ProcurementReportItem>[] = [
     {
       header: () => <div className="text-left font-semibold text-slate-600">PO Number</div>,
       accessorKey: 'orderNumber',
@@ -152,6 +157,91 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
         else if (st === 'Cancelled') badge = <Badge className="bg-rose-100 text-rose-800 border-rose-200">Cancelled</Badge>
         return <div className="text-center">{badge}</div>
       }
+    }
+  ]
+
+  const billColumns: ColumnDef<ProcurementReportBillItem>[] = [
+    {
+      header: () => <div className="text-left font-semibold text-slate-600">Invoice Number</div>,
+      accessorKey: 'invoiceNumber',
+      cell: ({ row }) => <span className="font-mono text-xs font-semibold text-slate-900">{row.original.invoiceNumber}</span>
+    },
+    {
+      header: () => <div className="text-center font-semibold text-slate-600">Invoice Date</div>,
+      accessorKey: 'invoiceDate',
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-600">
+          {new Date(row.original.invoiceDate).toLocaleDateString()}
+        </span>
+      )
+    },
+    {
+      header: () => <div className="text-right font-semibold text-slate-600">Billed Amount</div>,
+      accessorKey: 'amount',
+      cell: ({ row }) => <div className="text-right font-mono font-bold text-slate-900 text-xs">₹{row.original.amount.toLocaleString()}</div>
+    },
+    {
+      header: () => <div className="text-right font-semibold text-slate-600">Paid</div>,
+      accessorKey: 'totalPaid',
+      cell: ({ row }) => <div className="text-right font-mono font-semibold text-emerald-600 text-xs">₹{row.original.totalPaid.toLocaleString()}</div>
+    },
+    {
+      header: () => <div className="text-right font-semibold text-slate-600">Outstanding Balance</div>,
+      accessorKey: 'balance',
+      cell: ({ row }) => <div className={`text-right font-mono font-bold text-xs ${row.original.balance > 0 ? 'text-amber-600' : 'text-slate-400'}`}>₹{row.original.balance.toLocaleString()}</div>
+    },
+    {
+      header: () => <div className="text-center font-semibold text-slate-600">Status</div>,
+      accessorKey: 'status',
+      cell: ({ row }) => {
+        const st = row.original.status
+        let badge = <Badge variant="outline">{st}</Badge>
+        if (st === 'Paid') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>
+        else if (st === 'Partial') badge = <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>
+        else if (st === 'Unpaid') badge = <Badge className="bg-rose-100 text-rose-800 border-rose-200">Unpaid</Badge>
+        return <div className="text-center">{badge}</div>
+      }
+    }
+  ]
+
+  const paymentColumns: ColumnDef<ProcurementReportPaymentItem>[] = [
+    {
+      header: () => <div className="text-center font-semibold text-slate-600">Payment Date</div>,
+      accessorKey: 'date',
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-600">
+          {new Date(row.original.date).toLocaleDateString()}
+        </span>
+      )
+    },
+    {
+      header: () => <div className="text-left font-semibold text-slate-600">Invoice #</div>,
+      accessorKey: 'invoiceNumber',
+      cell: ({ row }) => <span className="font-mono text-xs font-semibold text-slate-900">{row.original.invoiceNumber}</span>
+    },
+    {
+      header: () => <div className="text-left font-semibold text-slate-600">Supplier</div>,
+      accessorKey: 'supplierName',
+      cell: ({ row }) => <span className="font-medium text-slate-800 text-xs">{row.original.supplierName}</span>
+    },
+    {
+      header: () => <div className="text-center font-semibold text-slate-600">Method</div>,
+      accessorKey: 'method',
+      cell: ({ row }) => (
+        <div className="text-center">
+          <Badge variant="outline" className="text-xs">{row.original.method}</Badge>
+        </div>
+      )
+    },
+    {
+      header: () => <div className="text-right font-semibold text-slate-600">Amount Paid</div>,
+      accessorKey: 'amount',
+      cell: ({ row }) => <div className="text-right font-mono font-bold text-emerald-700 text-xs">₹{row.original.amount.toLocaleString()}</div>
+    },
+    {
+      header: () => <div className="text-left font-semibold text-slate-600">Notes</div>,
+      accessorKey: 'notes',
+      cell: ({ row }) => <span className="text-xs text-slate-500 italic">{row.original.notes || '—'}</span>
     }
   ]
 
@@ -217,45 +307,39 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
 
   return (
     <div className="space-y-6">
-      {/* KPI Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      {/* Financial & Procurement KPI Summary Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Total POs"
+          title="Total Billed (Invoices)"
+          value={loading ? '...' : `₹${(s?.totalBilledAmount ?? 0).toLocaleString()}`}
+          icon={FileText}
+          colorClass="text-blue-600"
+          bgClass="bg-blue-100"
+          trendLabel={`${s?.totalBillsCount ?? 0} bills in period`}
+        />
+        <KpiCard
+          title="Total Paid to Suppliers"
+          value={loading ? '...' : `₹${(s?.totalPaidAmount ?? 0).toLocaleString()}`}
+          icon={CreditCard}
+          colorClass="text-emerald-600"
+          bgClass="bg-emerald-100"
+          trendLabel="Actual disbursements"
+        />
+        <KpiCard
+          title="Outstanding Payable Balance"
+          value={loading ? '...' : `₹${(s?.totalOutstandingBalance ?? 0).toLocaleString()}`}
+          icon={DollarSign}
+          colorClass="text-amber-600"
+          bgClass="bg-amber-100"
+          trendLabel="Unpaid supplier liability"
+        />
+        <KpiCard
+          title="Total Purchase Orders"
           value={loading ? '...' : (s?.totalPOs ?? 0)}
           icon={ShoppingBag}
           colorClass="text-teal-600"
           bgClass="bg-teal-100"
-        />
-        <KpiCard
-          title="Ordered"
-          value={loading ? '...' : (s?.orderedPOs ?? 0)}
-          icon={Truck}
-          colorClass="text-blue-600"
-          bgClass="bg-blue-100"
-          trendLabel="Awaiting goods receipt"
-        />
-        <KpiCard
-          title="Partially Received"
-          value={loading ? '...' : (s?.partiallyReceivedPOs ?? 0)}
-          icon={Clock}
-          colorClass="text-amber-600"
-          bgClass="bg-amber-100"
-          trendLabel="Incomplete shipments"
-        />
-        <KpiCard
-          title="Received"
-          value={loading ? '...' : (s?.receivedPOs ?? 0)}
-          icon={CheckCircle2}
-          colorClass="text-emerald-600"
-          bgClass="bg-emerald-100"
-          trendLabel="Fully fulfilled POs"
-        />
-        <KpiCard
-          title="Cancelled"
-          value={loading ? '...' : (s?.cancelledPOs ?? 0)}
-          icon={AlertCircle}
-          colorClass="text-rose-600"
-          bgClass="bg-rose-100"
+          trendLabel={`${s?.receivedPOs ?? 0} received`}
         />
       </div>
 
@@ -273,11 +357,33 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
         />
       </ReportChartCard>
 
-      {/* Purchase Orders DataTable */}
+      {/* Section Selection Tabs */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden">
-        <div className="p-5 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-base font-bold text-slate-900">Purchase Orders Log</h3>
-          <p className="text-xs text-slate-500 mt-0.5">Filter POs by supplier and delivery status with complete exports.</p>
+        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Procurement & Financial Records</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Filter records by supplier, fulfillment status, and export full reports.</p>
+          </div>
+          <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl w-fit">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'orders' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              Purchase Orders ({s?.totalPOs ?? 0})
+            </button>
+            <button
+              onClick={() => setActiveTab('bills')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'bills' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              Supplier Bills ({s?.totalBillsCount ?? 0})
+            </button>
+            <button
+              onClick={() => setActiveTab('payments')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'payments' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              Supplier Payments ({payments.length})
+            </button>
+          </div>
         </div>
 
         <DataTableToolbar
@@ -303,46 +409,78 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
                 </SelectContent>
               </Select>
 
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-9 w-[160px] bg-slate-50/50 border-slate-200 text-xs font-medium">
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Ordered">Ordered</SelectItem>
-                  <SelectItem value="Partially Received">Partially Received</SelectItem>
-                  <SelectItem value="Received">Received</SelectItem>
-                  <SelectItem value="Cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+              {activeTab === 'orders' && (
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-9 w-[160px] bg-slate-50/50 border-slate-200 text-xs font-medium">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                    <SelectItem value="Ordered">Ordered</SelectItem>
+                    <SelectItem value="Partially Received">Partially Received</SelectItem>
+                    <SelectItem value="Received">Received</SelectItem>
+                    <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           }
         />
 
         <div className="p-4">
-          <DataTable
-            columns={columns}
-            data={rows}
-            loading={loading}
-            manualPagination={true}
-            pageCount={data?.pagination.totalPages || 0}
-            totalRecords={data?.pagination.totalRecords || 0}
-            state={{ pagination }}
-            onStateChange={(updater: any) => {
-              if (typeof updater === 'function') {
-                setPagination(updater(pagination))
-              } else if (updater.pagination) {
-                setPagination(updater.pagination)
+          {activeTab === 'orders' && (
+            <DataTable
+              columns={poColumns}
+              data={rows}
+              loading={loading}
+              manualPagination={true}
+              pageCount={data?.pagination.totalPages || 0}
+              totalRecords={data?.pagination.totalRecords || 0}
+              state={{ pagination }}
+              onStateChange={(updater: any) => {
+                if (typeof updater === 'function') {
+                  setPagination(updater(pagination))
+                } else if (updater.pagination) {
+                  setPagination(updater.pagination)
+                }
+              }}
+              emptyState={
+                <DataTableEmpty
+                  title="No purchase orders found"
+                  description="No orders match your criteria for the selected period."
+                />
               }
-            }}
-            emptyState={
-              <DataTableEmpty
-                title="No purchase orders found"
-                description="No orders match your criteria for the selected period."
-              />
-            }
-          />
+            />
+          )}
+
+          {activeTab === 'bills' && (
+            <DataTable
+              columns={billColumns}
+              data={bills}
+              loading={loading}
+              emptyState={
+                <DataTableEmpty
+                  title="No supplier bills found"
+                  description="No supplier invoices recorded for the selected period."
+                />
+              }
+            />
+          )}
+
+          {activeTab === 'payments' && (
+            <DataTable
+              columns={paymentColumns}
+              data={payments}
+              loading={loading}
+              emptyState={
+                <DataTableEmpty
+                  title="No supplier payments found"
+                  description="No disbursements made to suppliers for the selected period."
+                />
+              }
+            />
+          )}
         </div>
       </div>
 

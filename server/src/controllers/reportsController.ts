@@ -18,6 +18,7 @@ import {
   getProcurementReportData,
   getProcurementExportData
 } from '../services/reportsService';
+import { parseDateRange, buildPrismaDateFilter } from '../utils/dateRangeHelper';
 import { generateCSV, generateXLSX, generatePDF, ExportColumn } from '../services/exportService';
 
 /**
@@ -520,6 +521,115 @@ export const getProcurementReport = async (req: Request, res: Response, next: Ne
 export const exportProcurementReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const format = (req.query.format as string) || 'csv';
+    const section = (req.query.section as string) || 'orders';
+
+    if (section === 'bills') {
+      const { startDate, endDate } = parseDateRange(req.query.startDate as string, req.query.endDate as string);
+      const billDateFilter = buildPrismaDateFilter(startDate, endDate);
+      const billWhere: any = { status: { not: 'Cancelled' } };
+      if (billDateFilter) billWhere.invoiceDate = billDateFilter;
+      if (req.query.supplierId && req.query.supplierId !== 'all') billWhere.supplierId = req.query.supplierId as string;
+
+      const bills = await prisma.supplierBill.findMany({
+        where: billWhere,
+        include: { supplier: true, payments: true },
+        orderBy: { invoiceDate: 'desc' }
+      });
+
+      const rows = bills.map(b => {
+        const paid = b.payments.reduce((s, p) => s + p.amount, 0);
+        return {
+          invoiceNumber: b.invoiceNumber,
+          supplierName: b.supplier?.name || '—',
+          invoiceDate: new Date(b.invoiceDate).toLocaleDateString(),
+          amount: `₹${b.amount}`,
+          paid: `₹${paid}`,
+          balance: `₹${Math.max(0, b.amount - paid)}`,
+          status: b.status,
+          notes: b.notes || '—'
+        };
+      });
+
+      const columns: ExportColumn[] = [
+        { key: 'invoiceNumber', label: 'Invoice Number' },
+        { key: 'supplierName', label: 'Supplier' },
+        { key: 'invoiceDate', label: 'Invoice Date' },
+        { key: 'amount', label: 'Bill Amount' },
+        { key: 'paid', label: 'Paid Amount' },
+        { key: 'balance', label: 'Balance Outstanding' },
+        { key: 'status', label: 'Status' },
+        { key: 'notes', label: 'Notes' }
+      ];
+
+      const subtitle = `Total Invoices: ${rows.length}`;
+
+      if (format === 'csv') {
+        const csv = generateCSV(columns, rows);
+        res.header('Content-Type', 'text/csv');
+        res.attachment('supplier_bills_report.csv');
+        return res.send(csv);
+      } else if (format === 'xlsx') {
+        const xlsx = await generateXLSX(columns, rows, 'Supplier Bills');
+        res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('supplier_bills_report.xlsx');
+        return res.send(xlsx);
+      } else if (format === 'pdf') {
+        const pdf = await generatePDF(columns, rows, 'Supplier Bills & Invoices Report', subtitle);
+        res.header('Content-Type', 'application/pdf');
+        res.attachment('supplier_bills_report.pdf');
+        return res.send(pdf);
+      }
+    } else if (section === 'payments') {
+      const { startDate, endDate } = parseDateRange(req.query.startDate as string, req.query.endDate as string);
+      const paymentDateFilter = buildPrismaDateFilter(startDate, endDate);
+      const paymentWhere: any = {};
+      if (paymentDateFilter) paymentWhere.date = paymentDateFilter;
+      if (req.query.supplierId && req.query.supplierId !== 'all') paymentWhere.bill = { supplierId: req.query.supplierId as string };
+
+      const payments = await prisma.supplierPayment.findMany({
+        where: paymentWhere,
+        include: { bill: { include: { supplier: true } } },
+        orderBy: { date: 'desc' }
+      });
+
+      const rows = payments.map(p => ({
+        paymentDate: new Date(p.date).toLocaleDateString(),
+        invoiceNumber: p.bill?.invoiceNumber || '—',
+        supplierName: p.bill?.supplier?.name || '—',
+        method: p.method,
+        amount: `₹${p.amount}`,
+        notes: p.notes || '—'
+      }));
+
+      const columns: ExportColumn[] = [
+        { key: 'paymentDate', label: 'Payment Date' },
+        { key: 'invoiceNumber', label: 'Invoice Number' },
+        { key: 'supplierName', label: 'Supplier' },
+        { key: 'method', label: 'Method' },
+        { key: 'amount', label: 'Amount Paid' },
+        { key: 'notes', label: 'Notes' }
+      ];
+
+      const subtitle = `Total Payments: ${rows.length}`;
+
+      if (format === 'csv') {
+        const csv = generateCSV(columns, rows);
+        res.header('Content-Type', 'text/csv');
+        res.attachment('supplier_payments_report.csv');
+        return res.send(csv);
+      } else if (format === 'xlsx') {
+        const xlsx = await generateXLSX(columns, rows, 'Supplier Payments');
+        res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('supplier_payments_report.xlsx');
+        return res.send(xlsx);
+      } else if (format === 'pdf') {
+        const pdf = await generatePDF(columns, rows, 'Supplier Payments Report', subtitle);
+        res.header('Content-Type', 'application/pdf');
+        res.attachment('supplier_payments_report.pdf');
+        return res.send(pdf);
+      }
+    }
+
     const rows = await getProcurementExportData(req.query as any);
 
     const columns: ExportColumn[] = [

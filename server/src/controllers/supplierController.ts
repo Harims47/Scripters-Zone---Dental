@@ -24,12 +24,38 @@ export const getSuppliers = async (req: Request, res: Response, next: NextFuncti
       orderBy: { name: 'asc' },
       include: {
         _count: {
-          select: { purchaseOrders: true }
+          select: { purchaseOrders: true, bills: true }
+        },
+        bills: {
+          where: { status: { not: 'Cancelled' } },
+          select: {
+            amount: true,
+            payments: {
+              select: { amount: true }
+            }
+          }
         }
       }
     });
 
-    return res.json(suppliers);
+    const formatted = suppliers.map(s => {
+      const totalBilled = s.bills.reduce((sum, b) => sum + b.amount, 0);
+      const totalPaid = s.bills.reduce((sum, b) => sum + b.payments.reduce((pSum, p) => pSum + p.amount, 0), 0);
+      const outstandingBalance = Math.max(0, Math.round((totalBilled - totalPaid) * 100) / 100);
+
+      const { bills, ...rest } = s;
+      return {
+        ...rest,
+        financials: {
+          totalBills: s._count.bills,
+          totalBilled: Math.round(totalBilled * 100) / 100,
+          totalPaid: Math.round(totalPaid * 100) / 100,
+          outstandingBalance
+        }
+      };
+    });
+
+    return res.json(formatted);
   } catch (error) {
     next(error);
   }

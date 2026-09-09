@@ -255,6 +255,7 @@ model Supplier {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   purchaseOrders PurchaseOrder[]
+  bills          SupplierBill[]
 }
 
 model PurchaseOrder {
@@ -268,6 +269,7 @@ model PurchaseOrder {
   updatedAt   DateTime            @updatedAt
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
   items       PurchaseOrderItem[]
+  bills       SupplierBill[]
 }
 
 model PurchaseOrderItem {
@@ -281,6 +283,34 @@ model PurchaseOrderItem {
   updatedAt        DateTime      @updatedAt
   purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   medicine         Medicine      @relation(fields: [medicineId], references: [id])
+}
+
+model SupplierBill {
+  id              String            @id @default(uuid())
+  supplierId      String
+  purchaseOrderId String?
+  invoiceNumber   String
+  invoiceDate     DateTime          @default(now())
+  amount          Float
+  notes           String?
+  status          String            @default("Unpaid") // "Unpaid" | "Partial" | "Paid" | "Cancelled"
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  supplier        Supplier          @relation(fields: [supplierId], references: [id])
+  purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  payments        SupplierPayment[]
+}
+
+model SupplierPayment {
+  id             String       @id @default(uuid())
+  supplierBillId String
+  amount         Float
+  method         String       // "Cash" | "Bank Transfer" | "UPI"
+  notes          String?
+  date           DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  bill           SupplierBill @relation(fields: [supplierBillId], references: [id], onDelete: Restrict)
 }
 
 model StockMovement {

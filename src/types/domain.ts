@@ -175,6 +175,13 @@ export interface Supplier {
   updatedAt?: string
   _count?: {
     purchaseOrders: number
+    bills?: number
+  }
+  financials?: {
+    totalBills: number
+    totalBilled: number
+    totalPaid: number
+    outstandingBalance: number
   }
 }
 
@@ -199,6 +206,37 @@ export interface PurchaseOrderItem {
   }
 }
 
+export type SupplierBillStatus = 'Unpaid' | 'Partial' | 'Paid' | 'Cancelled'
+
+export interface SupplierPayment {
+  id: string
+  supplierBillId: string
+  amount: number
+  method: 'Cash' | 'Bank Transfer' | 'UPI'
+  notes?: string | null
+  date: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface SupplierBill {
+  id: string
+  supplierId: string
+  purchaseOrderId?: string | null
+  invoiceNumber: string
+  invoiceDate: string
+  amount: number
+  totalPaid?: number
+  balance?: number
+  notes?: string | null
+  status: SupplierBillStatus
+  createdAt: string
+  updatedAt?: string
+  supplier?: Supplier
+  purchaseOrder?: PurchaseOrder
+  payments?: SupplierPayment[]
+}
+
 export interface PurchaseOrder {
   id: string
   orderNumber: string
@@ -210,6 +248,7 @@ export interface PurchaseOrder {
   updatedAt?: string
   supplier?: Supplier
   items: PurchaseOrderItem[]
+  bills?: SupplierBill[]
 }
 
 export interface StockMovement {

@@ -14,8 +14,10 @@ import { DataTable } from '../data-table/data-table';
 import { DataTableToolbar } from '../data-table/data-table-toolbar';
 import { DataTableEmpty } from '../data-table/data-table';
 import { ReceiveGoodsDialog } from './ReceiveGoodsDialog';
+import { RecordSupplierPaymentDialog } from './RecordSupplierPaymentDialog';
+import { SupplierBillPaymentsModal } from './SupplierBillPaymentsModal';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { PurchaseOrder, Supplier, PurchaseOrderStatus } from '../../types/domain';
+import type { PurchaseOrder, Supplier, PurchaseOrderStatus, SupplierBill } from '../../types/domain';
 import type { Medicine } from '../../lib/mock-data/medicines';
 
 interface CreatePOItemRow {
@@ -39,6 +41,16 @@ export function PurchaseOrdersTab() {
 
   // Receive modal
   const [receiveTargetOrder, setReceiveTargetOrder] = useState<PurchaseOrder | null>(null);
+
+  // Supplier Bill / Payment Modals (Phase C)
+  const [paymentTargetBill, setPaymentTargetBill] = useState<SupplierBill | null>(null);
+  const [viewPaymentsBill, setViewPaymentsBill] = useState<SupplierBill | null>(null);
+  const [addBillPO, setAddBillPO] = useState<PurchaseOrder | null>(null);
+  const [newBillInvoiceNumber, setNewBillInvoiceNumber] = useState('');
+  const [newBillDate, setNewBillDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newBillAmount, setNewBillAmount] = useState<number | ''>('');
+  const [newBillNotes, setNewBillNotes] = useState('');
+  const [isSavingNewBill, setIsSavingNewBill] = useState(false);
 
   // Action confirmation modals
   const [confirmStatusAction, setConfirmStatusAction] = useState<{
@@ -520,6 +532,122 @@ export function PurchaseOrdersTab() {
                       </table>
                     </div>
                   </DrawerSection>
+
+                  {/* Supplier Bills & Invoices Section (Phase C) */}
+                  <DrawerSection title="Supplier Bills & Payments">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">
+                          Invoices and payments recorded against this Purchase Order.
+                        </span>
+                        {['Partially Received', 'Received'].includes(selectedOrder.status) && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs font-semibold text-teal-700 bg-teal-50 border-teal-200 hover:bg-teal-100"
+                            onClick={() => {
+                              setAddBillPO(selectedOrder);
+                              setNewBillInvoiceNumber('');
+                              setNewBillDate(new Date().toISOString().split('T')[0]);
+                              const unreceivedCost = selectedOrder.items.reduce((s, i) => s + (i.receivedQuantity * i.unitCost), 0);
+                              setNewBillAmount(unreceivedCost > 0 ? unreceivedCost : '');
+                              setNewBillNotes('');
+                            }}
+                          >
+                            + Add Invoice / Bill
+                          </Button>
+                        )}
+                      </div>
+
+                      {(!selectedOrder.bills || selectedOrder.bills.length === 0) ? (
+                        <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400 bg-slate-50/50">
+                          No supplier bills captured yet for this purchase order.
+                        </div>
+                      ) : (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
+                          <table className="w-full text-left">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                              <tr>
+                                <th className="py-2.5 px-3">Invoice #</th>
+                                <th className="py-2.5 px-3">Date</th>
+                                <th className="py-2.5 px-3 text-right">Bill Amount</th>
+                                <th className="py-2.5 px-3 text-right">Paid</th>
+                                <th className="py-2.5 px-3 text-right">Balance</th>
+                                <th className="py-2.5 px-3 text-center">Status</th>
+                                <th className="py-2.5 px-3 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {selectedOrder.bills.map((bill) => {
+                                const totalPaid = bill.payments ? bill.payments.reduce((s, p) => s + p.amount, 0) : (bill.totalPaid || 0);
+                                const balance = Math.max(0, Math.round((bill.amount - totalPaid) * 100) / 100);
+
+                                return (
+                                  <tr key={bill.id} className="hover:bg-slate-50/50">
+                                    <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                                      {bill.invoiceNumber}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-600">
+                                      {new Date(bill.invoiceDate).toLocaleDateString()}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800">
+                                      ₹{bill.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-700">
+                                      ₹{totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
+                                      ₹{balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <Badge
+                                        variant="outline"
+                                        className={`text-[10px] font-bold ${
+                                          bill.status === 'Paid'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : bill.status === 'Partial'
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : bill.status === 'Cancelled'
+                                            ? 'bg-slate-100 text-slate-500'
+                                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                                        }`}
+                                      >
+                                        {bill.status}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        {bill.status !== 'Paid' && bill.status !== 'Cancelled' && (
+                                          <Button
+                                            size="sm"
+                                            className="h-6 px-2 text-[11px] bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                                            onClick={() => setPaymentTargetBill({ ...bill, supplier: selectedOrder.supplier, totalPaid, balance })}
+                                          >
+                                            Pay
+                                          </Button>
+                                        )}
+                                        {bill.payments && bill.payments.length > 0 && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 px-2 text-[11px] text-indigo-600 hover:bg-indigo-50"
+                                            onClick={() => setViewPaymentsBill({ ...bill, supplier: selectedOrder.supplier })}
+                                          >
+                                            Payments ({bill.payments.length})
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </DrawerSection>
                 </>
               ) : (
                 <>
@@ -747,6 +875,145 @@ export function PurchaseOrdersTab() {
               {isUpdatingStatus ? 'Updating...' : confirmStatusAction?.targetStatus === 'Ordered' ? 'Yes, Place Order' : 'Yes, Cancel PO'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Supplier Payment Dialog */}
+      <RecordSupplierPaymentDialog
+        open={!!paymentTargetBill}
+        onOpenChange={(open) => !open && setPaymentTargetBill(null)}
+        bill={paymentTargetBill}
+        onSuccess={() => {
+          fetchOrders();
+          if (selectedOrder) {
+            api.get<PurchaseOrder>(`/api/purchase-orders/${selectedOrder.id}`).then((po) => {
+              setSelectedOrder(po);
+            }).catch(console.error);
+          }
+        }}
+      />
+
+      {/* View Payments Ledger Modal */}
+      <SupplierBillPaymentsModal
+        open={!!viewPaymentsBill}
+        onOpenChange={(open) => !open && setViewPaymentsBill(null)}
+        bill={viewPaymentsBill}
+      />
+
+      {/* Add Supplier Bill Modal (for received POs) */}
+      <Dialog open={!!addBillPO} onOpenChange={(open) => !open && setAddBillPO(null)}>
+        <DialogContent className="sm:max-w-[480px] bg-white rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="mb-2">
+            <DialogTitle className="text-xl font-bold text-slate-900">Add Supplier Invoice / Bill</DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 pt-0.5">
+              Record bill against PO <strong className="text-slate-800 font-mono">{addBillPO?.orderNumber}</strong> ({addBillPO?.supplier?.name})
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!addBillPO) return;
+              if (!newBillInvoiceNumber.trim()) {
+                toast.error('Invoice number is required');
+                return;
+              }
+              const amtNum = typeof newBillAmount === 'number' ? newBillAmount : parseFloat(String(newBillAmount));
+              if (isNaN(amtNum) || amtNum <= 0) {
+                toast.error('Bill amount must be greater than 0');
+                return;
+              }
+
+              setIsSavingNewBill(true);
+              try {
+                await api.post('/api/supplier-bills', {
+                  supplierId: addBillPO.supplierId,
+                  purchaseOrderId: addBillPO.id,
+                  invoiceNumber: newBillInvoiceNumber.trim(),
+                  invoiceDate: newBillDate,
+                  amount: amtNum,
+                  notes: newBillNotes.trim() || undefined
+                });
+                toast.success('Supplier bill captured successfully');
+                setAddBillPO(null);
+                fetchOrders();
+                if (selectedOrder && selectedOrder.id === addBillPO.id) {
+                  const refreshed = await api.get<PurchaseOrder>(`/api/purchase-orders/${selectedOrder.id}`);
+                  setSelectedOrder(refreshed);
+                }
+              } catch (err: any) {
+                toast.error(err.response?.data?.error || err.message || 'Failed to create supplier bill');
+              } finally {
+                setIsSavingNewBill(false);
+              }
+            }}
+            className="space-y-3.5 pt-1 text-xs"
+          >
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Invoice / Bill Number <span className="text-rose-500">*</span></Label>
+              <Input
+                type="text"
+                placeholder="e.g. INV-2026-041"
+                value={newBillInvoiceNumber}
+                onChange={(e) => setNewBillInvoiceNumber(e.target.value)}
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">Invoice Date <span className="text-rose-500">*</span></Label>
+                <Input
+                  type="date"
+                  value={newBillDate}
+                  onChange={(e) => setNewBillDate(e.target.value)}
+                  className="h-9 text-xs"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700">Actual Bill Amount (₹) <span className="text-rose-500">*</span></Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={newBillAmount}
+                  onChange={(e) => setNewBillAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  className="h-9 text-xs font-mono font-bold"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Notes</Label>
+              <Input
+                type="text"
+                placeholder="Optional invoice notes or reference"
+                value={newBillNotes}
+                onChange={(e) => setNewBillNotes(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <DialogClose asChild>
+                <Button type="button" variant="outline" disabled={isSavingNewBill}>
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="submit"
+                disabled={isSavingNewBill}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+              >
+                {isSavingNewBill ? 'Saving...' : 'Save Bill'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

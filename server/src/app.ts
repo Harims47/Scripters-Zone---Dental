@@ -23,6 +23,7 @@ import documentRoutes from './routes/documentRoutes';
 import treatmentRoutes from './routes/treatmentRoutes';
 import supplierRoutes from './routes/supplierRoutes';
 import purchaseOrderRoutes from './routes/purchaseOrderRoutes';
+import supplierBillRoutes from './routes/supplierBillRoutes';
 import medicineCategoryRoutes from './routes/medicineCategoryRoutes';
 
 const app = express();
@@ -48,6 +49,7 @@ app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/supplier-bills', supplierBillRoutes);
 app.use('/api/medicine-categories', medicineCategoryRoutes);
 app.use('/api/dispensings', dispensingRoutes);
 app.use('/api/billing', billingRoutes);

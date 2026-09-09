@@ -1434,6 +1434,59 @@ export async function getProcurementReportData(params: ProcurementFilterParams) 
     };
   });
 
+  // Financial metrics for Supplier Bills & Payments respecting respective date fields (Corrections 4, 6, 11)
+  const billDateFilter = buildPrismaDateFilter(startDate, endDate);
+  const billWhere: any = {
+    status: { not: 'Cancelled' }
+  };
+  if (billDateFilter) billWhere.invoiceDate = billDateFilter;
+  if (params.supplierId && params.supplierId !== 'all') billWhere.supplierId = params.supplierId;
+
+  const paymentDateFilter = buildPrismaDateFilter(startDate, endDate);
+  const paymentWhere: any = {};
+  if (paymentDateFilter) paymentWhere.date = paymentDateFilter;
+  if (params.supplierId && params.supplierId !== 'all') paymentWhere.bill = { supplierId: params.supplierId };
+
+  const [allBillsInPeriod, allPaymentsInPeriod, allUncancelledBills] = await Promise.all([
+    prisma.supplierBill.findMany({
+      where: billWhere,
+      include: { payments: true }
+    }),
+    prisma.supplierPayment.findMany({
+      where: paymentWhere,
+      include: { bill: { include: { supplier: true } } }
+    }),
+    // All uncancelled bills ever (for accurate global/supplier outstanding payable balance)
+    prisma.supplierBill.findMany({
+      where: {
+        status: { not: 'Cancelled' },
+        ...(params.supplierId && params.supplierId !== 'all' ? { supplierId: params.supplierId } : {})
+      },
+      include: { payments: true }
+    })
+  ]);
+
+  const totalBilledAmount = allBillsInPeriod.reduce((sum, b) => sum + b.amount, 0);
+  const totalPaidAmount = allPaymentsInPeriod.reduce((sum, p) => sum + p.amount, 0);
+
+  // Overall outstanding payable balance across active bills
+  const totalEverBilled = allUncancelledBills.reduce((sum, b) => sum + b.amount, 0);
+  const totalEverPaid = allUncancelledBills.reduce((sum, b) => sum + b.payments.reduce((pSum, p) => pSum + p.amount, 0), 0);
+  const totalOutstandingBalance = Math.max(0, Math.round((totalEverBilled - totalEverPaid) * 100) / 100);
+
+  // Status breakdown of bills in period
+  const billStatusCounts = {
+    Unpaid: allBillsInPeriod.filter(b => b.status === 'Unpaid').length,
+    Partial: allBillsInPeriod.filter(b => b.status === 'Partial').length,
+    Paid: allBillsInPeriod.filter(b => b.status === 'Paid').length
+  };
+
+  // Payment methods breakdown in period
+  const paymentMethodBreakdown: Record<string, number> = {};
+  allPaymentsInPeriod.forEach(p => {
+    paymentMethodBreakdown[p.method] = (paymentMethodBreakdown[p.method] || 0) + p.amount;
+  });
+
   return {
     summary: {
       totalPOs,
@@ -1441,9 +1494,40 @@ export async function getProcurementReportData(params: ProcurementFilterParams) 
       orderedPOs,
       partiallyReceivedPOs,
       receivedPOs,
-      cancelledPOs
+      cancelledPOs,
+      // Phase C financial metrics
+      totalBillsCount: allBillsInPeriod.length,
+      totalBilledAmount: Math.round(totalBilledAmount * 100) / 100,
+      totalPaidAmount: Math.round(totalPaidAmount * 100) / 100,
+      totalOutstandingBalance,
+      billStatusCounts,
+      paymentMethodBreakdown
     },
     data: rows,
+    bills: allBillsInPeriod.map(b => {
+      const bPaid = b.payments.reduce((sum, p) => sum + p.amount, 0);
+      return {
+        id: b.id,
+        invoiceNumber: b.invoiceNumber,
+        invoiceDate: b.invoiceDate.toISOString(),
+        supplierId: b.supplierId,
+        amount: b.amount,
+        totalPaid: Math.round(bPaid * 100) / 100,
+        balance: Math.max(0, Math.round((b.amount - bPaid) * 100) / 100),
+        status: b.status,
+        purchaseOrderId: b.purchaseOrderId
+      };
+    }),
+    payments: allPaymentsInPeriod.map(p => ({
+      id: p.id,
+      billId: p.supplierBillId,
+      invoiceNumber: p.bill.invoiceNumber,
+      supplierName: p.bill.supplier?.name || '—',
+      amount: p.amount,
+      method: p.method,
+      date: p.date.toISOString(),
+      notes: p.notes
+    })),
     supplierSummary: supplierSummaries,
     pagination: {
       currentPage: page,

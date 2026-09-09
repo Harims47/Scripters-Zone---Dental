@@ -237,6 +237,29 @@ export interface SupplierProcurementSummary {
   lastOrderDate: string | null;
 }
 
+export interface ProcurementReportBillItem {
+  id: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  supplierId: string;
+  amount: number;
+  totalPaid: number;
+  balance: number;
+  status: string;
+  purchaseOrderId?: string | null;
+}
+
+export interface ProcurementReportPaymentItem {
+  id: string;
+  billId: string;
+  invoiceNumber: string;
+  supplierName: string;
+  amount: number;
+  method: string;
+  date: string;
+  notes?: string | null;
+}
+
 export interface ProcurementReportResponse {
   summary: {
     totalPOs: number;
@@ -245,8 +268,20 @@ export interface ProcurementReportResponse {
     partiallyReceivedPOs: number;
     receivedPOs: number;
     cancelledPOs: number;
+    totalBillsCount?: number;
+    totalBilledAmount?: number;
+    totalPaidAmount?: number;
+    totalOutstandingBalance?: number;
+    billStatusCounts?: {
+      Unpaid: number;
+      Partial: number;
+      Paid: number;
+    };
+    paymentMethodBreakdown?: Record<string, number>;
   };
   data: ProcurementReportItem[];
+  bills?: ProcurementReportBillItem[];
+  payments?: ProcurementReportPaymentItem[];
   supplierSummary: SupplierProcurementSummary[];
   pagination: {
     currentPage: number;

@@ -159,6 +159,34 @@ export function SuppliersTab() {
       )
     },
     {
+      id: 'billed',
+      header: () => <div className="text-right">Total Billed</div>,
+      cell: ({ row }) => {
+        const amt = row.original.financials?.totalBilled || 0;
+        return <div className="text-right font-mono font-semibold text-slate-800 text-xs">₹{amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>;
+      }
+    },
+    {
+      id: 'paid',
+      header: () => <div className="text-right">Total Paid</div>,
+      cell: ({ row }) => {
+        const amt = row.original.financials?.totalPaid || 0;
+        return <div className="text-right font-mono font-semibold text-emerald-700 text-xs">₹{amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>;
+      }
+    },
+    {
+      id: 'balance',
+      header: () => <div className="text-right">Outstanding</div>,
+      cell: ({ row }) => {
+        const amt = row.original.financials?.outstandingBalance || 0;
+        return (
+          <div className={`text-right font-mono font-bold text-xs ${amt > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
+            ₹{amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
+        );
+      }
+    },
+    {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => {

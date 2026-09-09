@@ -26,19 +26,49 @@ export function ReceiveGoodsDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Optional Supplier Bill Capture state (Correction 1)
+  const [captureBill, setCaptureBill] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [billAmount, setBillAmount] = useState<number | ''>('');
+  const [billNotes, setBillNotes] = useState('');
+
   // Initialize or reset quantities whenever dialog opens
   React.useEffect(() => {
     if (purchaseOrder && open) {
       const initial: Record<string, number | ''> = {};
+      let expectedCost = 0;
       purchaseOrder.items.forEach((item) => {
         const remaining = item.orderedQuantity - item.receivedQuantity;
         // Default to remaining quantity if > 0
         initial[item.id] = remaining > 0 ? remaining : '';
+        if (remaining > 0) {
+          expectedCost += remaining * (item.unitCost || 0);
+        }
       });
       setReceiveQuantities(initial);
+      setCaptureBill(false);
+      setInvoiceNumber('');
+      setInvoiceDate(new Date().toISOString().split('T')[0]);
+      setBillAmount(expectedCost > 0 ? expectedCost : '');
+      setBillNotes('');
       setErrorMsg(null);
     }
   }, [purchaseOrder, open]);
+
+  // Recalculate suggested bill amount when receive quantities change
+  React.useEffect(() => {
+    if (purchaseOrder && captureBill && billAmount === '') {
+      let sum = 0;
+      purchaseOrder.items.forEach(item => {
+        const qty = receiveQuantities[item.id];
+        if (typeof qty === 'number' && qty > 0) {
+          sum += qty * (item.unitCost || 0);
+        }
+      });
+      if (sum > 0) setBillAmount(sum);
+    }
+  }, [receiveQuantities, captureBill, purchaseOrder, billAmount]);
 
   if (!purchaseOrder) return null;
 
@@ -84,14 +114,39 @@ export function ReceiveGoodsDialog({
       return;
     }
 
+    // Optional Bill Validation (Correction 1 & 4)
+    let billPayload: any = undefined;
+    if (captureBill) {
+      if (!invoiceNumber.trim()) {
+        setErrorMsg('Please enter the Supplier Invoice / Bill Number.');
+        return;
+      }
+      const numAmount = typeof billAmount === 'number' ? billAmount : parseFloat(String(billAmount));
+      if (isNaN(numAmount) || numAmount <= 0) {
+        setErrorMsg('Please enter a valid positive Bill Amount.');
+        return;
+      }
+      billPayload = {
+        invoiceNumber: invoiceNumber.trim(),
+        invoiceDate: invoiceDate || undefined,
+        amount: numAmount,
+        notes: billNotes.trim() || undefined
+      };
+    }
+
     setIsSubmitting(true);
     try {
       const res = await api.post<any>(`/api/purchase-orders/${purchaseOrder.id}/receive`, {
-        items: itemsToSubmit
+        items: itemsToSubmit,
+        ...(billPayload ? { bill: billPayload } : {})
       });
 
       if (res.success || res.data) {
-        toast.success('Goods received successfully. Stock updated.');
+        toast.success(
+          billPayload 
+            ? 'Goods received and Supplier Bill created successfully.' 
+            : 'Goods received successfully. Stock updated.'
+        );
         onOpenChange(false);
         onSuccess?.();
       } else {
@@ -107,7 +162,7 @@ export function ReceiveGoodsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[620px] bg-white rounded-2xl p-6 shadow-2xl">
+      <DialogContent className="sm:max-w-[660px] max-h-[90vh] overflow-y-auto bg-white rounded-2xl p-6 shadow-2xl">
         <DialogHeader className="mb-1">
           <div className="flex items-center gap-2">
             <PackageCheck className="w-5 h-5 text-emerald-600" />
@@ -194,6 +249,72 @@ export function ReceiveGoodsDialog({
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Optional Supplier Bill Capture Accordion/Toggle (Correction 1) */}
+          <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">Capture Supplier Bill / Invoice</span>
+                <span className="text-[11px] text-slate-500">Optional. Record physical bill details if delivered with goods.</span>
+              </div>
+              <Button
+                type="button"
+                variant={captureBill ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setCaptureBill(!captureBill)}
+                className="text-xs font-semibold h-7"
+              >
+                {captureBill ? 'Discard Bill Entry' : '+ Add Supplier Bill'}
+              </Button>
+            </div>
+
+            {captureBill && (
+              <div className="pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-700">Invoice / Bill Number <span className="text-rose-500">*</span></Label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. INV-9842"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-700">Invoice Date</Label>
+                  <Input
+                    type="date"
+                    value={invoiceDate}
+                    onChange={(e) => setInvoiceDate(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-700">Actual Bill Amount (₹) <span className="text-rose-500">*</span></Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    value={billAmount}
+                    onChange={(e) => setBillAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    className="h-8 text-xs font-mono font-bold bg-white"
+                  />
+                  <p className="text-[10px] text-slate-400">Can differ from PO amount if supplier discounted or modified delivery.</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-700">Invoice Notes</Label>
+                  <Input
+                    type="text"
+                    placeholder="Optional notes or batch details"
+                    value={billNotes}
+                    onChange={(e) => setBillNotes(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {errorMsg && (

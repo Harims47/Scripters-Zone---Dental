@@ -58,6 +58,10 @@ export const getPurchaseOrders = async (req: Request, res: Response, next: NextF
         supplier: true,
         items: {
           include: { medicine: true }
+        },
+        bills: {
+          include: { payments: true },
+          orderBy: { createdAt: 'desc' }
         }
       }
     });
@@ -77,6 +81,10 @@ export const getPurchaseOrderById = async (req: Request, res: Response, next: Ne
         supplier: true,
         items: {
           include: { medicine: true }
+        },
+        bills: {
+          include: { payments: true },
+          orderBy: { createdAt: 'desc' }
         }
       }
     });
@@ -406,13 +414,32 @@ export const receivePurchaseOrderItems = async (req: Request, res: Response, nex
           supplier: true,
           items: {
             include: { medicine: true }
-          }
+          },
+          bills: true
         }
       });
 
+      // 5. Optional Supplier Bill creation (atomic with goods receiving)
+      let createdBill = null;
+      if (req.body.bill) {
+        const { invoiceNumber, invoiceDate, amount, notes } = req.body.bill;
+        createdBill = await tx.supplierBill.create({
+          data: {
+            supplierId: po.supplierId,
+            purchaseOrderId: po.id,
+            invoiceNumber: invoiceNumber.trim(),
+            invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
+            amount: Number(amount),
+            notes: notes ? notes.trim() : null,
+            status: 'Unpaid'
+          }
+        });
+      }
+
       return {
         purchaseOrder: updatedPO,
-        movements: movementsCreated
+        movements: movementsCreated,
+        bill: createdBill
       };
     });
 
