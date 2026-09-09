@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { toast } from 'react-hot-toast';
-import { Plus, Trash2, Eye, Edit2, Send, PackageCheck, XCircle, AlertCircle, ShoppingCart } from 'lucide-react';
+import { Plus, Trash2, Eye, Edit2, Send, PackageCheck, XCircle, AlertCircle, ShoppingCart, Upload, Image as ImageIcon, FileText, X, Receipt, FilePlus2, CreditCard, ReceiptText, CheckCircle2, HandCoins, Coins } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -42,15 +42,30 @@ export function PurchaseOrdersTab() {
   // Receive modal
   const [receiveTargetOrder, setReceiveTargetOrder] = useState<PurchaseOrder | null>(null);
 
-  // Supplier Bill / Payment Modals (Phase C)
-  const [paymentTargetBill, setPaymentTargetBill] = useState<SupplierBill | null>(null);
-  const [viewPaymentsBill, setViewPaymentsBill] = useState<SupplierBill | null>(null);
-  const [addBillPO, setAddBillPO] = useState<PurchaseOrder | null>(null);
+  // Unified Supplier Bill & Payment Modal
+  const [billPaymentPO, setBillPaymentPO] = useState<PurchaseOrder | null>(null);
   const [newBillInvoiceNumber, setNewBillInvoiceNumber] = useState('');
   const [newBillDate, setNewBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [newBillAmount, setNewBillAmount] = useState<number | ''>('');
   const [newBillNotes, setNewBillNotes] = useState('');
-  const [isSavingNewBill, setIsSavingNewBill] = useState(false);
+  const [newBillImageUrl, setNewBillImageUrl] = useState<string | null>(null);
+  const [newBillImageName, setNewBillImageName] = useState<string>('');
+  const [previewBillImage, setPreviewBillImage] = useState<string | null>(null);
+  const [isSavingBillPayment, setIsSavingBillPayment] = useState(false);
+
+  // Payment section inside unified modal
+  const [recordPaymentNow, setRecordPaymentNow] = useState(true);
+  const [payAmount, setPayAmount] = useState<number | ''>('');
+  const [payMethod, setPayMethod] = useState<'Cash' | 'Bank Transfer' | 'UPI'>('Bank Transfer');
+  const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payNotes, setPayNotes] = useState('');
+
+  // Selected existing bill to pay if PO already has bills
+  const [selectedBillToPay, setSelectedBillToPay] = useState<string>('new');
+
+  // Supplier Bill / Payment Modals (Phase C)
+  const [paymentTargetBill, setPaymentTargetBill] = useState<SupplierBill | null>(null);
+  const [viewPaymentsBill, setViewPaymentsBill] = useState<SupplierBill | null>(null);
 
   // Action confirmation modals
   const [confirmStatusAction, setConfirmStatusAction] = useState<{
@@ -134,6 +149,37 @@ export function PurchaseOrdersTab() {
     );
     setDrawerMode('edit');
     setDrawerOpen(true);
+  };
+
+  const openBillPaymentModal = (po: PurchaseOrder) => {
+    setBillPaymentPO(po);
+    // Calculate total cost of received goods
+    const receivedCost = po.items.reduce((s, i) => s + (i.receivedQuantity * (i.unitCost || 0)), 0);
+    
+    // Check existing unpaid bill
+    const unpaidBill = po.bills?.find((b) => b.status !== 'Paid' && b.status !== 'Cancelled');
+    if (unpaidBill) {
+      setSelectedBillToPay(unpaidBill.id);
+      const totalPaid = unpaidBill.payments
+        ? unpaidBill.payments.reduce((s, p) => s + p.amount, 0)
+        : (unpaidBill.totalPaid || 0);
+      const balance = Math.max(0, Math.round((unpaidBill.amount - totalPaid) * 100) / 100);
+      setPayAmount(balance > 0 ? balance : '');
+    } else {
+      setSelectedBillToPay('new');
+      setPayAmount(receivedCost > 0 ? receivedCost : '');
+    }
+
+    setNewBillInvoiceNumber('');
+    setNewBillDate(new Date().toISOString().split('T')[0]);
+    setNewBillAmount(receivedCost > 0 ? receivedCost : '');
+    setNewBillNotes('');
+    setNewBillImageUrl(null);
+    setNewBillImageName('');
+    setRecordPaymentNow(true);
+    setPayMethod('Bank Transfer');
+    setPayDate(new Date().toISOString().split('T')[0]);
+    setPayNotes('');
   };
 
   const handleAddItemRow = () => {
@@ -232,11 +278,11 @@ export function PurchaseOrdersTab() {
       case 'Draft':
         return <Badge variant="outline" className="bg-slate-100 text-slate-700 hover:bg-slate-100">Draft</Badge>;
       case 'Ordered':
-        return <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100 border-sky-200">Ordered</Badge>;
+        return <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100 border-sky-200">Waiting for Receive</Badge>;
       case 'Partially Received':
-        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">Partially Received</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">Partially Collected</Badge>;
       case 'Received':
-        return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200">Received</Badge>;
+        return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200">Collected</Badge>;
       case 'Cancelled':
         return <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100">Cancelled</Badge>;
       default:
@@ -340,16 +386,17 @@ export function PurchaseOrdersTab() {
               </>
             )}
 
-            {/* Ordered Actions: Receive Goods, Cancel */}
+            {/* Ordered Actions: Receive / Collect Goods, Cancel */}
             {po.status === 'Ordered' && (
               <>
                 <Button
-                  size="sm"
-                  className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
-                  title="Receive Goods"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                  title="Receive / Collect Goods"
                   onClick={() => setReceiveTargetOrder(po)}
                 >
-                  <PackageCheck className="w-3.5 h-3.5 mr-1" /> Receive
+                  <Receipt className="w-4 h-4" />
                 </Button>
                 <Button
                   size="icon"
@@ -363,15 +410,40 @@ export function PurchaseOrdersTab() {
               </>
             )}
 
-            {/* Partially Received Action: Receive Goods */}
+            {/* Partially Received Action: Receive Remaining Goods, Bill & Payment */}
             {po.status === 'Partially Received' && (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                  title="Receive / Collect Remaining Goods"
+                  onClick={() => setReceiveTargetOrder(po)}
+                >
+                  <Receipt className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                  title="Bill & Payment"
+                  onClick={() => openBillPaymentModal(po)}
+                >
+                  <HandCoins className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+
+            {/* Collected (Received) Action: Bill & Payment (Unified) */}
+            {po.status === 'Received' && (
               <Button
-                size="sm"
-                className="h-7 px-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
-                title="Receive Remaining Goods"
-                onClick={() => setReceiveTargetOrder(po)}
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                title="Bill & Payment"
+                onClick={() => openBillPaymentModal(po)}
               >
-                <PackageCheck className="w-3.5 h-3.5 mr-1" /> Receive
+                <HandCoins className="w-4 h-4" />
               </Button>
             )}
           </div>
@@ -406,15 +478,15 @@ export function PurchaseOrdersTab() {
         }}
         filterSlot={
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px] h-9 bg-slate-50/50 text-xs font-medium">
+            <SelectTrigger className="w-[180px] h-9 bg-slate-50/50 text-xs font-medium">
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="Draft">Draft</SelectItem>
-              <SelectItem value="Ordered">Ordered</SelectItem>
-              <SelectItem value="Partially Received">Partially Received</SelectItem>
-              <SelectItem value="Received">Received</SelectItem>
+              <SelectItem value="Ordered">Waiting for Receive</SelectItem>
+              <SelectItem value="Partially Received">Partially Collected</SelectItem>
+              <SelectItem value="Received">Collected</SelectItem>
               <SelectItem value="Cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
@@ -546,16 +618,9 @@ export function PurchaseOrdersTab() {
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs font-semibold text-teal-700 bg-teal-50 border-teal-200 hover:bg-teal-100"
-                            onClick={() => {
-                              setAddBillPO(selectedOrder);
-                              setNewBillInvoiceNumber('');
-                              setNewBillDate(new Date().toISOString().split('T')[0]);
-                              const unreceivedCost = selectedOrder.items.reduce((s, i) => s + (i.receivedQuantity * i.unitCost), 0);
-                              setNewBillAmount(unreceivedCost > 0 ? unreceivedCost : '');
-                              setNewBillNotes('');
-                            }}
+                            onClick={() => openBillPaymentModal(selectedOrder)}
                           >
-                            + Add Invoice / Bill
+                            + Bill & Payment
                           </Button>
                         )}
                       </div>
@@ -618,6 +683,17 @@ export function PurchaseOrdersTab() {
                                     </td>
                                     <td className="py-2.5 px-3 text-right">
                                       <div className="flex items-center justify-end gap-1.5">
+                                        {bill.billImageUrl && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 px-2 text-[11px] text-teal-700 hover:bg-teal-50"
+                                            title="Preview Bill Image"
+                                            onClick={() => setPreviewBillImage(bill.billImageUrl || null)}
+                                          >
+                                            <Eye className="w-3.5 h-3.5 mr-1" /> View Bill
+                                          </Button>
+                                        )}
                                         {bill.status !== 'Paid' && bill.status !== 'Cancelled' && (
                                           <Button
                                             size="sm"
@@ -802,7 +878,7 @@ export function PurchaseOrdersTab() {
                     }}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
                   >
-                    <PackageCheck className="w-4 h-4 mr-1.5" /> Receive Goods
+                    <Receipt className="w-4 h-4 mr-1.5" /> Collect Goods
                   </Button>
                 )}
                 {selectedOrder && selectedOrder.status === 'Draft' && (
@@ -900,122 +976,442 @@ export function PurchaseOrdersTab() {
         bill={viewPaymentsBill}
       />
 
-      {/* Add Supplier Bill Modal (for received POs) */}
-      <Dialog open={!!addBillPO} onOpenChange={(open) => !open && setAddBillPO(null)}>
-        <DialogContent className="sm:max-w-[480px] bg-white rounded-2xl p-6 shadow-2xl">
+      {/* Unified Supplier Bill & Payment Modal */}
+      <Dialog open={!!billPaymentPO} onOpenChange={(open) => !open && setBillPaymentPO(null)}>
+        <DialogContent className="sm:max-w-[560px] bg-white rounded-2xl p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader className="mb-2">
-            <DialogTitle className="text-xl font-bold text-slate-900">Add Supplier Invoice / Bill</DialogTitle>
+            <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <HandCoins className="w-5 h-5 text-teal-600" />
+              Supplier Bill & Payment
+            </DialogTitle>
             <DialogDescription className="text-xs text-slate-500 pt-0.5">
-              Record bill against PO <strong className="text-slate-800 font-mono">{addBillPO?.orderNumber}</strong> ({addBillPO?.supplier?.name})
+              Manage invoice and payment for PO <strong className="text-slate-800 font-mono">{billPaymentPO?.orderNumber}</strong> ({billPaymentPO?.supplier?.name})
             </DialogDescription>
           </DialogHeader>
+
+          {/* If the PO already has bills, provide a selector: pay existing bill vs add new bill */}
+          {billPaymentPO?.bills && billPaymentPO.bills.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs mb-2">
+              <div className="font-semibold text-slate-800">Existing Bills for this PO:</div>
+              <div className="space-y-1.5">
+                {billPaymentPO.bills.map((b) => {
+                  const bPaid = b.payments ? b.payments.reduce((s, p) => s + p.amount, 0) : (b.totalPaid || 0);
+                  const bBal = Math.max(0, Math.round((b.amount - bPaid) * 100) / 100);
+                  const isSelected = selectedBillToPay === b.id;
+                  return (
+                    <div
+                      key={b.id}
+                      onClick={() => {
+                        setSelectedBillToPay(b.id);
+                        setPayAmount(bBal > 0 ? bBal : '');
+                        setRecordPaymentNow(true);
+                      }}
+                      className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="radio"
+                          name="billSelection"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="accent-teal-600"
+                        />
+                        <span className="font-mono font-bold text-slate-900">{b.invoiceNumber}</span>
+                        <span className="text-slate-500">({new Date(b.invoiceDate).toLocaleDateString()})</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-right">
+                        <span className="font-mono text-slate-600">₹{b.amount.toLocaleString()}</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${
+                            b.status === 'Paid'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          Bal: ₹{bBal.toLocaleString()}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div
+                  onClick={() => {
+                    setSelectedBillToPay('new');
+                    const recTotal = billPaymentPO.items.reduce((s, i) => s + (i.receivedQuantity * (i.unitCost || 0)), 0);
+                    setNewBillAmount(recTotal > 0 ? recTotal : '');
+                    setPayAmount(recTotal > 0 ? recTotal : '');
+                  }}
+                  className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    selectedBillToPay === 'new'
+                      ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="billSelection"
+                    checked={selectedBillToPay === 'new'}
+                    onChange={() => {}}
+                    className="accent-teal-600"
+                  />
+                  <span className="font-semibold text-teal-800">+ Add Another / New Supplier Bill</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!addBillPO) return;
-              if (!newBillInvoiceNumber.trim()) {
-                toast.error('Invoice number is required');
-                return;
-              }
-              const amtNum = typeof newBillAmount === 'number' ? newBillAmount : parseFloat(String(newBillAmount));
-              if (isNaN(amtNum) || amtNum <= 0) {
-                toast.error('Bill amount must be greater than 0');
-                return;
-              }
+              if (!billPaymentPO) return;
 
-              setIsSavingNewBill(true);
+              setIsSavingBillPayment(true);
               try {
-                await api.post('/api/supplier-bills', {
-                  supplierId: addBillPO.supplierId,
-                  purchaseOrderId: addBillPO.id,
-                  invoiceNumber: newBillInvoiceNumber.trim(),
-                  invoiceDate: newBillDate,
-                  amount: amtNum,
-                  notes: newBillNotes.trim() || undefined
-                });
-                toast.success('Supplier bill captured successfully');
-                setAddBillPO(null);
+                let targetBillId: string | null = null;
+
+                // 1. If adding a new bill
+                if (selectedBillToPay === 'new') {
+                  if (!newBillInvoiceNumber.trim()) {
+                    toast.error('Invoice number is required');
+                    setIsSavingBillPayment(false);
+                    return;
+                  }
+                  const bAmtNum = typeof newBillAmount === 'number' ? newBillAmount : parseFloat(String(newBillAmount));
+                  if (isNaN(bAmtNum) || bAmtNum <= 0) {
+                    toast.error('Bill amount must be greater than 0');
+                    setIsSavingBillPayment(false);
+                    return;
+                  }
+
+                  const billRes = await api.post<any>('/api/supplier-bills', {
+                    supplierId: billPaymentPO.supplierId,
+                    purchaseOrderId: billPaymentPO.id,
+                    invoiceNumber: newBillInvoiceNumber.trim(),
+                    invoiceDate: newBillDate,
+                    amount: bAmtNum,
+                    billImageUrl: newBillImageUrl || undefined,
+                    notes: newBillNotes.trim() || undefined
+                  });
+
+                  targetBillId = billRes?.bill?.id || (billRes as any)?.data?.id || (billRes as any)?.id;
+                } else {
+                  targetBillId = selectedBillToPay;
+                }
+
+                // 2. If recording payment
+                if (recordPaymentNow && targetBillId) {
+                  const payNum = typeof payAmount === 'number' ? payAmount : parseFloat(String(payAmount));
+                  if (!isNaN(payNum) && payNum > 0) {
+                    await api.post(`/api/supplier-bills/${targetBillId}/payments`, {
+                      amount: payNum,
+                      method: payMethod,
+                      date: payDate,
+                      notes: payNotes.trim() || undefined
+                    });
+                    toast.success(selectedBillToPay === 'new' ? 'Bill uploaded and payment recorded successfully' : 'Payment recorded successfully');
+                  } else {
+                    toast.success('Bill saved successfully (no payment recorded)');
+                  }
+                } else {
+                  toast.success('Supplier bill uploaded successfully');
+                }
+
+                setBillPaymentPO(null);
                 fetchOrders();
-                if (selectedOrder && selectedOrder.id === addBillPO.id) {
+                if (selectedOrder && selectedOrder.id === billPaymentPO.id) {
                   const refreshed = await api.get<PurchaseOrder>(`/api/purchase-orders/${selectedOrder.id}`);
                   setSelectedOrder(refreshed);
                 }
               } catch (err: any) {
-                toast.error(err.response?.data?.error || err.message || 'Failed to create supplier bill');
+                toast.error(err.response?.data?.error || err.message || 'Operation failed');
               } finally {
-                setIsSavingNewBill(false);
+                setIsSavingBillPayment(false);
               }
             }}
-            className="space-y-3.5 pt-1 text-xs"
+            className="space-y-4 pt-1 text-xs"
           >
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700">Invoice / Bill Number <span className="text-rose-500">*</span></Label>
-              <Input
-                type="text"
-                placeholder="e.g. INV-2026-041"
-                value={newBillInvoiceNumber}
-                onChange={(e) => setNewBillInvoiceNumber(e.target.value)}
-                className="h-9 text-xs"
-                required
-              />
-            </div>
+            {/* Section 1: Bill Upload (visible when selectedBillToPay === 'new') */}
+            {selectedBillToPay === 'new' && (
+              <div className="space-y-3 p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl">
+                <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 uppercase tracking-wide">
+                  <FileText className="w-3.5 h-3.5 text-teal-600" />
+                  Bill / Invoice Details
+                </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">Invoice Date <span className="text-rose-500">*</span></Label>
-                <Input
-                  type="date"
-                  value={newBillDate}
-                  onChange={(e) => setNewBillDate(e.target.value)}
-                  className="h-9 text-xs"
-                  required
-                />
+                {/* Bill Image Upload Dropzone */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Upload Physical Bill Image</Label>
+                  {!newBillImageUrl ? (
+                    <label className="border-2 border-dashed border-teal-300 hover:border-teal-500 bg-white rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-colors group">
+                      <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 group-hover:scale-105 transition-transform mb-1">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-800">
+                        Click to select bill image
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        PNG, JPG, JPEG up to 10MB
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (!file.type.startsWith('image/')) {
+                            toast.error('Please upload an image file');
+                            return;
+                          }
+                          setNewBillImageName(file.name);
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const base64 = event.target?.result as string;
+                            setNewBillImageUrl(base64);
+                            if (!newBillInvoiceNumber.trim()) {
+                              const cleanName = file.name.replace(/\.[^/.]+$/, '');
+                              setNewBillInvoiceNumber(cleanName.slice(0, 30));
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  ) : (
+                    <div className="bg-teal-50/40 border border-teal-200 rounded-xl p-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img
+                          src={newBillImageUrl}
+                          alt="Uploaded bill"
+                          className="w-10 h-10 object-cover rounded-lg border border-teal-200 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">
+                            {newBillImageName || 'Supplier Bill'}
+                          </div>
+                          <div className="text-[11px] text-teal-700 font-medium">Ready for saving</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewBillImage(newBillImageUrl)}
+                          className="h-7 text-xs px-2 text-teal-700"
+                        >
+                          <Eye className="w-3.5 h-3.5 mr-1" /> Preview
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setNewBillImageUrl(null);
+                            setNewBillImageName('');
+                          }}
+                          className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-700">Invoice / Bill Number <span className="text-rose-500">*</span></Label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. INV-2026-041"
+                    value={newBillInvoiceNumber}
+                    onChange={(e) => setNewBillInvoiceNumber(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                    required={selectedBillToPay === 'new'}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-slate-700">Invoice Date <span className="text-rose-500">*</span></Label>
+                    <Input
+                      type="date"
+                      value={newBillDate}
+                      onChange={(e) => setNewBillDate(e.target.value)}
+                      className="h-8 text-xs bg-white"
+                      required={selectedBillToPay === 'new'}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-slate-700">Bill Amount (₹) <span className="text-rose-500">*</span></Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      value={newBillAmount}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                        setNewBillAmount(val);
+                        // Also sync payAmount if recordPaymentNow is enabled and was matching
+                        if (recordPaymentNow && selectedBillToPay === 'new') {
+                          setPayAmount(val);
+                        }
+                      }}
+                      className="h-8 text-xs font-mono font-bold bg-white"
+                      required={selectedBillToPay === 'new'}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-700">Bill Notes</Label>
+                  <Input
+                    type="text"
+                    placeholder="Optional invoice notes or reference"
+                    value={newBillNotes}
+                    onChange={(e) => setNewBillNotes(e.target.value)}
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Section 2: Payment Details (Integrated in same modal) */}
+            <div className="space-y-3 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 uppercase tracking-wide">
+                  <HandCoins className="w-3.5 h-3.5 text-indigo-600" />
+                  Supplier Payment
+                </div>
+                {selectedBillToPay === 'new' && (
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 select-none">
+                    <input
+                      type="checkbox"
+                      checked={recordPaymentNow}
+                      onChange={(e) => setRecordPaymentNow(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                    />
+                    Record payment now
+                  </label>
+                )}
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-700">Actual Bill Amount (₹) <span className="text-rose-500">*</span></Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="0.00"
-                  value={newBillAmount}
-                  onChange={(e) => setNewBillAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  className="h-9 text-xs font-mono font-bold"
-                  required
-                />
-              </div>
-            </div>
+              {(recordPaymentNow || selectedBillToPay !== 'new') && (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-slate-700">Payment Amount (₹) <span className="text-rose-500">*</span></Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder="0.00"
+                        value={payAmount}
+                        onChange={(e) => setPayAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        className="h-8 text-xs font-mono font-bold bg-white"
+                        required={recordPaymentNow || selectedBillToPay !== 'new'}
+                      />
+                    </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700">Notes</Label>
-              <Input
-                type="text"
-                placeholder="Optional invoice notes or reference"
-                value={newBillNotes}
-                onChange={(e) => setNewBillNotes(e.target.value)}
-                className="h-9 text-xs"
-              />
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-slate-700">Payment Method <span className="text-rose-500">*</span></Label>
+                      <Select value={payMethod} onValueChange={(val: any) => setPayMethod(val)}>
+                        <SelectTrigger className="h-8 text-xs bg-white">
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</SelectItem>
+                          <SelectItem value="UPI">UPI</SelectItem>
+                          <SelectItem value="Cash">Cash</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-slate-700">Payment Date <span className="text-rose-500">*</span></Label>
+                      <Input
+                        type="date"
+                        value={payDate}
+                        onChange={(e) => setPayDate(e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        required={recordPaymentNow || selectedBillToPay !== 'new'}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-slate-700">Reference / Notes</Label>
+                      <Input
+                        type="text"
+                        placeholder="e.g. UTR / Cheque #"
+                        value={payNotes}
+                        onChange={(e) => setPayNotes(e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0 pt-2">
               <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isSavingNewBill}>
+                <Button type="button" variant="outline" disabled={isSavingBillPayment}>
                   Cancel
                 </Button>
               </DialogClose>
               <Button
                 type="submit"
-                disabled={isSavingNewBill}
+                disabled={isSavingBillPayment}
                 className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
               >
-                {isSavingNewBill ? 'Saving...' : 'Save Bill'}
+                {isSavingBillPayment
+                  ? 'Saving...'
+                  : selectedBillToPay !== 'new'
+                  ? 'Record Payment'
+                  : recordPaymentNow
+                  ? 'Save Bill & Record Payment'
+                  : 'Save Bill Only'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Full Preview Modal for Bill Images */}
+      {previewBillImage && (
+        <Dialog open={!!previewBillImage} onOpenChange={(open) => !open && setPreviewBillImage(null)}>
+          <DialogContent className="sm:max-w-[700px] p-4 bg-white rounded-2xl shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-teal-600" />
+                Supplier Bill Image Preview
+              </DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center p-2">
+              <img
+                src={previewBillImage}
+                alt="Supplier Bill Full Preview"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-xs"
+              />
+            </div>
+            <DialogFooter className="pt-2">
+              <Button variant="outline" size="sm" onClick={() => setPreviewBillImage(null)}>
+                Close Preview
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

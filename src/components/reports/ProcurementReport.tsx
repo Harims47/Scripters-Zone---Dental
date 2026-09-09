@@ -151,9 +151,9 @@ export function ProcurementReport({ dateRange }: ProcurementReportProps) {
       cell: ({ row }) => {
         const st = row.original.status
         let badge = <Badge variant="outline">{st}</Badge>
-        if (st === 'Received') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Received</Badge>
-        else if (st === 'Partially Received') badge = <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>
-        else if (st === 'Ordered') badge = <Badge className="bg-blue-100 text-blue-800 border-blue-200">Ordered</Badge>
+        if (st === 'Received') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Collected</Badge>
+        else if (st === 'Partially Received') badge = <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partially Collected</Badge>
+        else if (st === 'Ordered') badge = <Badge className="bg-blue-100 text-blue-800 border-blue-200">Waiting for Receive</Badge>
         else if (st === 'Cancelled') badge = <Badge className="bg-rose-100 text-rose-800 border-rose-200">Cancelled</Badge>
         return <div className="text-center">{badge}</div>
       }

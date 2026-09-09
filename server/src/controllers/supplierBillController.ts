@@ -9,6 +9,7 @@ export const createSupplierBillSchema = z.object({
     invoiceNumber: z.string().trim().min(1, 'Invoice number is required'),
     invoiceDate: z.string().optional(),
     amount: z.number().positive('Amount must be greater than 0'),
+    billImageUrl: z.string().optional().nullable(),
     notes: z.string().trim().optional()
   })
 });
@@ -121,7 +122,7 @@ export const getSupplierBillById = async (req: Request, res: Response, next: Nex
 
 export const createSupplierBill = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { supplierId, purchaseOrderId, invoiceNumber, invoiceDate, amount, notes } = req.body;
+    const { supplierId, purchaseOrderId, invoiceNumber, invoiceDate, amount, billImageUrl, notes } = req.body;
 
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
     if (!supplier) {
@@ -148,6 +149,7 @@ export const createSupplierBill = async (req: Request, res: Response, next: Next
         invoiceNumber: invoiceNumber.trim(),
         invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
         amount: Number(amount),
+        billImageUrl: billImageUrl || null,
         notes: notes ? notes.trim() : null,
         status: 'Unpaid'
       },

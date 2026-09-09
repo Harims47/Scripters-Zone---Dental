@@ -113,13 +113,14 @@ model Consultation {
 }
 
 model MedicineCategory {
-  id          String     @id @default(uuid())
-  name        String     @unique
+  id          String                     @id @default(uuid())
+  name        String                     @unique
   description String?
-  status      String     @default("Active")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  status      String                     @default("Active")
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
   medicines   Medicine[]
+  suppliers   SupplierMedicineCategory[]
 }
 
 model Medicine {
@@ -245,17 +246,29 @@ model TreatmentPlanItem {
 }
 
 model Supplier {
-  id             String          @id @default(uuid())
+  id             String                     @id @default(uuid())
   name           String
   contactPerson  String?
   phone          String?
   email          String?
   address        String?
-  status         String          @default("Active") // "Active" | "Inactive"
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  status         String                     @default("Active") // "Active" | "Inactive"
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
   purchaseOrders PurchaseOrder[]
   bills          SupplierBill[]
+  categories     SupplierMedicineCategory[]
+}
+
+model SupplierMedicineCategory {
+  id                 String           @id @default(uuid())
+  supplierId         String
+  medicineCategoryId String
+  createdAt          DateTime         @default(now())
+  supplier           Supplier         @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  medicineCategory   MedicineCategory @relation(fields: [medicineCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, medicineCategoryId])
 }
 
 model PurchaseOrder {
@@ -292,6 +305,7 @@ model SupplierBill {
   invoiceNumber   String
   invoiceDate     DateTime          @default(now())
   amount          Float
+  billImageUrl    String?           @db.Text
   notes           String?
   status          String            @default("Unpaid") // "Unpaid" | "Partial" | "Paid" | "Cancelled"
   createdAt       DateTime          @default(now())

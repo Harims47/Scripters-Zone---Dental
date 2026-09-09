@@ -38,7 +38,6 @@ export function PatientCompleteHistory({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedVisits, setExpandedVisits] = useState<Record<string, boolean>>({})
-  const [showRoadmap, setShowRoadmap] = useState(false)
 
   const loadHistory = async () => {
     setLoading(true)
@@ -46,10 +45,8 @@ export function PatientCompleteHistory({
     try {
       const res = await api.get<PatientHistoryData>(`/api/patients/${patientId}/history`)
       setData(res)
-      // By default, expand the newest (first) visit if available
-      if (res.visits && res.visits.length > 0) {
-        setExpandedVisits({ [res.visits[0].id]: true })
-      }
+      // By default, collapse all visits
+      setExpandedVisits({})
     } catch (err: any) {
       console.error('Failed to load patient history', err)
       setError(err.response?.data?.error || 'Failed to load patient history')
@@ -119,9 +116,8 @@ export function PatientCompleteHistory({
     )
   }
 
-  const { patient, visits, treatmentPlan } = data
-  const isReturning = visits.some(v => v.status === 'COMPLETED')
-  const plannedItems = treatmentPlan?.items?.filter(item => item.status === 'Planned') || []
+  const { patient, visits } = data
+  const isExisting = visits.some(v => v.status === 'COMPLETED')
 
   return (
     <div className="flex flex-col h-full bg-slate-50 overflow-y-auto">
@@ -147,11 +143,8 @@ export function PatientCompleteHistory({
             <div className="space-y-1">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-xl font-bold text-slate-900 tracking-tight">{patient.name}</h2>
-                <Badge variant="outline" className="font-mono text-xs text-slate-600 bg-slate-50">
-                  {patient.id}
-                </Badge>
-                <Badge className={isReturning ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>
-                  {isReturning ? 'Returning Patient' : 'New Patient'}
+                <Badge className={isExisting ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>
+                  {isExisting ? 'Existing Patient' : 'New Patient'}
                 </Badge>
               </div>
 
@@ -168,47 +161,14 @@ export function PatientCompleteHistory({
               </div>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            {onEditPatient && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={onEditPatient}
-                className="h-8 text-xs font-medium border-slate-200"
-              >
-                Edit Patient
-              </Button>
-            )}
-            {onClose && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={onClose}
-                className="h-8 text-xs text-slate-500 hover:text-slate-800"
-              >
-                Close
-              </Button>
-            )}
-          </div>
         </div>
 
-        {/* Action / Roadmap Bar */}
+        {/* Action Bar */}
         <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
             <span className="text-slate-500">
               Total Visits: <strong className="text-slate-900 font-semibold">{visits.length}</strong>
             </span>
-            {plannedItems.length > 0 && (
-              <button 
-                onClick={() => setShowRoadmap(!showRoadmap)}
-                className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 transition-colors"
-              >
-                <ClipboardList className="w-3.5 h-3.5" />
-                {plannedItems.length} Planned Treatment{plannedItems.length > 1 ? 's' : ''} Roadmap
-                {showRoadmap ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
-              </button>
-            )}
           </div>
 
           {visits.length > 0 && (
@@ -229,33 +189,6 @@ export function PatientCompleteHistory({
             </div>
           )}
         </div>
-
-        {/* Patient-Level Planned Treatments Roadmap Drawer/Section */}
-        {showRoadmap && plannedItems.length > 0 && (
-          <div className="mt-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-indigo-950 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-indigo-600" /> Patient Treatment Plan Roadmap (Planned)
-              </span>
-              <span className="text-[11px] text-indigo-600 italic">Patient-level roadmap across visits</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
-              {plannedItems.map(item => (
-                <div key={item.id} className="bg-white p-2.5 rounded-lg border border-indigo-100/70 shadow-xs flex items-start justify-between text-xs">
-                  <div>
-                    <div className="font-semibold text-slate-800">
-                      {item.catalogItem?.name || 'Procedure'} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
-                    </div>
-                    {item.notes && <div className="text-slate-500 mt-0.5">{item.notes}</div>}
-                  </div>
-                  <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] shrink-0">
-                    Planned
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 2. VISIT-BY-VISIT HISTORY */}

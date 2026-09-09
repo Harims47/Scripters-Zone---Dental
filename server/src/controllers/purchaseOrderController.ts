@@ -422,7 +422,7 @@ export const receivePurchaseOrderItems = async (req: Request, res: Response, nex
       // 5. Optional Supplier Bill creation (atomic with goods receiving)
       let createdBill = null;
       if (req.body.bill) {
-        const { invoiceNumber, invoiceDate, amount, notes } = req.body.bill;
+        const { invoiceNumber, invoiceDate, amount, billImageUrl, notes } = req.body.bill;
         createdBill = await tx.supplierBill.create({
           data: {
             supplierId: po.supplierId,
@@ -430,6 +430,7 @@ export const receivePurchaseOrderItems = async (req: Request, res: Response, nex
             invoiceNumber: invoiceNumber.trim(),
             invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
             amount: Number(amount),
+            billImageUrl: billImageUrl || null,
             notes: notes ? notes.trim() : null,
             status: 'Unpaid'
           }

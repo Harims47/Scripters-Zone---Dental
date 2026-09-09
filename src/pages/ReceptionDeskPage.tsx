@@ -1773,17 +1773,35 @@ export function ReceptionDeskPage() {
         >
           <SheetTitle className="sr-only">{editDrawerMode === 'view' ? 'View Patient Details' : 'Edit Patient Details'}</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
-            <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-              <Users className="w-5 h-5 text-teal-600" />
-              {editDrawerMode === 'view' ? 'View Patient Details' : 'Edit Patient Details'}
-            </h2>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-teal-600" />
+                {editDrawerMode === 'view' ? 'View Patient Details' : 'Edit Patient Details'}
+              </h2>
+              {(() => {
+                const patVisits = visits.filter(v => v.patientId === editingPatientId && v.status !== 'CANCELLED');
+                const isNew = patVisits.length <= 1;
+                return (
+                  <Badge
+                    variant="outline"
+                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                      isNew
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                        : 'bg-blue-50 text-blue-700 border-blue-300'
+                    }`}
+                  >
+                    {isNew ? 'New Patient' : 'Existing Patient'}
+                  </Badge>
+                );
+              })()}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6">
               <DrawerSection title="Patient Information">
                 <div className="space-y-4">
-                  <div className="flex justify-center mb-6">
+                  <div className="flex flex-col items-center justify-center mb-6 gap-2">
                     {editDrawerMode === 'view' ? (
                       (regData as any).photoUrl ? (
                         <img src={(regData as any).photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />
@@ -1802,7 +1820,7 @@ export function ReceptionDeskPage() {
                           onCancel={() => setIsCameraOpen(false)}
                         />
                       ) : (
-                        <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                        <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl w-full">
                           {(regData as any).photoUrl ? (
                             <div className="flex flex-col items-center gap-3">
                               <img src={(regData as any).photoUrl} alt="Patient" className="w-24 h-24 rounded-md object-cover border-4 border-white shadow-sm" />

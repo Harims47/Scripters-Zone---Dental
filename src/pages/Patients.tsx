@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, AlertCircle, Calendar, Camera, Eye } from 'lucide-react';
+import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
@@ -256,10 +256,10 @@ export function PatientsPage() {
       id: "status",
       header: "Status",
       cell: ({ row }) => {
-        const isReturning = visits.some(v => v.patientId === row.original.id && v.status === 'COMPLETED');
-        return isReturning ? (
+        const isExisting = visits.some(v => v.patientId === row.original.id && v.status === 'COMPLETED');
+        return isExisting ? (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200/60 shadow-sm">
-            Returning
+            Existing
           </span>
         ) : (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-sm">

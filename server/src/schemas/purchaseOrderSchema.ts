@@ -40,6 +40,7 @@ export const receivePurchaseOrderItemsSchema = z.object({
       invoiceNumber: z.string().trim().min(1, 'Invoice number is required'),
       invoiceDate: z.string().optional(),
       amount: z.number().positive('Bill amount must be greater than 0'),
+      billImageUrl: z.string().optional().nullable(),
       notes: z.string().trim().optional()
     }).optional()
   })

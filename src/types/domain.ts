@@ -173,9 +173,11 @@ export interface Supplier {
   status: 'Active' | 'Inactive'
   createdAt: string
   updatedAt?: string
+  categories?: MedicineCategory[]
   _count?: {
     purchaseOrders: number
     bills?: number
+    categories?: number
   }
   financials?: {
     totalBills: number
@@ -226,6 +228,7 @@ export interface SupplierBill {
   invoiceNumber: string
   invoiceDate: string
   amount: number
+  billImageUrl?: string | null
   totalPaid?: number
   balance?: number
   notes?: string | null

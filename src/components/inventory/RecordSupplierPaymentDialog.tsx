@@ -6,7 +6,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../ui/dialog';
-import { CreditCard, AlertCircle, IndianRupee } from 'lucide-react';
+import { CreditCard, AlertCircle, IndianRupee, HandCoins } from 'lucide-react';
 import type { SupplierBill } from '../../types/domain';
 
 interface RecordSupplierPaymentDialogProps {
@@ -94,7 +94,7 @@ export function RecordSupplierPaymentDialog({
         <DialogHeader className="mb-2">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center font-bold">
-              <IndianRupee className="w-5 h-5" />
+              <HandCoins className="w-5 h-5" />
             </div>
             <div>
               <DialogTitle className="text-xl font-bold text-slate-900">Record Supplier Payment</DialogTitle>
