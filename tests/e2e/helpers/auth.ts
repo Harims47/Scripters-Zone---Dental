@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test';
+import { dismissLowStockAlertIfPresent } from './lowStockHelper';
 
 export interface UserCredentials {
   username: string;
@@ -33,8 +34,30 @@ export async function loginAs(page: Page, roleKey: keyof typeof TEST_USERS) {
  * Logout helper
  */
 export async function logout(page: Page) {
-  const logoutBtn = page.getByRole('button', { name: /Logout/i }).first();
-  await expect(logoutBtn).toBeVisible();
-  await logoutBtn.click();
-  await page.waitForURL('**/login');
+  // If Low Stock modal is currently overlaying the page, dismiss it so background is clickable
+  await dismissLowStockAlertIfPresent(page, 4000);
+
+  // Sidebar logout button is inside aside
+  const sidebarLogout = page.locator('aside button').filter({ hasText: 'Logout' }).first();
+  if (await sidebarLogout.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await sidebarLogout.click();
+  } else {
+    // Topbar fallback
+    const userMenuTrigger = page.locator('header .cursor-pointer').last();
+    if (await userMenuTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await userMenuTrigger.click();
+      const menuLogout = page.getByRole('menuitem', { name: /Logout/i });
+      if (await menuLogout.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await menuLogout.click();
+      }
+    }
+  }
+
+  // Wait for redirect to login
+  await page.waitForURL('**/login', { timeout: 10000 });
 }
+
+
+
+
+

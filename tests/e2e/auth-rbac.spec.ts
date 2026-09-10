@@ -47,6 +47,7 @@ test.describe('Authentication and RBAC', () => {
     await expect(page).toHaveURL(/.*\/login/);
   });
 
+
   test('Receptionist Boundaries - Inventory blocked', async ({ page }) => {
     await loginAs(page, 'receptionist');
     await page.goto('/inventory');

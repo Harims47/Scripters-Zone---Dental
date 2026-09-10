@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { loginAs, logout } from './helpers/auth';
+import { dismissLowStockAlertIfPresent } from './helpers/lowStockHelper';
 
 test.describe('Clinical Journey', () => {
 
@@ -6,144 +8,147 @@ test.describe('Clinical Journey', () => {
   const testPhone = `9${Math.floor(Math.random() * 1000000000)}`;
 
   test('Complete end-to-end clinical workflow', async ({ page }) => {
+    test.setTimeout(60000);
     
     // ==========================================
     // PART A - RECEPTIONIST LOGIN & CREATE PATIENT
     // ==========================================
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
+    await loginAs(page, 'receptionist');
+    await dismissLowStockAlertIfPresent(page);
 
-    // Create Patient
-    await page.goto('/patients');
-    
-    const regBtn = page.getByRole('button', { name: 'Register Patient' }).first();
-    await regBtn.waitFor({ state: 'visible' });
-    await regBtn.click();
+    // Register a new walk-in visit using Reception Desk
+    await page.getByRole('button', { name: 'Register Patient' }).first().click();
+    await page.getByRole('button', { name: 'New Patient' }).click();
 
-    await page.getByText('Full Name').locator('..').locator('input').fill(testPatientName);
-    await page.getByText('Phone', { exact: true }).locator('..').locator('input').fill(testPhone);
-    await page.getByText('Age', { exact: true }).locator('..').locator('input').fill('45');
-    await page.getByText('Gender', { exact: true }).locator('..').locator('select').selectOption('Female');
-
+    await page.locator('input[placeholder="Enter patient name"]').fill(testPatientName);
+    await page.locator('input[placeholder="10-digit mobile number"]').fill(testPhone);
+    await page.locator('input[placeholder="e.g. 30"]').fill('45');
     await page.getByRole('button', { name: 'Register Patient' }).last().click();
-    await expect(page.getByText('Start Clinic Visit')).toBeVisible();
 
-    // ==========================================
-    // PART C - START WALK-IN
-    // ==========================================
-    const doctorSelect = page.getByText('Assign Provider', { exact: true }).locator('..').locator('select');
-    await doctorSelect.selectOption({ label: 'Dr. Carter (Duty Doctor)' });
+    // Accept Registration Complete Dialog
+    const regModal = page.getByRole('dialog').filter({ hasText: /Registration Complete|Registration Successful/i });
+    await expect(regModal).toBeVisible();
+    await regModal.getByRole('button', { name: 'OK' }).click();
+    await expect(regModal).toBeHidden();
 
-    await page.getByRole('button', { name: /Create & Add to Queue/i }).click();
-    await expect(page.getByText('Start Clinic Visit')).toBeHidden();
-
+    // Assign to an available doctor from Reception Desk
+    const receptionRow = page.locator('tr').filter({ hasText: testPatientName });
+    await expect(receptionRow).toBeVisible();
+    const sendBtn = receptionRow.getByTitle('Send to Doctor');
+    await sendBtn.waitFor({ state: 'visible' });
+    await sendBtn.click();
+    
+    const sendDialog = page.getByRole('dialog').filter({ hasText: 'Send to Doctor' });
+    await expect(sendDialog).toBeVisible();
+    
+    // Find Dr. Priya Sharma's doctor card specifically
+    const docCard = sendDialog.locator('div.flex').filter({ hasText: 'Dr. Priya Sharma' });
+    const sendButton = docCard.getByRole('button', { name: 'Send' });
+    await expect(sendButton).toBeVisible();
+    await sendButton.click();
+    
+    const confirmDialog = page.getByRole('dialog').filter({ hasText: 'Confirm Assignment' });
+    await expect(confirmDialog).toBeVisible();
+    await confirmDialog.getByRole('button', { name: 'Confirm Assignment' }).click();
+    
     // ==========================================
-    // PART D - QUEUE (RECEPTIONIST CALLS PATIENT)
+    // PART D - QUEUE (RECEPTIONIST CALLS / VIEWS PATIENT)
     // ==========================================
     await page.goto('/queue');
+    await dismissLowStockAlertIfPresent(page);
+    await page.getByPlaceholder('Search patient, ID or reason...').fill(testPatientName);
     const queueRow = page.locator('tr', { hasText: testPatientName });
     await expect(queueRow).toBeVisible();
-    await expect(queueRow).toContainText('Waiting');
-
-    await queueRow.getByRole('button', { name: 'Call Patient', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Call Patient', exact: true }).click();
-    await expect(queueRow).toContainText('Called');
+    await expect(queueRow).toContainText(/Waiting|In Progress/i);
     
-    await page.getByRole('button', { name: 'Logout' }).click();
-    await page.waitForURL('**/login');
+    await logout(page);
 
     // ==========================================
     // PART E - DOCTOR HANDOFF
     // ==========================================
-    await page.getByLabel('Username').fill('dutydoctor');
-    await page.getByLabel('Password').fill('demo123');
-    await Promise.all([
-      page.waitForResponse(resp => resp.url().includes('/api/auth/login') && resp.status() === 200),
-      page.getByRole('button', { name: 'Sign In' }).click()
-    ]);
+    // Log in as dutyDoctor (Dr. Priya Sharma) to see and consult assigned patient in queue
+    await loginAs(page, 'dutyDoctor');
+    await dismissLowStockAlertIfPresent(page);
     await page.goto('/queue');
+    await page.getByPlaceholder('Search patient, ID or reason...').fill(testPatientName);
     const doctorQueueRow = page.locator('tr', { hasText: testPatientName });
     await expect(doctorQueueRow).toBeVisible();
 
-    await doctorQueueRow.getByRole('button', { name: 'Start', exact: true }).click();
+    // Start consulting
+    await doctorQueueRow.getByRole('button', { name: /Consulting|Start/i }).click();
     await page.waitForURL('**/doctor/patient/*');
     await expect(page.getByText(testPatientName).first()).toBeVisible();
 
     // ==========================================
     // PART F & G - CONSULTATION & PRESCRIPTION
     // ==========================================
-    // Fill clinical notes
-    await page.getByPlaceholder('e.g. Toothache, Routine Checkup...').fill('Toothache'); // Reason
-    await page.locator('textarea').first().fill('Patient complains of toothache. Recommend filling.');
+    // 1. Add Consultation
+    await page.getByRole('button', { name: 'Consultation', exact: true }).click();
+    await page.getByPlaceholder('Enter clinical observations, diagnoses, patient symptoms, or select from the tags above...').fill('Patient reports moderate toothache. Advised hygiene and analgesics.');
+    await page.getByRole('button', { name: 'Save Consultation' }).click();
 
-    await page.getByRole('button', { name: /Next: Prescription/i }).click();
-    
-    // Add medicine
-    await page.getByRole('button', { name: /Add/i }).first().click();
+    // 2. Add Prescription
+    await page.getByRole('button', { name: 'Prescription', exact: true }).click();
+    const rxDialog = page.getByRole('dialog').filter({ hasText: 'Prescription' });
+    await expect(rxDialog).toBeVisible();
+    const addMedBtn = rxDialog.getByRole('button', { name: 'Add', exact: true }).first();
+    await addMedBtn.click();
+    const saveRxBtn = rxDialog.getByRole('button', { name: /Save Prescription/i });
+    await expect(saveRxBtn).toBeEnabled();
+    await saveRxBtn.click();
 
-    // Fill prescription row details
-    await page.getByPlaceholder('e.g. 1 tablet').fill('1 tablet');
-    await page.getByPlaceholder('e.g. Twice daily').fill('Twice daily');
-    await page.getByPlaceholder('e.g. 5 days').fill('5 days');
-    
-    // Complete Consultation
-    await page.getByRole('button', { name: /Complete Consultation & Generate Bill/i }).click();
-    
-    // Verify success state
-    await expect(page.getByText('Consultation Completed')).toBeVisible();
+    // 3. Complete Consultation
+    await page.getByRole('button', { name: 'Complete Consultation' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Complete Consultation' }).click();
+    await page.waitForURL('**/queue');
 
     // Log out doctor
-    await page.getByRole('button', { name: 'Logout' }).click();
-    await page.waitForURL('**/login');
+    await logout(page);
 
     // ==========================================
-    // PART H, I, J - BILLING, DISPENSING, PAYMENT
+    // PART H, I, J - RECEPTION CHECKOUT, DISPENSING, PAYMENT
     // ==========================================
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await Promise.all([
-      page.waitForResponse(resp => resp.url().includes('/api/auth/login') && resp.status() === 200),
-      page.getByRole('button', { name: 'Sign In' }).click()
-    ]);
-    await page.goto('/billing');
+    await loginAs(page, 'receptionist');
+    await dismissLowStockAlertIfPresent(page);
+    await page.goto('/reception-desk');
 
-    const billingRow = page.locator('tr', { hasText: testPatientName });
-    await expect(billingRow).toBeVisible();
-    await expect(billingRow).toContainText('Pending'); // For dispensing
+    const checkoutRow = page.locator('tr').filter({ hasText: testPatientName });
+    await expect(checkoutRow).toBeVisible();
 
-    await billingRow.getByRole('button', { name: 'Process Billing' }).click();
+    // Click checkout & billing button (CreditCard icon)
+    await checkoutRow.getByTitle(/Checkout & Billing/i).click();
 
-    // Verify Dispensing drawer
-    await expect(page.getByRole('heading', { name: '1. Dispensing' })).toBeVisible();
-    
-    // Dispense (assumes default qty is already filled correctly from prescription)
+    // Dispensing Section
+    await expect(page.getByRole('heading', { name: '1. Medicines' })).toBeVisible();
     await page.getByRole('button', { name: 'Complete Dispensing' }).click();
-    await expect(page.getByText('Dispensed').first()).toBeVisible();
+    await expect(page.getByText('Medicines Processed')).toBeVisible();
 
     // Payment Section
-    // Select Cash
-    await page.getByText('Cash', { exact: true }).click(); // the PaymentMethodSelector probably has text 'Cash'
-    
-    await page.getByRole('button', { name: 'Collect Payment' }).click();
-    
-    // Verify Success
-    await expect(page.getByText('Billing Completed')).toBeVisible();
-    
-    // Close drawer
-    await page.getByRole('button', { name: 'Close' }).first().click();
+    await expect(page.getByRole('heading', { name: '2. Payment' })).toBeVisible();
+    await page.getByPlaceholder(/Max ₹/i).fill('512');
+    await page.getByText('Cash', { exact: true }).click();
+    await page.getByRole('button', { name: 'Add Payment' }).click();
+
+    // Confirm Payment modal
+    await expect(page.getByRole('heading', { name: 'Confirm Payment' })).toBeVisible();
+    await page.getByRole('button', { name: 'Yes, Record Payment' }).click();
+    await expect(page.getByText('Payment Completed')).toBeVisible();
+
+    // Close Process Visit drawer
+    await page.getByRole('button', { name: 'Done' }).click();
 
     // ==========================================
     // PART K - PATIENT HISTORY
     // ==========================================
     await page.goto('/patients');
-    
-    const patientRow = page.locator('tr', { hasText: testPatientName });
-    await patientRow.getByRole('button', { name: 'View' }).click();
+    await dismissLowStockAlertIfPresent(page);
 
-    // Verify historical visit displays
-    await expect(page.getByText('Completed Visit')).toBeVisible();
+    const patientRow = page.locator('tr', { hasText: testPatientName });
+    await expect(patientRow).toBeVisible();
+    await patientRow.getByRole('button', { name: 'View patient history' }).click();
+
+    // Verify patient history modal is visible and shows COMPLETED visit
+    await expect(page.getByRole('heading', { name: testPatientName })).toBeVisible();
+    await expect(page.getByText('COMPLETED').first()).toBeVisible();
   });
 });

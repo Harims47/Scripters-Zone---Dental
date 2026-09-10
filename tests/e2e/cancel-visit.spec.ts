@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginAs } from './helpers/auth';
+import { dismissLowStockAlertIfPresent } from './helpers/lowStockHelper';
 
 test.describe('Phase 9.1: Cancel Visit & Payment Status', () => {
 
@@ -11,22 +12,28 @@ test.describe('Phase 9.1: Cancel Visit & Payment Status', () => {
     await loginAs(page, 'receptionist');
     await expect(page).toHaveURL(/.*\/reception-desk/);
 
+    // Dismiss Low Stock Alert if modal is blocking the reception page
+    await dismissLowStockAlertIfPresent(page);
+
     // 2. Verify Payment Status column header exists
     await expect(page.locator('th:has-text("Payment Status")')).toBeVisible();
 
     // 3. Register a new walk-in visit using Reception Desk drawer
     await page.getByRole('button', { name: 'Register Patient' }).first().click();
     
+    // Switch to New Patient mode
+    await page.getByRole('button', { name: 'New Patient' }).click();
+
     // Fill required details
-    await page.locator('input[placeholder="Enter full name"]').fill(testPatientName);
+    await page.locator('input[placeholder="Enter patient name"]').fill(testPatientName);
     await page.locator('input[placeholder="10-digit mobile number"]').fill(testPhone);
-    await page.locator('input[placeholder="Age"]').fill('25');
+    await page.locator('input[placeholder="e.g. 30"]').fill('25');
 
     // Submit registration
     await page.getByRole('button', { name: 'Register Patient' }).last().click();
     
-    // Accept Registration Successful Dialog
-    await expect(page.getByRole('heading', { name: 'Registration Successful' })).toBeVisible();
+    // Accept Registration Complete Dialog
+    await expect(page.getByRole('heading', { name: /Registration Complete|Registration Successful/i })).toBeVisible();
     await page.getByRole('button', { name: 'OK' }).click();
 
     // 4. Find the newly created visit row

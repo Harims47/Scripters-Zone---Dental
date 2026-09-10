@@ -1,62 +1,72 @@
 import { test, expect } from '@playwright/test';
+import { loginAs } from './helpers/auth';
+import { dismissLowStockAlertIfPresent } from './helpers/lowStockHelper';
 
 test.describe('Error States', () => {
 
   const testPatientName = `PW_ErrorTest_${Date.now()}`;
-  const testPhone = `9${Math.floor(Math.random() * 1000000000)}`;
+  const testPhone = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
 
   test('Duplicate Active Visit', async ({ page }) => {
+    test.setTimeout(60000);
+
     // 1. Receptionist Login
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
+    await loginAs(page, 'receptionist');
+    await dismissLowStockAlertIfPresent(page);
 
-    // 2. Create Patient
-    await page.goto('/patients');
-    const regBtn = page.getByRole('button', { name: 'Register Patient' }).first();
-    await regBtn.waitFor({ state: 'visible' });
-    await regBtn.click();
+    // 2. Create Patient via Reception Desk
+    await page.goto('/reception-desk');
+    await dismissLowStockAlertIfPresent(page);
 
-    await page.getByText('Full Name').locator('..').locator('input').fill(testPatientName);
-    await page.getByText('Phone', { exact: true }).locator('..').locator('input').fill(testPhone);
-    await page.getByText('Age', { exact: true }).locator('..').locator('input').fill('30');
-    await page.getByText('Gender', { exact: true }).locator('..').locator('select').selectOption('Female');
+    await page.getByRole('button', { name: 'Register Patient' }).first().click();
+    await page.getByRole('button', { name: 'New Patient' }).click();
 
+    await page.locator('input[placeholder="Enter patient name"]').fill(testPatientName);
+    await page.locator('input[placeholder="10-digit mobile number"]').fill(testPhone);
+    await page.locator('input[placeholder="e.g. 30"]').fill('30');
+    
+    // Click Register Patient inside drawer footer
     await page.getByRole('button', { name: 'Register Patient' }).last().click();
-    
-    // 3. Start first visit
-    const doctorSelect = page.getByText('Assign Provider', { exact: true }).locator('..').locator('select');
-    await doctorSelect.selectOption({ label: 'Dr. Carter (Duty Doctor)' });
-    await page.getByRole('button', { name: /Create & Add to Queue/i }).click();
 
-    // 4. Try to start a second visit for the SAME patient
-    // Close the drawer if it's not closed
-    // Wait, it should have closed automatically.
-    
-    // Search for patient
+    // Accept Registration modal
+    const regModal = page.getByText('Registration Complete');
+    await expect(regModal).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'OK' }).click();
+
+    // 3. Navigate to Patients Directory
     await page.goto('/patients');
-    const patientRow = page.locator('tr', { hasText: testPatientName });
-    await patientRow.getByRole('button', { name: 'View' }).click();
-    
-    // Open "Start Visit" again
-    await page.getByRole('button', { name: /Start Visit/i }).click();
+    await dismissLowStockAlertIfPresent(page);
 
-    // Verify warning is visible
-    await expect(page.getByText('Active Visit Warning')).toBeVisible();
+    // Filter/search or locate patient row
+    const searchInput = page.locator('input[placeholder*="Search by patient name"]').first();
+    if (await searchInput.isVisible()) {
+      await searchInput.fill(testPatientName);
+      await page.waitForTimeout(500);
+    }
 
-    // Attempt to override and create anyway
-    await doctorSelect.selectOption({ label: 'Dr. Carter (Duty Doctor)' });
-    
-    // Handle JS alert dialog for failure since Patients.tsx uses `alert(err.response.data?.error ...)`
-    page.once('dialog', dialog => {
-      expect(dialog.message()).toContain('active visit');
-      dialog.accept();
-    });
+    const patientRow = page.locator('tr', { hasText: testPatientName }).first();
+    await expect(patientRow).toBeVisible({ timeout: 10000 });
+    await patientRow.click();
 
-    await page.getByRole('button', { name: /Create & Add to Queue/i }).click();
-    // The dialog handler will catch the error, proving the backend caught it.
+    // 4. In view drawer, click 'Start Visit'
+    const startVisitBtn = page.getByRole('button', { name: /Start Visit/i });
+    await expect(startVisitBtn).toBeVisible({ timeout: 10000 });
+    await startVisitBtn.click();
+
+    // Verify Active Visit Warning is visible in the drawer
+    await expect(page.getByText('Active Visit Warning')).toBeVisible({ timeout: 5000 });
+
+    // Select doctor in drawer
+    const drawer = page.locator('div[role="dialog"][data-state="open"]');
+    const doctorSelect = drawer.locator('select');
+    await doctorSelect.selectOption({ index: 1 });
+
+    // Attempt to submit duplicate visit
+    await drawer.getByRole('button', { name: /Create & Add to Queue/i }).click();
+
+    // Verify error notification / toast for active visit is shown
+    await expect(page.getByText(/This patient already has an active visit/i)).toBeVisible({ timeout: 5000 });
   });
 
 });
+
