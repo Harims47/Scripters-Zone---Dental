@@ -14,12 +14,14 @@ import {
   deactivateMedicine,
   reactivateMedicine
 } from '../controllers/inventoryController';
+import { getLowStockAlerts } from '../controllers/lowStockController';
 
 const router = Router();
 
 router.use(requireAuth);
 
 router.get('/export', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), exportInventory);
+router.get('/low-stock-alerts', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getLowStockAlerts);
 router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getInventory);
 router.get('/:id/history', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getMedicineStockHistory);
 router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getMedicine);

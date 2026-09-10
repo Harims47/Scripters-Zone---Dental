@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom"
 import { Sidebar } from "./sidebar"
 import { Topbar } from "./topbar"
 import { cn } from "../../lib/utils"
+import { LowStockAlertModal } from "../inventory/LowStockAlertModal"
 
 export function AppShell() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -24,6 +25,9 @@ export function AppShell() {
             <Outlet />
           </div>
         </main>
+
+        {/* Global Operational Alerts */}
+        <LowStockAlertModal />
       </div>
     </div>
   )

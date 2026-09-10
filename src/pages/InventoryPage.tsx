@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { Package, Search, Eye, Edit2, Trash2, Plus, Power, RotateCcw } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -32,7 +33,18 @@ type InventoryItem = Medicine
 
 export function InventoryPage() {
   const { currentUser } = useAuth()
-  const [activeTab, setActiveTab] = useState<'items' | 'orders' | 'suppliers' | 'categories'>('items')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = (searchParams.get('tab') as 'items' | 'orders' | 'suppliers' | 'categories') || 'items'
+  const preselectedMedicineId = searchParams.get('createForMedicine') || undefined
+
+  const [activeTab, setActiveTab] = useState<'items' | 'orders' | 'suppliers' | 'categories'>(initialTab)
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') as 'items' | 'orders' | 'suppliers' | 'categories'
+    if (tabParam && ['items', 'orders', 'suppliers', 'categories'].includes(tabParam)) {
+      setActiveTab(tabParam)
+    }
+  }, [searchParams])
 
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -440,7 +452,7 @@ export function InventoryPage() {
         </button>
       </div>
 
-      {activeTab === 'orders' && <PurchaseOrdersTab />}
+      {activeTab === 'orders' && <PurchaseOrdersTab initialMedicineId={preselectedMedicineId} />}
       {activeTab === 'suppliers' && <SuppliersTab />}
 
       {activeTab === 'items' && (

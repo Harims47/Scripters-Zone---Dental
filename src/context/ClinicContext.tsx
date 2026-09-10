@@ -19,6 +19,8 @@ interface ClinicContextType {
   medicines: Medicine[]
   staff: any[]
   reloadStaff: () => Promise<void>
+  reloadInventory: () => Promise<void>
+  refreshClinicOperations: () => Promise<void>
   updateStaffAttendance: (staffId: string, attendance: string) => Promise<void>
   
   addPatient: (patientData: Omit<Patient, 'id'>) => Promise<Patient>
@@ -120,9 +122,50 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [reloadStaff])
 
+  const reloadInventory = React.useCallback(async () => {
+    try {
+      const res = await api.get<{ data: Medicine[] }>('/api/inventory?limit=200')
+      setMedicines((res as any).data || res || [])
+    } catch (e) {
+      console.error('Failed to reload inventory in ClinicContext', e)
+    }
+  }, [])
+
+  const refreshClinicOperations = React.useCallback(async () => {
+    try {
+      const [queueRes, visitsRes, staffRes] = await Promise.all([
+        api.get<QueueEntry[]>('/api/queue'),
+        api.get<any[]>('/api/visits'),
+        api.get<any>('/api/staff?limit=100')
+      ])
+      
+      const newQueue = (queueRes as any).data || queueRes || []
+      const newVisits = (visitsRes as any).data || visitsRes || []
+      const newStaff = (staffRes as any).data?.data || (staffRes as any).data || staffRes || []
+
+      setQueue(newQueue)
+      setVisits(newVisits)
+      setStaff(newStaff)
+
+      const allConsultations: Consultation[] = []
+      const allPrescriptions: Prescription[] = []
+      const allDispensings: Dispensing[] = []
+      newVisits.forEach((v: any) => {
+        if (v.consultation) allConsultations.push(v.consultation)
+        if (v.prescription) allPrescriptions.push(v.prescription)
+        if (v.dispensing) allDispensings.push(v.dispensing)
+      })
+      setConsultations(allConsultations)
+      setPrescriptions(allPrescriptions)
+      setDispensings(allDispensings)
+    } catch (e) {
+      console.error('Failed to refresh clinic operations in ClinicContext', e)
+    }
+  }, [])
+
   React.useEffect(() => {
     if (isAuthenticated) {
-      api.get<{ data: Medicine[] }>('/api/inventory').then(res => setMedicines(res.data || (res as any))).catch(console.error)
+      reloadInventory()
       api.get<Payment[]>('/api/payments').then(res => setPayments((res as any).data || res)).catch(console.error)
       reloadStaff()
     } else {
@@ -130,7 +173,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       setPayments([])
       setStaff([])
     }
-  }, [isAuthenticated, reloadStaff])
+  }, [isAuthenticated, reloadStaff, reloadInventory])
 
   // Remove old LocalStorage for migrated domains
   React.useEffect(() => {
@@ -522,7 +565,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   return (
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
-      staff, reloadStaff, updateStaffAttendance,
+      staff, reloadStaff, reloadInventory, refreshClinicOperations, updateStaffAttendance,
       addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit, transferVisitsToNextDay,
         assignDoctor,
         normalizePhone,

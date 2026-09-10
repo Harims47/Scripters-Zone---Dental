@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
+import { soundService } from '../lib/soundUtils';
 import { api } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -30,7 +31,7 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations, transferVisitsToNextDay } = useClinicContext();
+  const { queue, visits, patients, staff, refreshClinicOperations, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations, transferVisitsToNextDay } = useClinicContext();
 
   const navigate = useNavigate();
 
@@ -140,6 +141,84 @@ export function ReceptionDeskPage() {
     });
     return availability;
   }, [doctors, queue]);
+
+  // Audio & Doctor State Transition Detection (Feature 2)
+  const previousDoctorStateRef = useRef<Record<string, 'Available' | 'With Patient' | 'Leave'> | null>(null);
+  const isInitialMountRef = useRef(true);
+
+  // Auto-unlock AudioContext on user interaction within ReceptionDesk
+  useEffect(() => {
+    const handleUserGesture = () => {
+      soundService.unlock();
+    };
+    window.addEventListener('click', handleUserGesture, { once: true });
+    window.addEventListener('keydown', handleUserGesture, { once: true });
+    return () => {
+      window.removeEventListener('click', handleUserGesture);
+      window.removeEventListener('keydown', handleUserGesture);
+    };
+  }, []);
+
+  // Operational polling on Reception Desk (every 5 seconds) to ensure real-time queue & doctor status
+  useEffect(() => {
+    const timer = setInterval(() => {
+      refreshClinicOperations();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [refreshClinicOperations]);
+
+  // Doctor status transition tracking
+  useEffect(() => {
+    // 1. Initial silent load: Record baseline status for all doctors without playing sounds
+    if (isInitialMountRef.current) {
+      if (Object.keys(doctorAvailability).length > 0) {
+        previousDoctorStateRef.current = { ...doctorAvailability };
+        isInitialMountRef.current = false;
+      }
+      return;
+    }
+
+    const prevStates = previousDoctorStateRef.current;
+    if (!prevStates) {
+      previousDoctorStateRef.current = { ...doctorAvailability };
+      return;
+    }
+
+    let shouldPlayAvailableSound = false;
+    let shouldPlayOccupiedSound = false;
+
+    // Compare each doctor's derived status against previous state
+    doctors.forEach((doc) => {
+      const currentStatus = doctorAvailability[doc.id];
+      const prevStatus = prevStates[doc.id];
+
+      // If status changed
+      if (prevStatus && currentStatus && prevStatus !== currentStatus) {
+        // Transition 1: Available -> With Patient (Doctor became occupied)
+        if (prevStatus === 'Available' && currentStatus === 'With Patient') {
+          shouldPlayOccupiedSound = true;
+        }
+        // Transition 2: With Patient -> Available (Doctor became free)
+        else if (prevStatus === 'With Patient' && currentStatus === 'Available') {
+          shouldPlayAvailableSound = true;
+        }
+        // Transition 3: Leave -> Available (Doctor returned and became available)
+        else if (prevStatus === 'Leave' && currentStatus === 'Available') {
+          shouldPlayAvailableSound = true;
+        }
+      }
+    });
+
+    // Trigger sound ONCE per batch of transitions if relevant
+    if (shouldPlayAvailableSound) {
+      soundService.playDoctorAvailableSound();
+    } else if (shouldPlayOccupiedSound) {
+      soundService.playDoctorOccupiedSound();
+    }
+
+    // Update reference to latest observed state
+    previousDoctorStateRef.current = { ...doctorAvailability };
+  }, [doctorAvailability, doctors]);
 
   // Unified Table Data
   const unifiedData = useMemo(() => {

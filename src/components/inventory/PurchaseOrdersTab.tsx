@@ -26,7 +26,11 @@ interface CreatePOItemRow {
   unitCost: number;
 }
 
-export function PurchaseOrdersTab() {
+interface PurchaseOrdersTabProps {
+  initialMedicineId?: string;
+}
+
+export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps = {}) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -116,6 +120,20 @@ export function PurchaseOrdersTab() {
     fetchOrders();
     loadDependencies();
   }, [fetchOrders]);
+
+  // Preselect medicine and open PO creation drawer if initialMedicineId is provided
+  useEffect(() => {
+    if (initialMedicineId) {
+      loadDependencies();
+      setSelectedOrder(null);
+      setPoSupplierId('');
+      setPoOrderDate(new Date().toISOString().split('T')[0]);
+      setPoNotes('Urgent low stock reorder');
+      setPoItems([{ medicineId: initialMedicineId, orderedQuantity: 50, unitCost: 0 }]);
+      setDrawerMode('create');
+      setDrawerOpen(true);
+    }
+  }, [initialMedicineId]);
 
   const openCreateDrawer = () => {
     loadDependencies();
