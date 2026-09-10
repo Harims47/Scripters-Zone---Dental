@@ -173,7 +173,7 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
     setBillPaymentPO(po);
     // Calculate total cost of received goods
     const receivedCost = po.items.reduce((s, i) => s + (i.receivedQuantity * (i.unitCost || 0)), 0);
-    
+
     // Check existing unpaid bill
     const unpaidBill = po.bills?.find((b) => b.status !== 'Paid' && b.status !== 'Cancelled');
     if (unpaidBill) {
@@ -308,6 +308,43 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
     }
   };
 
+  // Helper to determine if all bills for a PO are paid
+  const isPOFullyPaid = (po: PurchaseOrder): boolean => {
+    const activeBills = (po.bills || []).filter((b) => b.status !== 'Cancelled');
+    if (activeBills.length === 0) return false;
+    return activeBills.every((b) => {
+      const totalPaid = b.payments
+        ? b.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+        : (Number(b.totalPaid) || 0);
+      const bAmt = Number(b.amount) || 0;
+      return b.status === 'Paid' || totalPaid >= bAmt;
+    });
+  };
+
+  const hasAnyUnpaidBill = (po: PurchaseOrder): boolean => {
+    const activeBills = (po.bills || []).filter((b) => b.status !== 'Cancelled');
+    return activeBills.some((b) => {
+      const totalPaid = b.payments
+        ? b.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+        : (Number(b.totalPaid) || 0);
+      const bAmt = Number(b.amount) || 0;
+      return b.status !== 'Paid' && totalPaid < bAmt;
+    });
+  };
+
+  // Compute a single most-specific badge for the PO status column
+  const getPOStatusCell = (po: PurchaseOrder) => {
+    if (po.status === 'Received' || po.status === 'Partially Received') {
+      if (isPOFullyPaid(po)) {
+        return <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100 border-teal-200">Paid</Badge>;
+      }
+      if (hasAnyUnpaidBill(po)) {
+        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 border-orange-200">Payment Pending</Badge>;
+      }
+    }
+    return getStatusBadge(po.status);
+  };
+
   const columns: ColumnDef<PurchaseOrder>[] = [
     {
       accessorKey: 'orderNumber',
@@ -351,7 +388,7 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
     {
       accessorKey: 'status',
       header: 'Status',
-      cell: ({ row }) => getStatusBadge(row.original.status)
+      cell: ({ row }) => getPOStatusCell(row.original)
     },
     {
       id: 'actions',
@@ -440,20 +477,22 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                 >
                   <Receipt className="w-4 h-4" />
                 </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                  title="Bill & Payment"
-                  onClick={() => openBillPaymentModal(po)}
-                >
-                  <HandCoins className="w-4 h-4" />
-                </Button>
+                {!isPOFullyPaid(po) && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                    title="Bill & Payment"
+                    onClick={() => openBillPaymentModal(po)}
+                  >
+                    <HandCoins className="w-4 h-4" />
+                  </Button>
+                )}
               </>
             )}
 
-            {/* Collected (Received) Action: Bill & Payment (Unified) */}
-            {po.status === 'Received' && (
+            {/* Collected (Received) Action: Bill & Payment — only if not yet fully paid */}
+            {po.status === 'Received' && !isPOFullyPaid(po) && (
               <Button
                 size="icon"
                 variant="ghost"
@@ -549,8 +588,8 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
               {drawerMode === 'create'
                 ? 'Create Purchase Order'
                 : drawerMode === 'edit'
-                ? `Edit ${selectedOrder?.orderNumber}`
-                : `Purchase Order: ${selectedOrder?.orderNumber}`}
+                  ? `Edit ${selectedOrder?.orderNumber}`
+                  : `Purchase Order: ${selectedOrder?.orderNumber}`}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {drawerMode === 'create' || drawerMode === 'edit'
@@ -630,7 +669,7 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                         <span className="text-xs text-slate-500">
                           Invoices and payments recorded against this Purchase Order.
                         </span>
-                        {['Partially Received', 'Received'].includes(selectedOrder.status) && (
+                        {['Partially Received', 'Received'].includes(selectedOrder.status) && !isPOFullyPaid(selectedOrder) && (
                           <Button
                             type="button"
                             size="sm"
@@ -658,7 +697,7 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                                 <th className="py-2.5 px-3 text-right">Paid</th>
                                 <th className="py-2.5 px-3 text-right">Balance</th>
                                 <th className="py-2.5 px-3 text-center">Status</th>
-                                <th className="py-2.5 px-3 text-right">Actions</th>
+
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -686,53 +725,19 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                                     <td className="py-2.5 px-3 text-center">
                                       <Badge
                                         variant="outline"
-                                        className={`text-[10px] font-bold ${
-                                          bill.status === 'Paid'
+                                        className={`text-[10px] font-bold ${bill.status === 'Paid'
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                             : bill.status === 'Partial'
-                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                            : bill.status === 'Cancelled'
-                                            ? 'bg-slate-100 text-slate-500'
-                                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                                        }`}
+                                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                              : bill.status === 'Cancelled'
+                                                ? 'bg-slate-100 text-slate-500'
+                                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                                          }`}
                                       >
                                         {bill.status}
                                       </Badge>
                                     </td>
-                                    <td className="py-2.5 px-3 text-right">
-                                      <div className="flex items-center justify-end gap-1.5">
-                                        {bill.billImageUrl && (
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-6 px-2 text-[11px] text-teal-700 hover:bg-teal-50"
-                                            title="Preview Bill Image"
-                                            onClick={() => setPreviewBillImage(bill.billImageUrl || null)}
-                                          >
-                                            <Eye className="w-3.5 h-3.5 mr-1" /> View Bill
-                                          </Button>
-                                        )}
-                                        {bill.status !== 'Paid' && bill.status !== 'Cancelled' && (
-                                          <Button
-                                            size="sm"
-                                            className="h-6 px-2 text-[11px] bg-teal-600 hover:bg-teal-700 text-white font-semibold"
-                                            onClick={() => setPaymentTargetBill({ ...bill, supplier: selectedOrder.supplier, totalPaid, balance })}
-                                          >
-                                            Pay
-                                          </Button>
-                                        )}
-                                        {bill.payments && bill.payments.length > 0 && (
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-6 px-2 text-[11px] text-indigo-600 hover:bg-indigo-50"
-                                            onClick={() => setViewPaymentsBill({ ...bill, supplier: selectedOrder.supplier })}
-                                          >
-                                            Payments ({bill.payments.length})
-                                          </Button>
-                                        )}
-                                      </div>
-                                    </td>
+
                                   </tr>
                                 );
                               })}
@@ -1024,18 +1029,17 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                         setPayAmount(bBal > 0 ? bBal : '');
                         setRecordPaymentNow(true);
                       }}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                        isSelected
+                      className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors ${isSelected
                           ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
                           : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <input
                           type="radio"
                           name="billSelection"
                           checked={isSelected}
-                          onChange={() => {}}
+                          onChange={() => { }}
                           className="accent-teal-600"
                         />
                         <span className="font-mono font-bold text-slate-900">{b.invoiceNumber}</span>
@@ -1045,11 +1049,10 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                         <span className="font-mono text-slate-600">₹{b.amount.toLocaleString()}</span>
                         <Badge
                           variant="outline"
-                          className={`text-[10px] ${
-                            b.status === 'Paid'
+                          className={`text-[10px] ${b.status === 'Paid'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}
+                            }`}
                         >
                           Bal: ₹{bBal.toLocaleString()}
                         </Badge>
@@ -1058,28 +1061,29 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                   );
                 })}
 
-                <div
-                  onClick={() => {
-                    setSelectedBillToPay('new');
-                    const recTotal = billPaymentPO.items.reduce((s, i) => s + (i.receivedQuantity * (i.unitCost || 0)), 0);
-                    setNewBillAmount(recTotal > 0 ? recTotal : '');
-                    setPayAmount(recTotal > 0 ? recTotal : '');
-                  }}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                    selectedBillToPay === 'new'
-                      ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="billSelection"
-                    checked={selectedBillToPay === 'new'}
-                    onChange={() => {}}
-                    className="accent-teal-600"
-                  />
-                  <span className="font-semibold text-teal-800">+ Add Another / New Supplier Bill</span>
-                </div>
+                {!isPOFullyPaid(billPaymentPO) && (
+                  <div
+                    onClick={() => {
+                      setSelectedBillToPay('new');
+                      const recTotal = billPaymentPO.items.reduce((s, i) => s + (i.receivedQuantity * (i.unitCost || 0)), 0);
+                      setNewBillAmount(recTotal > 0 ? recTotal : '');
+                      setPayAmount(recTotal > 0 ? recTotal : '');
+                    }}
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${selectedBillToPay === 'new'
+                        ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                  >
+                    <input
+                      type="radio"
+                      name="billSelection"
+                      checked={selectedBillToPay === 'new'}
+                      onChange={() => { }}
+                      className="accent-teal-600"
+                    />
+                    <span className="font-semibold text-teal-800">+ Add Another / New Supplier Bill</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1395,10 +1399,10 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                 {isSavingBillPayment
                   ? 'Saving...'
                   : selectedBillToPay !== 'new'
-                  ? 'Record Payment'
-                  : recordPaymentNow
-                  ? 'Save Bill & Record Payment'
-                  : 'Save Bill Only'}
+                    ? 'Record Payment'
+                    : recordPaymentNow
+                      ? 'Save Bill & Record Payment'
+                      : 'Save Bill Only'}
               </Button>
             </DialogFooter>
           </form>

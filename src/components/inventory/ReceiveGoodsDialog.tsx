@@ -91,11 +91,7 @@ export function ReceiveGoodsDialog({
       });
 
       if (res.success || res.data) {
-        toast.success(
-          billPayload 
-            ? 'Stock collected and Supplier Bill uploaded successfully.' 
-            : 'Stock collected successfully. Stock updated.'
-        );
+        toast.success('Stock collected successfully. Stock updated.');
         onOpenChange(false);
         onSuccess?.();
       } else {

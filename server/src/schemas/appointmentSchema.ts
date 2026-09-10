@@ -6,7 +6,7 @@ export const createAppointmentSchema = z.object({
     providerId: z.string().optional(),
     date: z.string().min(1, 'Date is required'),
     time: z.string().min(1, 'Time is required'),
-    type: z.enum(['Consultation', 'Surgery', 'Follow-up', 'Routine Checkup', 'Emergency']),
+    type: z.enum(['Consultation', 'Surgery', 'Follow-up', 'Routine Checkup', 'Emergency', 'Cleaning', 'Toothache']),
     status: z.enum(['Scheduled', 'Confirmed', 'Checked In', 'Completed', 'Cancelled', 'No Show']).optional(),
     notes: z.string().optional(),
     photoUrl: z.string().optional(),
