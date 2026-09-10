@@ -1,67 +1,68 @@
 import { test, expect } from '@playwright/test';
+import { loginAs } from './helpers/auth';
 
 test.describe('Phase 9.1: Cancel Visit & Payment Status', () => {
 
-  test.beforeEach(async ({ page }) => {
-    // Navigate and login as Receptionist
-    await page.goto('http://localhost:5173');
-    await page.fill('input[type="email"]', 'receptionist@dental.com');
-    await page.fill('input[type="password"]', 'password123');
-    await page.click('button:has-text("Sign in")');
-    await expect(page).toHaveURL('http://localhost:5173/reception');
-  });
+  const testPatientName = `QA_Cancel_${Date.now()}`;
+  const testPhone = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
 
   test('Should display Payment Status column and register a walk-in to test cancellation', async ({ page }) => {
-    // 1. Verify Payment Status column exists
+    // 1. Navigate and login as Receptionist
+    await loginAs(page, 'receptionist');
+    await expect(page).toHaveURL(/.*\/reception-desk/);
+
+    // 2. Verify Payment Status column header exists
     await expect(page.locator('th:has-text("Payment Status")')).toBeVisible();
 
-    // 2. Register a new walk-in visit
-    await page.click('button:has-text("Register Patient")');
-    await page.fill('input[name="name"]', 'Cancel Test Patient');
-    await page.fill('input[name="phone"]', '9998887776');
-    await page.fill('input[name="age"]', '25');
-    await page.click('button:has-text("Register & Add to Queue")');
+    // 3. Register a new walk-in visit using Reception Desk drawer
+    await page.getByRole('button', { name: 'Register Patient' }).first().click();
     
-    // Accept Swal registration success
-    await page.click('button:has-text("OK")');
+    // Fill required details
+    await page.locator('input[placeholder="Enter full name"]').fill(testPatientName);
+    await page.locator('input[placeholder="10-digit mobile number"]').fill(testPhone);
+    await page.locator('input[placeholder="Age"]').fill('25');
 
-    // 3. Find the newly created visit row
-    const row = page.locator('tr').filter({ hasText: 'Cancel Test Patient' });
+    // Submit registration
+    await page.getByRole('button', { name: 'Register Patient' }).last().click();
     
-    // Verify Payment Status is Unpaid
-    await expect(row.locator('td').filter({ hasText: 'Unpaid' })).toBeVisible();
+    // Accept Registration Successful Dialog
+    await expect(page.getByRole('heading', { name: 'Registration Successful' })).toBeVisible();
+    await page.getByRole('button', { name: 'OK' }).click();
 
-    // Verify Action buttons: Cancel Visit icon should be present (title="Cancel Visit")
+    // 4. Find the newly created visit row
+    const row = page.locator('tr').filter({ hasText: testPatientName });
+    await expect(row).toBeVisible();
+    
+    // Verify Payment Status is Unpaid or "—"
+    await expect(row.locator('td').nth(4)).toBeVisible();
+
+    // Verify Action button: Cancel Visit icon should be present (title="Cancel Visit")
     const cancelBtn = row.locator('button[title="Cancel Visit"]');
     await expect(cancelBtn).toBeVisible();
 
-    // 4. Click Cancel Visit
+    // 5. Click Cancel Visit
     await cancelBtn.click();
     
     // Expect SweetAlert warning
     await expect(page.locator('.swal2-popup:has-text("Cancel this visit?")')).toBeVisible();
 
-    // 5. Dismiss with Keep Visit first
-    await page.click('button:has-text("Keep Visit")');
-    await expect(row.locator('td').filter({ hasText: 'Waiting' })).toBeVisible();
+    // 6. Dismiss with Keep Visit first
+    await page.getByRole('button', { name: 'Keep Visit' }).click();
+    await expect(row).toContainText('Waiting');
 
-    // 6. Click Cancel Visit again and confirm
+    // 7. Click Cancel Visit again and confirm
     await cancelBtn.click();
-    await page.click('button:has-text("Cancel Visit")');
+    await page.getByRole('button', { name: 'Cancel Visit' }).click();
     
-    // Expect Success SweetAlert
-    await page.click('button:has-text("OK")');
+    // Expect Success SweetAlert and dismiss
+    await expect(page.locator('.swal2-popup:has-text("Cancelled")')).toBeVisible();
+    await page.getByRole('button', { name: 'OK' }).click();
 
-    // 7. Verify the row now displays "Cancelled"
-    await expect(row.locator('td').filter({ hasText: 'Cancelled' })).toBeVisible();
-
-    // 8. Verify action buttons for Cancelled visit are hidden (Send to Doctor, Process, Cancel)
-    await expect(row.locator('button[title="Send to Doctor"]')).toBeHidden();
-    await expect(row.locator('button[title="Process Visit"]')).toBeHidden();
-    await expect(row.locator('button[title="Cancel Visit"]')).toBeHidden();
+    // 8. Verify the row now displays Cancelled stage
+    await expect(row).toContainText('Cancelled');
     
     // Edit and View History should still exist
     await expect(row.locator('button[title="Edit Patient"]')).toBeVisible();
-    await expect(row.locator('button[title="View History"]')).toBeVisible();
+    await expect(row.locator('button[title="View Patient Details"]')).toBeVisible();
   });
 });

@@ -1,19 +1,25 @@
 import { test, expect } from '@playwright/test';
+import { loginAs } from './helpers/auth';
 
-test('API test', async ({ page }) => {
+test('API test - Network inspection on Patients page', async ({ page }) => {
+  const capturedResponses: { url: string; status: number }[] = [];
+
   page.on('response', response => {
     if (response.url().includes('/api/')) {
-      console.log('<<', response.status(), response.url());
-      response.text().then(text => console.log('body:', text.substring(0, 200))).catch(() => {});
+      capturedResponses.push({ url: response.url(), status: response.status() });
     }
   });
 
-  await page.goto('/login');
-  await page.getByLabel('Username').fill('receptionist');
-  await page.getByLabel('Password').fill('demo123');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await page.waitForURL('**/dashboard');
+  // Login as receptionist (lands on /reception-desk)
+  await loginAs(page, 'receptionist');
+  await expect(page).toHaveURL(/.*\/reception-desk/);
   
+  // Navigate to /patients
   await page.goto('/patients');
-  await page.waitForTimeout(2000);
+  await expect(page.locator('body')).toContainText('Patients', { timeout: 10000 });
+
+  // Verify that API responses were received successfully
+  const patientApi = capturedResponses.find(r => r.url.includes('/api/patients'));
+  expect(patientApi).toBeDefined();
+  expect(patientApi?.status).toBe(200);
 });

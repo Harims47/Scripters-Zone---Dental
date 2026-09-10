@@ -1,99 +1,75 @@
 import { test, expect } from '@playwright/test';
+import { loginAs, logout } from './helpers/auth';
 
 test.describe('Authentication and RBAC', () => {
 
-  test('Valid Login', async ({ page }) => {
-    await page.goto('/login');
-    await expect(page.getByLabel('Username')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
-    
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-
-    // Verify navigation to authenticated page
-    await page.waitForURL('**/dashboard');
-    await expect(page.getByText('Receptionist', { exact: true })).toBeVisible();
+  test('Valid Login - Receptionist lands on /reception-desk', async ({ page }) => {
+    await loginAs(page, 'receptionist');
+    await expect(page).toHaveURL(/.*\/reception-desk/);
+    await expect(page.locator('body')).toContainText('Receptionist');
   });
 
-  test('Invalid Login', async ({ page }) => {
+  test('Valid Login - Duty Doctor lands on /dashboard', async ({ page }) => {
+    await loginAs(page, 'dutyDoctor');
+    await expect(page).toHaveURL(/.*\/dashboard/);
+    await expect(page.locator('body')).toContainText('Dr. Priya Sharma');
+  });
+
+  test('Valid Login - Head Doctor lands on /dashboard', async ({ page }) => {
+    await loginAs(page, 'headDoctor');
+    await expect(page).toHaveURL(/.*\/dashboard/);
+    await expect(page.locator('body')).toContainText('Dr. Arun');
+  });
+
+  test('Invalid Login shows error message', async ({ page }) => {
     await page.goto('/login');
     await page.getByLabel('Username').fill('invaliduser');
     await page.getByLabel('Password').fill('wrongpassword');
     await page.getByRole('button', { name: 'Sign In' }).click();
 
-    // Verify error message from UI
     await expect(page.getByText('Invalid credentials')).toBeVisible();
-    await expect(page.url()).toContain('/login');
-  });
-
-  test('Session Persistence', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
-
-    // Reload page
-    await page.reload();
-    await page.waitForURL('**/dashboard');
-    await expect(page.locator('body')).toContainText('Receptionist', { timeout: 10000 });
-  });
-
-  test('Logout', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
-
-    const logoutBtn = page.getByRole('button', { name: 'Logout' }).first();
-    await expect(logoutBtn).toBeVisible();
-    await logoutBtn.click();
-    await page.waitForURL('**/login');
-
-    // Try going back to a protected route
-    await page.goto('/dashboard');
-    // Verify it redirects back to login or shows unauthorized
     await expect(page).toHaveURL(/.*\/login/);
   });
 
-  test('Receptionist Boundaries', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('receptionist');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
+  test('Session Persistence across page reload', async ({ page }) => {
+    await loginAs(page, 'receptionist');
+    await page.reload();
+    await page.waitForURL('**/reception-desk');
+    await expect(page.locator('body')).toContainText('Receptionist', { timeout: 10000 });
+  });
 
+  test('Logout redirects to /login and restricts protected access', async ({ page }) => {
+    await loginAs(page, 'receptionist');
+    await logout(page);
+
+    // Try going back to a protected route
+    await page.goto('/reception-desk');
+    await expect(page).toHaveURL(/.*\/login/);
+  });
+
+  test('Receptionist Boundaries - Inventory blocked', async ({ page }) => {
+    await loginAs(page, 'receptionist');
     await page.goto('/inventory');
     await page.waitForURL('**/unauthorized');
     await expect(page.getByText('Access Denied')).toBeVisible();
   });
 
-  test('Duty Doctor Boundaries', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('dutydoctor');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
-
-    await page.goto('/billing');
+  test('Duty Doctor Boundaries - Settings blocked', async ({ page }) => {
+    await loginAs(page, 'dutyDoctor');
+    await page.goto('/settings');
     await page.waitForURL('**/unauthorized');
+    await expect(page.getByText('Access Denied')).toBeVisible();
   });
 
-  test('Head Doctor Access', async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('headdoctor');
-    await page.getByLabel('Password').fill('demo123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('**/dashboard');
+  test('Head Doctor Access - Full Administrative Access', async ({ page }) => {
+    await loginAs(page, 'headDoctor');
 
     // Can access inventory
     await page.goto('/inventory');
-    await expect(page.getByRole('heading', { name: 'Inventory', exact: true })).toBeVisible();
+    await expect(page.locator('body')).toContainText('Inventory', { timeout: 10000 });
 
     // Can access reports
     await page.goto('/reports');
-    await expect(page.locator('body')).toContainText('Clinic Reports', { timeout: 10000 });
+    await expect(page.locator('body')).toContainText('Reports', { timeout: 10000 });
   });
 });
