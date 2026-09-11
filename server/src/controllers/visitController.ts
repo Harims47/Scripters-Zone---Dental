@@ -47,7 +47,7 @@ export const startWalkInVisit = async (req: Request, res: Response, next: NextFu
           patientId,
           doctorId: doctorId || null,
           status: 'WAITING',
-          amountDue: 1500, // Matching frontend mock
+          amountDue: 0,
           reasonForVisit,
           queueEntry: {
             create: {
@@ -119,7 +119,7 @@ export const checkInAppointment = async (req: Request, res: Response, next: Next
           appointmentId: appointment.id,
           reasonForVisit,
           status: 'WAITING',
-          amountDue: 1500,
+          amountDue: 0,
           queueEntry: {
             create: {
               patientId: appointment.patientId,

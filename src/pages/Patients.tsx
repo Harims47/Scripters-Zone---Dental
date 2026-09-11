@@ -98,24 +98,6 @@ export function PatientsPage() {
     setDrawerOpen(true);
   };
 
-  const handleNewPatient = () => {
-    const rawSearch = search;
-    const isNumber = /^\+?[\d\s\-()]+$/.test(rawSearch);
-    
-    setNewPatient({
-      name: !isNumber ? rawSearch : '',
-      phone: isNumber ? rawSearch : '',
-      age: '',
-      gender: 'Male',
-      photoUrl: '',
-      address: ''
-    });
-    setVisitReason('');
-    setIsCameraOpen(false);
-    setSelectedPatient(null);
-    setDrawerMode('create');
-    setDrawerOpen(true);
-  };
 
   const handleSaveNewPatient = async () => {
     if (!newPatient.name || !newPatient.phone || !newPatient.age || !newPatient.gender) {
@@ -292,10 +274,6 @@ export function PatientsPage() {
             Search patients and review their complete visit-by-visit clinical records.
           </p>
         </div>
-        <Button onClick={handleNewPatient} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
-          <UserPlus className="h-4 w-4" />
-          <span>New Patient</span>
-        </Button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">

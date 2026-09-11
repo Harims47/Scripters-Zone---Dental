@@ -271,8 +271,6 @@ export interface AppointmentItem {
 }
 
 export function AppointmentSummary({ items, title }: { items: AppointmentItem[], title?: string }) {
-  const navigate = useNavigate()
-
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col h-full">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
@@ -311,16 +309,6 @@ export function AppointmentSummary({ items, title }: { items: AppointmentItem[],
             </div>
           ))
         )}
-      </div>
-      <div className="p-3 border-t border-slate-100 bg-slate-50/40 flex justify-end">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate('/appointments')}
-          className="text-xs text-primary font-medium hover:bg-primary/5 gap-1"
-        >
-          View Calendar <ArrowRight className="w-3.5 h-3.5" />
-        </Button>
       </div>
     </div>
   )

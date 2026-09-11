@@ -26,11 +26,8 @@ interface PatientCompleteHistoryProps {
   onEditPatient?: () => void
   onClose?: () => void
 }
-
 export function PatientCompleteHistory({
-  patientId,
-  onEditPatient,
-  onClose
+  patientId
 }: PatientCompleteHistoryProps) {
   const [data, setData] = useState<PatientHistoryData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -160,18 +157,7 @@ export function PatientCompleteHistory({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
-            {onEditPatient && (
-              <Button variant="outline" size="sm" onClick={onEditPatient} className="h-8 text-xs font-medium">
-                Edit Patient
-              </Button>
-            )}
-            {onClose && (
-              <Button variant="ghost" size="sm" onClick={onClose} className="h-8 text-xs font-medium">
-                Close
-              </Button>
-            )}
-          </div>
+
         </div>
 
         {/* Action Bar */}

@@ -502,11 +502,11 @@ export function InventoryPage() {
       {/* List Surface */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
 
-        {/* Table */}
         <DataTable 
           columns={columns} 
           data={data} 
-          selectable={true}
+          selectable={false}
+
           loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
