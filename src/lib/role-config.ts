@@ -51,3 +51,16 @@ export const ALL_MODULES: ClinicModule[] = [
   'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 
   'Staff Management', 'Settings', 'Reports'
 ]
+
+// Active modules corresponding strictly to the visible sidebar navigation menu items
+export const SIDEBAR_MODULES: ClinicModule[] = [
+  'Dashboard',
+  'Reception Desk',
+  'Partial Payments',
+  'Patients',
+  'Queue',
+  'Inventory',
+  'Staff Management',
+  'Reports',
+  'Settings'
+]

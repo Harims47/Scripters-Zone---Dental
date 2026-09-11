@@ -64,3 +64,66 @@ export const requireRole = (...roles: string[]) => {
     next();
   };
 };
+
+export const DEFAULT_ROLE_MODULES: Record<string, string[]> = {
+  'Head Doctor': [
+    'Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments',
+    'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing',
+    'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports'
+  ],
+  'Duty Doctor': ['Dashboard', 'Patients', 'Queue', 'Doctor Workspace', 'Prescriptions'],
+  'Receptionist': [
+    'Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments',
+    'Queue', 'Dispensing', 'Billing', 'Payments'
+  ]
+};
+
+export function getUserPermissions(user: any): string[] {
+  if (!user) return [];
+  const roleDefault = DEFAULT_ROLE_MODULES[user.role] || [];
+  
+  const staffPermissions = user.staff?.permissions;
+  if (staffPermissions !== null && staffPermissions !== undefined && Array.isArray(staffPermissions)) {
+    const customList = staffPermissions as string[];
+    const set = new Set(customList);
+
+    // Invariant: Reports is strictly Head Doctor only
+    if (user.role !== 'Head Doctor') {
+      set.delete('Reports');
+    }
+
+    // Sub-modules linked to visible sidebar menu modules
+    if (set.has('Queue')) {
+      set.add('Doctor Workspace');
+      set.add('Prescriptions');
+    }
+    if (set.has('Reception Desk')) {
+      ['Appointments', 'Billing', 'Payments', 'Dispensing'].forEach(sub => {
+        set.add(sub);
+      });
+    }
+
+    if (user.role === 'Head Doctor') {
+      set.add('Staff Management');
+      set.add('Dashboard');
+    }
+    return Array.from(set);
+  }
+
+  return roleDefault;
+}
+
+export const requireModule = (moduleName: string) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const permissions = getUserPermissions(req.user);
+    if (!permissions.includes(moduleName)) {
+      return res.status(403).json({ error: `Forbidden: Access to module '${moduleName}' is denied` });
+    }
+
+    next();
+  };
+};

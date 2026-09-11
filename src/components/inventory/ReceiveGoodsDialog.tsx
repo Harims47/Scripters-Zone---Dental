@@ -3,7 +3,6 @@ import { api } from '../../lib/api';
 import { toast } from 'react-hot-toast';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../ui/dialog';
 import { CheckCircle2, PackageCheck, AlertCircle } from 'lucide-react';
@@ -42,7 +41,7 @@ export function ReceiveGoodsDialog({
 
   if (!purchaseOrder) return null;
 
-  const handleQtyChange = (itemId: string, value: string, max: number) => {
+  const handleQtyChange = (itemId: string, value: string) => {
     setErrorMsg(null);
     if (value === '') {
       setReceiveQuantities((prev) => ({ ...prev, [itemId]: '' }));
@@ -183,7 +182,7 @@ export function ReceiveGoodsDialog({
                             min="0"
                             max={remaining}
                             value={currentInput !== undefined ? currentInput : ''}
-                            onChange={(e) => handleQtyChange(item.id, e.target.value, remaining)}
+                            onChange={(e) => handleQtyChange(item.id, e.target.value)}
                             className="w-24 h-8 text-right font-bold text-slate-900 ml-auto"
                             placeholder="0"
                           />

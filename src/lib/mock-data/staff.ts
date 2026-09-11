@@ -1,4 +1,4 @@
-import type { ClinicRole } from '../role-config';
+import type { ClinicRole, ClinicModule } from '../role-config';
 
 export interface Staff {
   id: string;
@@ -8,6 +8,7 @@ export interface Staff {
   status: 'Active' | 'Inactive';
   attendance?: 'Present' | 'Leave';
   roomNumber?: string;
+  permissions?: ClinicModule[] | null;
 }
 
 export const DEMO_STAFF: Staff[] = [

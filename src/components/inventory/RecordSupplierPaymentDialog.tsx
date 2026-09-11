@@ -6,7 +6,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../ui/dialog';
-import { CreditCard, AlertCircle, IndianRupee, HandCoins } from 'lucide-react';
+import { HandCoins, AlertCircle } from 'lucide-react';
 import type { SupplierBill } from '../../types/domain';
 
 interface RecordSupplierPaymentDialogProps {

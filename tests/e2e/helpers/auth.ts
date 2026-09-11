@@ -28,6 +28,9 @@ export async function loginAs(page: Page, roleKey: keyof typeof TEST_USERS) {
 
   // Wait for the role-specific landing path
   await page.waitForURL(`**${user.expectedPath}`);
+  
+  // If Low Stock modal is currently overlaying the page, dismiss it
+  await dismissLowStockAlertIfPresent(page, 3000);
 }
 
 /**
@@ -49,6 +52,12 @@ export async function logout(page: Page) {
       const menuLogout = page.getByRole('menuitem', { name: /Logout/i });
       if (await menuLogout.isVisible({ timeout: 2000 }).catch(() => false)) {
         await menuLogout.click();
+      }
+    } else {
+      // Unauthorized page fallback
+      const unauthorizedLogout = page.getByRole('button', { name: /Logout/i }).first();
+      if (await unauthorizedLogout.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await unauthorizedLogout.click();
       }
     }
   }

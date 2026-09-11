@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../lib/api';
 import { toast } from 'react-hot-toast';
-import { Plus, Edit2, UserX, Search, Phone, Mail, Building2, User, Tag, PlusCircle, Layers, ChevronDown, X, Check } from 'lucide-react';
+import { Plus, Edit2, UserX, Search, Phone, Building2, PlusCircle, Layers, ChevronDown, X, Check } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -10,12 +10,12 @@ import { Checkbox } from '../ui/checkbox';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Sheet, SheetContent, SheetScrollArea } from '../ui/sheet';
-import { DrawerSection, DrawerFooterActions, ReadOnlyField } from '../ui/drawer-patterns';
+import { DrawerFooterActions } from '../ui/drawer-patterns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../ui/dialog';
 import { DataTable } from '../data-table/data-table';
 import { DataTableToolbar } from '../data-table/data-table-toolbar';
 import { DataTableEmpty } from '../data-table/data-table';
-import type { ColumnDef, PaginationState } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import type { Supplier, MedicineCategory } from '../../types/domain';
 
 export function SuppliersTab() {
@@ -37,7 +37,7 @@ export function SuppliersTab() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
-  const categoryDropdownRef = React.useRef<HTMLDivElement>(null);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
   // Quick Add Category Modal state
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -289,7 +289,6 @@ export function SuppliersTab() {
       header: () => <div className="text-right">Outstanding</div>,
       cell: ({ row }) => {
         const billed = row.original.financials?.totalBilled || 0;
-        const paid = row.original.financials?.totalPaid || 0;
         const balance = row.original.financials?.outstandingBalance || 0;
         return (
           <div className="text-right font-mono text-xs">

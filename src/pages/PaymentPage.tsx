@@ -104,11 +104,11 @@ export function PaymentPage() {
   const handleMarkAsPaid = async () => {
     if (selectedRow && activeMethod && (activeMethod === 'Cash' || activeMethod === 'GPay')) {
       setErrorMsg(null)
-      const result = await recordPayment(selectedRow.visitId, activeMethod as 'Cash' | 'GPay')
+      const result = await recordPayment(selectedRow.visitId, selectedRow.amountDue, activeMethod as 'Cash' | 'GPay')
       
       if (result.success) {
         setPaymentState('completed')
-        fetchPayments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch)
+        fetchPayments(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterStatus)
       } else {
         setErrorMsg(result.error || 'Failed to record payment')
       }

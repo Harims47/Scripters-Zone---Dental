@@ -12,13 +12,12 @@ import { PatientProfileHeader, DrawerFooterActions } from '../components/ui/draw
 import { DispensingMedicineItem } from '../components/dispensing/dispensing-components'
 import type { DispensingItem } from '../components/dispensing/dispensing-components'
 import { useClinicContext } from '../context/ClinicContext'
-import { DEMO_STAFF } from '../lib/mock-data'
 import { api } from '../lib/api'
 
 export function ReceptionDispensingPage() {
   const navigate = useNavigate()
   
-  const { visits, patients, prescriptions, dispensings, medicines, completeDispensing } = useClinicContext()
+  const { visits, patients, staff, prescriptions, dispensings, medicines, completeDispensing } = useClinicContext()
 
   // Build rows directly from ClinicContext based strictly on workflow state
   const dispensingData = useMemo(() => {
@@ -29,7 +28,7 @@ export function ReceptionDispensingPage() {
     
     return eligibleVisits.map(v => {
       const p = patients.find(pt => pt.id === v.patientId)
-      const doc = DEMO_STAFF.find(st => st.id === v.doctorId)
+      const doc = (staff || []).find((st: any) => st.id === v.doctorId)
       const rx = prescriptions.find(r => r.visitId === v.id && r.status === 'Finalized')
       const disp = dispensings.find(d => d.visitId === v.id)
 

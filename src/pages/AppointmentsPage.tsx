@@ -16,7 +16,7 @@ import {
   DoctorSelector,
   PatientSelector
 } from '../components/appointments/appointment-components'
-import { DEMO_STAFF, type AppointmentStatus } from '../lib/mock-data'
+import { type AppointmentStatus } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
@@ -37,7 +37,7 @@ interface AppointmentRow {
 }
 
 export function AppointmentsPage() {
-  const { patients, visits, addAppointment, updateAppointment, confirmAppointmentArrival, startConsultationFlow } = useClinicContext()
+  const { patients, visits, staff, addAppointment, updateAppointment, confirmAppointmentArrival } = useClinicContext()
   const { currentUser } = useAuth()
   const isReceptionist = currentUser?.role === 'Receptionist'
   const navigate = useNavigate()
@@ -225,7 +225,7 @@ export function AppointmentsPage() {
       header: "Provider",
       accessorKey: "doctorId",
       cell: ({ row }) => {
-        const doc = DEMO_STAFF.find((d: any) => d.id === row.original.doctorId)
+        const doc = (staff || []).find((d: any) => d.id === row.original.doctorId)
         return (
           <span className="text-sm font-medium text-slate-700">{doc?.name || row.original.doctorId}</span>
         )
@@ -355,7 +355,7 @@ export function AppointmentsPage() {
               className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="all-doctors">All Doctors</option>
-              {DEMO_STAFF.filter(s => s.role.includes('Doctor')).map(doc => (
+              {(staff || []).filter((s: any) => s.role && s.role.includes('Doctor')).map((doc: any) => (
                 <option key={doc.id} value={doc.id}>{doc.name}</option>
               ))}
             </select>

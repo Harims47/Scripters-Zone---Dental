@@ -5,13 +5,21 @@ import { Input } from '../components/ui/input'
 import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { EntityDrawerHeader, DrawerSection, DrawerFooterActions, ReadOnlyField } from '../components/ui/drawer-patterns'
 import { useAuth } from '../context/AuthContext'
-import { DEMO_STAFF } from '../lib/mock-data'
+import { useClinicContext } from '../context/ClinicContext'
 
 export function ProfilePage() {
   const { currentUser } = useAuth()
+  const { staff } = useClinicContext()
   
-  // Find the matching staff record for the logged in user, or fallback
-  const initialProfile = DEMO_STAFF.find(s => s.name === currentUser?.name) || DEMO_STAFF[0]
+  // Find the matching staff record for the logged in user, or construct from session
+  const initialProfile = (staff || []).find((s: any) => s.name === currentUser?.name) || {
+    id: currentUser?.id || 'usr',
+    name: currentUser?.name || 'Staff Member',
+    role: currentUser?.role || 'Staff',
+    phone: '',
+    email: '',
+    attendance: 'PRESENT'
+  }
   
   const [myProfile, setMyProfile] = useState(initialProfile)
   const [drawerOpen, setDrawerOpen] = useState(false)

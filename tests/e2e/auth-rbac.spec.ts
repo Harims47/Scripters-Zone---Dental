@@ -12,7 +12,7 @@ test.describe('Authentication and RBAC', () => {
   test('Valid Login - Duty Doctor lands on /dashboard', async ({ page }) => {
     await loginAs(page, 'dutyDoctor');
     await expect(page).toHaveURL(/.*\/dashboard/);
-    await expect(page.locator('body')).toContainText('Dr. Priya Sharma');
+    await expect(page.locator('body')).toContainText('Duty Doctor');
   });
 
   test('Valid Login - Head Doctor lands on /dashboard', async ({ page }) => {

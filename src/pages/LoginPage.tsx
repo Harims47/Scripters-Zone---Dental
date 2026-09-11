@@ -1,22 +1,18 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { canAccessRoute } from '../lib/route-permissions'
 
 export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
   
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const from = location.state?.from?.pathname || "/dashboard"
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -135,53 +131,55 @@ export function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo Accounts Helper */}
-          <div className="pt-8 border-t border-slate-100">
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Demo Accounts</h3>
-              <p className="text-xs text-slate-500 mt-1">For development and testing purposes</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleDemoLogin('reception')}
-                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-teal-500 hover:bg-teal-50 group transition-all text-left w-full disabled:opacity-50"
-              >
-                <span className="font-semibold text-slate-900 group-hover:text-teal-700 text-sm mb-1">Receptionist</span>
-                <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                  <div>user: receptionist</div>
-                  <div>pass: demo123</div>
-                </div>
-              </button>
-              
-              <button 
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleDemoLogin('doctor')}
-                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 group transition-all text-left w-full disabled:opacity-50"
-              >
-                <span className="font-semibold text-slate-900 group-hover:text-emerald-700 text-sm mb-1">Duty Doctor</span>
-                <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                  <div>user: dutydoctor</div>
-                  <div>pass: demo123</div>
-                </div>
-              </button>
+          {/* Demo Accounts Helper - Development Only */}
+          {import.meta.env.DEV && (
+            <div className="pt-8 border-t border-slate-100">
+              <div className="text-center mb-4">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Demo Accounts</h3>
+                <p className="text-xs text-slate-500 mt-1">For development and testing purposes</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleDemoLogin('reception')}
+                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-teal-500 hover:bg-teal-50 group transition-all text-left w-full disabled:opacity-50"
+                >
+                  <span className="font-semibold text-slate-900 group-hover:text-teal-700 text-sm mb-1">Receptionist</span>
+                  <div className="text-[10px] text-slate-500 font-mono w-full text-center">
+                    <div>user: receptionist</div>
+                    <div>pass: demo123</div>
+                  </div>
+                </button>
+                
+                <button 
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleDemoLogin('doctor')}
+                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 group transition-all text-left w-full disabled:opacity-50"
+                >
+                  <span className="font-semibold text-slate-900 group-hover:text-emerald-700 text-sm mb-1">Duty Doctor</span>
+                  <div className="text-[10px] text-slate-500 font-mono w-full text-center">
+                    <div>user: dutydoctor</div>
+                    <div>pass: demo123</div>
+                  </div>
+                </button>
 
-              <button 
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleDemoLogin('U-001')}
-                className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 group transition-all text-left w-full disabled:opacity-50"
-              >
-                <span className="font-semibold text-slate-900 group-hover:text-indigo-700 text-sm mb-1">Head Doctor</span>
-                <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                  <div>user: headdoctor</div>
-                  <div>pass: demo123</div>
-                </div>
-              </button>
+                <button 
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleDemoLogin('U-001')}
+                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 group transition-all text-left w-full disabled:opacity-50"
+                >
+                  <span className="font-semibold text-slate-900 group-hover:text-indigo-700 text-sm mb-1">Head Doctor</span>
+                  <div className="text-[10px] text-slate-500 font-mono w-full text-center">
+                    <div>user: headdoctor</div>
+                    <div>pass: demo123</div>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </div>

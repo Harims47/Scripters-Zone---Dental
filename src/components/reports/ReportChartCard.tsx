@@ -228,7 +228,6 @@ export function SvgBarChart({ data, horizontal = false, maxItems = 10, valuePref
   }
 
   // Vertical Bar Chart
-  const height = 180
   return (
     <div className="w-full flex items-end justify-between gap-2 pt-6 pb-2 h-[200px]">
       {items.map((item, i) => {

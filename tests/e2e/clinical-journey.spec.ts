@@ -41,8 +41,8 @@ test.describe('Clinical Journey', () => {
     const sendDialog = page.getByRole('dialog').filter({ hasText: 'Send to Doctor' });
     await expect(sendDialog).toBeVisible();
     
-    // Find Dr. Priya Sharma's doctor card specifically
-    const docCard = sendDialog.locator('div.flex').filter({ hasText: 'Dr. Priya Sharma' });
+    // Find Dr. QA Duty Doctor's doctor card specifically
+    const docCard = sendDialog.locator('div.flex').filter({ hasText: 'Dr. QA Duty Doctor' });
     const sendButton = docCard.getByRole('button', { name: 'Send' });
     await expect(sendButton).toBeVisible();
     await sendButton.click();
@@ -125,7 +125,10 @@ test.describe('Clinical Journey', () => {
 
     // Payment Section
     await expect(page.getByRole('heading', { name: '2. Payment' })).toBeVisible();
-    await page.getByPlaceholder(/Max ₹/i).fill('512');
+    const payInput = page.getByPlaceholder(/Max ₹/i);
+    const placeholder = await payInput.getAttribute('placeholder');
+    const fullAmount = placeholder?.replace(/[^0-9.]/g, '') || '500';
+    await payInput.fill(fullAmount);
     await page.getByText('Cash', { exact: true }).click();
     await page.getByRole('button', { name: 'Add Payment' }).click();
 

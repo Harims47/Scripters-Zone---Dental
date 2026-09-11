@@ -104,7 +104,6 @@ const DOSAGE_OPTIONS = [
   '2 Drops',
   '1 Sachet',
 ]
-const FREQ_OPTIONS = ['Once daily', 'Twice daily', 'Three times daily', 'Four times daily', 'Every 6 hours', 'Every 8 hours', 'At bedtime', 'As needed']
 const DURATION_OPTIONS = ['1 day', '2 days', '3 days', '5 days', '7 days', '10 days', '14 days', '21 days', '30 days']
 const INSTRUCTION_OPTIONS = [
   'Before Breakfast',
@@ -382,7 +381,7 @@ export function DoctorWorkspacePage() {
   }
 
   const patientVisits = visits.filter(v => v.patientId === patient.id)
-  const hasPastCompletedVisit = patientVisits.some(v => v.id !== visit.id && v.status === 'Completed')
+  const hasPastCompletedVisit = patientVisits.some(v => v.id !== visit.id && v.status === 'COMPLETED')
   const patientType = hasPastCompletedVisit ? 'Existing Patient' : 'New Patient'
 
   // --- Handlers ---
@@ -405,8 +404,8 @@ export function DoctorWorkspacePage() {
     }
     const result = await savePrescription({
       visitId,
-      patientId: patient.id,
       doctorId: visit.doctorId || '',
+      status: 'Finalized',
       notes: '',
       items: activePrescription.map(item => ({
         medicineId: item.id,
@@ -414,7 +413,7 @@ export function DoctorWorkspacePage() {
         dosage: item.dosage,
         frequency: item.frequency,
         duration: item.duration,
-        instructions: item.instructions
+        instructions: item.instructions || ''
       }))
     })
     if (result.success) {
@@ -489,6 +488,7 @@ export function DoctorWorkspacePage() {
       unit: med.unit,
       stockWarningLevel: med.stockWarningLevel,
       currentStock: med.currentStock,
+      unitPrice: med.unitPrice,
       quantity: 1,
       dosage: '1 Tablet',
       frequency: 'Twice daily',
@@ -539,11 +539,11 @@ export function DoctorWorkspacePage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-900 whitespace-nowrap">Date:</span>
-                <span className="whitespace-nowrap text-slate-700">{new Date(visit.createdAt).toLocaleDateString()}</span>
+                <span className="whitespace-nowrap text-slate-700">{new Date(visit.createdAt || Date.now()).toLocaleDateString()}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-900 whitespace-nowrap">Time:</span>
-                <span className="whitespace-nowrap text-slate-700">{new Date(visit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="whitespace-nowrap text-slate-700">{new Date(visit.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             </div>
           </div>
@@ -1278,7 +1278,7 @@ export function DoctorWorkspacePage() {
               {(() => {
                 const previousVisits = patientVisits
                   .filter(v => v.id !== visit.id)
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                  .sort((a, b) => new Date(b.createdAt || Date.now()).getTime() - new Date(a.createdAt || Date.now()).getTime());
 
                 if (previousVisits.length === 0) {
                   return (
@@ -1296,8 +1296,8 @@ export function DoctorWorkspacePage() {
                   <div className="space-y-3">
                     {previousVisits.map((prevVisit) => {
                       const prevDoctor = staff.find((s: any) => s.id === prevVisit.doctorId);
-                      const isCompleted = prevVisit.status === 'COMPLETED' || prevVisit.status === 'Completed';
-                      const isCancelled = prevVisit.status === 'CANCELLED' || prevVisit.status === 'Cancelled';
+                      const isCompleted = prevVisit.status === 'COMPLETED';
+                      const isCancelled = prevVisit.status === 'CANCELLED';
 
                       return (
                         <div
@@ -1308,14 +1308,14 @@ export function DoctorWorkspacePage() {
                             <div className="space-y-1.5 flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-semibold text-slate-900 text-sm">
-                                  {new Date(prevVisit.createdAt).toLocaleDateString(undefined, {
+                                  {new Date(prevVisit.createdAt || Date.now()).toLocaleDateString(undefined, {
                                     day: 'numeric',
                                     month: 'short',
                                     year: 'numeric'
                                   })}
                                 </span>
                                 <span className="text-xs text-slate-400">
-                                  {new Date(prevVisit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {new Date(prevVisit.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                                 <Badge
                                   className={cn(

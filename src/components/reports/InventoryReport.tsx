@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
 import { ArrowDownRight, ArrowUpRight, SlidersHorizontal, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'

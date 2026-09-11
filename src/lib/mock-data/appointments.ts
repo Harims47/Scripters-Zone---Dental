@@ -4,7 +4,7 @@ export type AppointmentStatus = 'Scheduled' | 'Checked In' | 'Completed' | 'Canc
 export interface Appointment {
   id: string;
   patientId: string;
-  providerId: string;
+  providerId?: string;
   date: string;
   time: string;
   type: AppointmentType;
@@ -99,7 +99,7 @@ export const DEMO_APPOINTMENTS: Appointment[] = [
     "date": "2026-08-28",
     "time": "12:00 AM",
     "type": "Consultation",
-    "status": "Confirmed",
+    "status": "Scheduled",
     "notes": "Generated appointment reason."
   },
   {

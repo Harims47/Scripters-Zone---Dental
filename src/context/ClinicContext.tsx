@@ -1,8 +1,7 @@
 import React, { createContext, useContext } from 'react'
-import type { Patient, Visit, QueueEntry, Consultation, Prescription, Dispensing, Payment } from '../types/domain'
+import type { Patient, Appointment, Visit, QueueEntry, Consultation, Prescription, Dispensing, Payment } from '../types/domain'
 import {
-  type Medicine,
-  type Appointment
+  type Medicine
 } from '../lib/mock-data'
 import { api } from '../lib/api'
 import { useAuth } from './AuthContext'
@@ -31,7 +30,7 @@ interface ClinicContextType {
   startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
   updateVisit: (visitId: string, updates: Partial<Visit>) => Promise<{ success: boolean, error?: string }>
   cancelVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
-  transferVisitsToNextDay: (visitIds: string[], targetDate: string, reason?: string, isPriority?: boolean) => Promise<{ success: boolean, count?: number, error?: string }>
+  transferVisitsToNextDay: (visitIds: string[], targetDate: string, reason?: string, isPriority?: boolean) => Promise<{ success: boolean, count?: number, message?: string, transferredCount?: number, error?: string }>
 
   assignDoctor: (queueId: string, doctorId: string) => Promise<{ success: boolean, error?: string }>
   normalizePhone: (phone: string) => string
@@ -166,7 +165,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (isAuthenticated) {
       reloadInventory()
-      api.get<Payment[]>('/api/payments').then(res => setPayments((res as any).data || res)).catch(console.error)
+      api.get<Payment[]>('/api/payments?limit=200').then(res => setPayments((res as any).data || res)).catch(console.error)
       reloadStaff()
     } else {
       setMedicines([])
@@ -349,7 +348,12 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
         console.warn('Failed to re-fetch appointments after transfer:', fetchErr);
       }
 
-      return { success: true, count: visitIds.length };
+      return { 
+        success: true, 
+        count: visitIds.length, 
+        transferredCount: visitIds.length,
+        message: (res as any)?.message || `${visitIds.length} patients successfully transferred to ${targetDate}`
+      };
     } catch (err: any) {
       console.error('Failed to transfer visits:', err);
       return { success: false, error: err.response?.data?.error || err.message || 'Error transferring visits' };

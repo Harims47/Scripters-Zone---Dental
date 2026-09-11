@@ -1,13 +1,11 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { QueueStatus } from '../components/queue/queue-components'
-import { Search, PlayCircle, Users, Download, FileText, FileSpreadsheet, File, Filter } from 'lucide-react'
+import { Search, PlayCircle, Users } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
-import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 
 import { useClinicContext } from '../context/ClinicContext'
@@ -48,7 +46,7 @@ export function QueuePage() {
 
       // Calculate Patient Type
       const patientVisits = visits.filter(visit => visit.patientId === q.patientId)
-      const hasPastCompletedVisit = patientVisits.some(visit => visit.id !== q.visitId && (visit.status === 'Completed' || visit.status === 'COMPLETED'))
+      const hasPastCompletedVisit = patientVisits.some(visit => visit.id !== q.visitId && visit.status === 'COMPLETED')
       const patientType = hasPastCompletedVisit ? 'Existing Patient' : 'New Patient'
 
       return {

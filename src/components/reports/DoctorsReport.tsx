@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
-import { Stethoscope, Users, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Stethoscope, Users, CheckCircle, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { ReportChartCard, SvgBarChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'

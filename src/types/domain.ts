@@ -44,6 +44,8 @@ export interface Visit {
   prescriptionId?: string
   dispensingId?: string
   paymentId?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface QueueEntry {
@@ -68,21 +70,23 @@ export interface Consultation {
 }
 
 export interface PrescriptionItem {
-  id: string
+  id?: string
   medicineId: string
   quantity: number
   dosage?: string
   frequency?: string
   duration?: string
   instructions: string
+  medicine?: { id: string; name: string; unit?: string; form?: string }
 }
 
 export interface Prescription {
   id: string
   visitId: string
   doctorId: string
-  status: 'Draft' | 'Finalized' | 'Dispensed'
-  notes: string
+  status?: 'Draft' | 'Finalized' | 'Dispensed'
+  notes?: string
+  createdAt?: string
   items: PrescriptionItem[]
 }
 
@@ -91,6 +95,7 @@ export interface DispensingItem {
   medicineId: string
   prescribedQuantity: number
   dispensedQuantity: number
+  medicine?: { id: string; name: string; unit?: string; form?: string }
 }
 
 export interface Dispensing {

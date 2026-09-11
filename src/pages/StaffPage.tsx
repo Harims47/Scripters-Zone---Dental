@@ -10,8 +10,8 @@ import { Input } from '../components/ui/input'
 import { Sheet, SheetContent, SheetScrollArea } from '../components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog'
 import { DrawerFooterActions } from '../components/ui/drawer-patterns'
-import { StaffStatusBadge, RoleAccessPreview } from '../components/staff/staff-components'
-import { type ClinicRole, ROLE_CONFIG } from '../lib/role-config'
+import { StaffStatusBadge, ModuleAccessEditor } from '../components/staff/staff-components'
+import { type ClinicRole, type ClinicModule, ROLE_CONFIG, SIDEBAR_MODULES } from '../lib/role-config'
 import type { Staff } from '../lib/mock-data'
 import { api } from '../lib/api'
 import { useClinicContext } from '../context/ClinicContext'
@@ -22,7 +22,7 @@ import type { PaginationMeta, PaginatedResponse } from '../types/domain'
 type StaffStatus = 'Active' | 'Inactive'
 
 export function StaffPage() {
-  const { currentUser } = useAuth()
+  const { currentUser, refreshSession } = useAuth()
   const { reloadStaff, updateStaffAttendance } = useClinicContext()
   const [data, setData] = useState<Staff[]>([])
   const [meta, setMeta] = useState<PaginationMeta>({ currentPage: 1, pageSize: 10, totalRecords: 0, totalPages: 0 })
@@ -72,23 +72,36 @@ export function StaffPage() {
   const [deactivateId, setDeactivateId] = useState<string | null>(null)
 
   const handleOpenCreate = () => {
+    const defaultRole: ClinicRole = 'Duty Doctor'
+    const sidebarDefaults = SIDEBAR_MODULES.filter(m => ROLE_CONFIG[defaultRole]?.permissions.includes(m))
     setActiveItem({
       status: 'Active',
-      role: 'Duty Doctor' // Default role
+      role: defaultRole,
+      permissions: [...sidebarDefaults]
     })
     setDrawerMode('create')
     setDrawerOpen(true)
   }
 
   const handleOpenView = (row: Staff) => {
-    setActiveItem(row)
+    const roleBaseline = ROLE_CONFIG[row.role]?.permissions || []
+    const sidebarBaseline = SIDEBAR_MODULES.filter(m => roleBaseline.includes(m))
+    const effectivePerms = (row.permissions !== null && row.permissions !== undefined && Array.isArray(row.permissions))
+      ? row.permissions
+      : [...sidebarBaseline]
+    setActiveItem({ ...row, permissions: effectivePerms })
     setDrawerMode('view')
     setDrawerOpen(true)
   }
 
   const handleOpenEdit = (row: Staff) => {
     const cleanedPhone = (row.phone || '').replace(/\D/g, '').slice(-10)
-    setActiveItem({ ...row, phone: cleanedPhone })
+    const roleBaseline = ROLE_CONFIG[row.role]?.permissions || []
+    const sidebarBaseline = SIDEBAR_MODULES.filter(m => roleBaseline.includes(m))
+    const effectivePerms = (row.permissions !== null && row.permissions !== undefined && Array.isArray(row.permissions))
+      ? row.permissions
+      : [...sidebarBaseline]
+    setActiveItem({ ...row, phone: cleanedPhone, permissions: effectivePerms })
     setDrawerMode('edit')
     setDrawerOpen(true)
   }
@@ -103,7 +116,11 @@ export function StaffPage() {
       toast.error('Phone number must be exactly 10 digits.');
       return;
     }
-    const itemToSave = { ...activeItem, phone: cleanedPhone };
+    const itemToSave = {
+      ...activeItem,
+      phone: cleanedPhone,
+      permissions: Array.isArray(activeItem.permissions) ? activeItem.permissions : []
+    };
     if ((activeItem as any).hasAccess && (!(activeItem as any).username || !(activeItem as any).password)) {
       toast.error('System Username and Password are required when granting system access.');
       return;
@@ -116,6 +133,11 @@ export function StaffPage() {
       } else if (drawerMode === 'edit') {
         await api.put(`/api/staff/${activeItem.id}`, itemToSave)
         toast.success('Staff member updated successfully.')
+      }
+      if (activeItem.id && currentUser && (activeItem.id === currentUser.staffId || activeItem.id === currentUser.id)) {
+        if (refreshSession) {
+          await refreshSession()
+        }
       }
       await reloadStaff()
       await fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterRole)
@@ -436,7 +458,16 @@ export function StaffPage() {
                   <select 
                     className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                     value={activeItem.role || ''}
-                    onChange={e => setActiveItem(prev => ({ ...prev, role: e.target.value as ClinicRole }))}
+                    onChange={e => {
+                      const newRole = e.target.value as ClinicRole
+                      const newBaseline = ROLE_CONFIG[newRole]?.permissions || []
+                      const sidebarDefaults = SIDEBAR_MODULES.filter(m => newBaseline.includes(m))
+                      setActiveItem(prev => ({
+                        ...prev,
+                        role: newRole,
+                        permissions: [...sidebarDefaults]
+                      }))
+                    }}
                     disabled={drawerMode === 'view'}
                   >
                     {Object.keys(ROLE_CONFIG).map(r => (
@@ -474,9 +505,14 @@ export function StaffPage() {
 
               </div>
               
-              {/* Role Access Preview */}
+              {/* Module Access Control */}
               <div className="pt-4 border-t">
-                <RoleAccessPreview role={activeItem.role as ClinicRole || 'Duty Doctor'} />
+                <ModuleAccessEditor
+                  role={activeItem.role as ClinicRole || 'Duty Doctor'}
+                  selectedPermissions={(activeItem.permissions as ClinicModule[]) || []}
+                  onChange={(newPerms) => setActiveItem(prev => ({ ...prev, permissions: newPerms }))}
+                  readOnly={drawerMode === 'view'}
+                />
               </div>
 
             </div>

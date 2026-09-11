@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react'
-import { Badge } from '../ui/badge'
+import { useState, useEffect } from 'react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Plus, Check, Loader2, Info } from 'lucide-react'
@@ -179,11 +178,15 @@ export function TreatmentPlanUI({
                 </div>
               </div>
               
-              {item.status === 'Completed' && (
+              {item.status === 'Completed' ? (
                 <div className="text-xs text-emerald-600 font-medium flex items-center h-8">
                    <Check className="w-4 h-4 mr-1" /> {item.completedVisitId === currentVisitId ? 'Completed Today' : 'Completed'}
                 </div>
-              )}
+              ) : currentVisitId ? (
+                <Button size="sm" variant="outline" className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50" disabled={saving} onClick={() => handleMarkCompleted(item.id)}>
+                   <Check className="w-3.5 h-3.5 mr-1" /> Complete
+                </Button>
+              ) : null}
             </div>
           ))}
           

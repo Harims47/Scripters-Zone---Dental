@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -42,7 +42,7 @@ export function StockHistoryTable({ medicineId }: StockHistoryTableProps) {
     }
   }, [medicineId]);
 
-  const getMovementBadge = (type: string, qty: number) => {
+  const getMovementBadge = (type: string) => {
     switch (type) {
       case 'PURCHASE_RECEIPT':
         return (
@@ -122,7 +122,7 @@ export function StockHistoryTable({ medicineId }: StockHistoryTableProps) {
                       {formattedDate}
                     </td>
                     <td className="py-2.5 px-3 whitespace-nowrap">
-                      {getMovementBadge(m.movementType, m.quantity)}
+                      {getMovementBadge(m.movementType)}
                     </td>
                     <td className="py-2.5 px-3 text-right font-bold whitespace-nowrap">
                       <span className={isPositive ? 'text-emerald-700' : 'text-rose-600'}>

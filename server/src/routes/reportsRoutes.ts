@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../middleware/authMiddleware';
+import { requireAuth, requireRole, requireModule } from '../middleware/authMiddleware';
 import {
   getReportsSummary,
   getOverviewReport,
@@ -28,10 +28,10 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('Head Doctor'), requireModule('Reports'));
 
-// All reports are strictly restricted to Head Doctor
-router.get('/summary', requireRole('Head Doctor'), getReportsSummary);
+// All reports are strictly restricted to Head Doctor with Reports module access
+router.get('/summary', getReportsSummary);
 
 // 1. Overview
 router.get('/overview', requireRole('Head Doctor'), getOverviewReport);

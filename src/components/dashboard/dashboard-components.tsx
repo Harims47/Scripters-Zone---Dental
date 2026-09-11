@@ -4,9 +4,9 @@ import { cn } from "../../lib/utils"
 import { Button } from "../ui/button"
 import { Badge } from "../ui/badge"
 import { 
-  UserPlus, CalendarPlus, Clock, Phone, AlertCircle, 
-  CheckCircle2, TrendingUp, Wallet, Calendar, UserCheck, 
-  ChevronRight, ArrowRight, DollarSign, Activity, Stethoscope
+  UserPlus, CalendarPlus, Clock, Phone, 
+  CheckCircle2, TrendingUp, Calendar, UserCheck, 
+  ArrowRight, Stethoscope
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../context/AuthContext"

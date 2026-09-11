@@ -21,9 +21,12 @@ export const ROUTE_MODULE_MAP: Record<string, ClinicModule> = {
 }
 
 /**
- * Checks if a role is permitted to access a given URL path based on ROLE_CONFIG.
+ * Checks if a user is permitted to access a given URL path based on:
+ * 1. Role baseline permissions (ROLE_CONFIG[role].permissions)
+ * 2. User explicit module access (userPermissions)
+ * Effective access: ROLE PERMISSION + MODULE ACCESS = ACTUAL ACCESS
  */
-export function canAccessRoute(role: ClinicRole, path: string): boolean {
+export function canAccessRoute(role: ClinicRole, path: string, userPermissions?: ClinicModule[] | null): boolean {
   const config = ROLE_CONFIG[role]
   if (!config) return false
 
@@ -34,5 +37,40 @@ export function canAccessRoute(role: ClinicRole, path: string): boolean {
   if (!matchingKey) return true 
   
   const requiredModule = ROUTE_MODULE_MAP[matchingKey]
+
+  // Invariant: Reports is strictly Head Doctor only
+  if (requiredModule === 'Reports' && role !== 'Head Doctor') {
+    return false
+  }
+
+  // If user has custom module access configured (non-null / non-undefined array)
+  if (userPermissions !== null && userPermissions !== undefined && Array.isArray(userPermissions)) {
+    // Head Doctor always retains Staff Management and Dashboard
+    if (role === 'Head Doctor' && (requiredModule === 'Staff Management' || requiredModule === 'Dashboard')) {
+      return true
+    }
+    
+    if (userPermissions.includes(requiredModule)) {
+      return true
+    }
+
+    // Sub-modules linked to visible sidebar menu modules:
+    // Doctor Workspace is entered from Queue
+    if (requiredModule === 'Doctor Workspace' && userPermissions.includes('Queue')) {
+      return true
+    }
+
+    // Front-desk sub-modules integrated into Reception Desk
+    if (
+      (requiredModule === 'Appointments' || requiredModule === 'Billing' || requiredModule === 'Payments' || requiredModule === 'Dispensing') &&
+      userPermissions.includes('Reception Desk')
+    ) {
+      return true
+    }
+
+    return false
+  }
+
+  // No custom permissions (null/undefined) -> allowed by role baseline
   return config.permissions.includes(requiredModule)
 }

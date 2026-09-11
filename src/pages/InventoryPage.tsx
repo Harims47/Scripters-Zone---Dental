@@ -33,7 +33,7 @@ type InventoryItem = Medicine
 
 export function InventoryPage() {
   const { currentUser } = useAuth()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const initialTab = (searchParams.get('tab') as 'items' | 'orders' | 'suppliers' | 'categories') || 'items'
   const preselectedMedicineId = searchParams.get('createForMedicine') || undefined
 
@@ -407,11 +407,6 @@ export function InventoryPage() {
       }
     },
   ]
-
-  const totalItems = meta.stats?.totalItems || 0
-  const lowStockItems = meta.stats?.lowStockItems || 0
-  const outOfStockItems = meta.stats?.outOfStockItems || 0
-  const inStockItems = meta.stats?.inStockItems || 0
 
   return (
     <div className="space-y-6">

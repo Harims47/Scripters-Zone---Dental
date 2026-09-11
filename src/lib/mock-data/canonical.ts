@@ -102,5 +102,7 @@ export const DEMO_CANONICAL_PAYMENT: Payment = {
   visitId: "VIS-0001",
   amount: 1500,
   method: "Cash",
-  status: "Pending"
+  status: "Pending",
+  date: "2026-08-28",
+  createdAt: "2026-08-28T10:00:00.000Z"
 }

@@ -175,7 +175,7 @@ export function BillingPage() {
   const handleCollectPayment = async () => {
     if (selectedRow && activeMethod) {
       setPaymentError(null)
-      const res = await recordPayment(selectedRow.visitId, activeMethod)
+      const res = await recordPayment(selectedRow.visitId, Number(selectedRow.amount) || 0, activeMethod)
       if (res.success) {
         await fetchBilling(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, statusFilter)
         setSelectedRow((prev: any) => ({ ...prev, paymentStatus: 'Paid', action: 'View' }))

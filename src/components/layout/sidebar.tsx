@@ -63,7 +63,7 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
       }
     }
     
-    return canAccessRoute(currentUser.role, item.href)
+    return canAccessRoute(currentUser.role, item.href, currentUser.permissions)
   })
 
   return (

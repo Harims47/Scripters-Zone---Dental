@@ -109,7 +109,7 @@ export const exportStaff = async (req: Request, res: Response, next: NextFunctio
 
 export const createStaff = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, phone, role, status, username, password, hasAccess, roomNumber } = req.body;
+    const { name, phone, role, status, username, password, hasAccess, roomNumber, permissions } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
       const newStaff = await tx.staff.create({
@@ -119,7 +119,8 @@ export const createStaff = async (req: Request, res: Response, next: NextFunctio
           role,
           status: status || 'Active',
           attendance: 'Present',
-          roomNumber
+          roomNumber,
+          permissions: permissions !== undefined ? permissions : undefined
         }
       });
 
@@ -150,12 +151,17 @@ export const createStaff = async (req: Request, res: Response, next: NextFunctio
 export const updateStaff = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { name, phone, role, roomNumber } = req.body;
+    const { name, phone, role, roomNumber, permissions } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
+      const updateData: any = { name, phone, role, roomNumber };
+      if (permissions !== undefined) {
+        updateData.permissions = permissions;
+      }
+
       const updatedStaff = await tx.staff.update({
         where: { id },
-        data: { name, phone, role, roomNumber }
+        data: updateData
       });
 
       // Update role of associated user if it exists

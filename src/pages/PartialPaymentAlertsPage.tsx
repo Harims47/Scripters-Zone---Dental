@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useClinicContext } from '../context/ClinicContext';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { ArrowRight, AlertTriangle, Banknote, CreditCard, Smartphone, CheckCircle, Eye, Receipt, Phone, User, Calendar, FileText, Activity } from 'lucide-react';
+import { AlertTriangle, Banknote, CreditCard, Smartphone, CheckCircle, Eye, Receipt, Phone, User } from 'lucide-react';
 import { API_BASE_URL, api } from '../lib/api';
 import toast from 'react-hot-toast';
 
@@ -27,8 +27,8 @@ export function PartialPaymentAlertsPage() {
   const alerts = useMemo(() => {
     let alertData: any[] = [];
     
-    // We want to check all visits that aren't cancelled for balances
-    const activeVisits = visits.filter(v => v.status !== 'CANCELLED');
+    // We want to check all visits that aren't cancelled or completed for balances
+    const activeVisits = visits.filter(v => v.status !== 'CANCELLED' && v.status !== 'COMPLETED');
 
     for (const v of activeVisits) {
       const vPayments = payments.filter(p => p.visitId === v.id);

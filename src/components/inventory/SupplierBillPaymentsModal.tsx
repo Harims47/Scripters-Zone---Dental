@@ -1,8 +1,7 @@
-import React from 'react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '../ui/dialog';
-import { Receipt, IndianRupee, Calendar } from 'lucide-react';
+import { Receipt } from 'lucide-react';
 import type { SupplierBill } from '../../types/domain';
 
 interface SupplierBillPaymentsModalProps {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useClinicContext } from '../../context/ClinicContext'
-import { DEMO_STAFF } from '../../lib/mock-data'
 import { Button } from '../ui/button'
 import { FileText, Loader2, Check } from 'lucide-react'
 import { Badge } from '../ui/badge'
@@ -15,7 +14,7 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
   const prescription = prescriptions.find(p => p.visitId === visitId)
   const dispensing = dispensings.find(d => d.visitId === visitId)
   const visitPayments = payments.filter(p => p.visitId === visitId)
-  const doctor = staff?.find((d: any) => d.id === visit?.doctorId) || DEMO_STAFF.find(d => d.id === visit?.doctorId)
+  const doctor = staff?.find((d: any) => d.id === visit?.doctorId)
 
   const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
   const [loadingPlan, setLoadingPlan] = useState(false)

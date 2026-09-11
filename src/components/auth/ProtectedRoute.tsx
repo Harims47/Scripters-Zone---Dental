@@ -18,8 +18,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // Check role-based route permissions
-  if (!canAccessRoute(currentUser.role, location.pathname)) {
+  // Check role and module-based route permissions
+  if (!canAccessRoute(currentUser.role, location.pathname, currentUser.permissions)) {
     return <Navigate to="/unauthorized" replace />
   }
 

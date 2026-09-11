@@ -33,6 +33,8 @@ export function PatientProfileHeader({
             {name}
           </h2>
           <div className="flex items-center gap-2.5 text-[13px] font-medium text-slate-500 truncate flex-wrap">
+            {patientId && <span className="font-mono text-slate-400">{patientId}</span>}
+            {patientId && phone && <span>•</span>}
             {phone && <span>{phone}</span>}
           </div>
         </div>
@@ -74,6 +76,8 @@ export function EntityDrawerHeader({
             {name}
           </h2>
           <div className="flex items-center gap-2.5 text-[13px] font-medium text-slate-500 truncate flex-wrap">
+            {id && <span className="font-mono text-slate-400">{id}</span>}
+            {id && metadata && <span>•</span>}
             {metadata && <span>{metadata}</span>}
           </div>
         </div>

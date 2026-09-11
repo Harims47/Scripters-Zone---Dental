@@ -25,7 +25,14 @@ export function UnauthorizedPage() {
           <Button onClick={() => navigate('/dashboard')} className="w-full bg-slate-900 hover:bg-slate-800">
             Back to Dashboard
           </Button>
-          <Button variant="ghost" onClick={logout} className="w-full text-slate-500">
+          <Button 
+            variant="ghost" 
+            onClick={async () => {
+              await logout()
+              navigate('/login')
+            }} 
+            className="w-full text-slate-500"
+          >
             Logout and Switch User
           </Button>
         </div>

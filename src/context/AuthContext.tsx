@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api, ApiError } from '../lib/api';
-import type { ClinicRole } from '../lib/role-config';
+import type { ClinicRole, ClinicModule } from '../lib/role-config';
+import { ROLE_CONFIG } from '../lib/role-config';
 
 export interface SafeUser {
   id: string;
@@ -11,7 +12,40 @@ export interface SafeUser {
   staff?: {
     id: string;
     name: string;
+    permissions?: ClinicModule[] | null;
   };
+  permissions?: ClinicModule[];
+}
+
+export function computeEffectivePermissions(role: ClinicRole, staffPermissions?: ClinicModule[] | null): ClinicModule[] {
+  const roleDefault = ROLE_CONFIG[role]?.permissions || [];
+  if (staffPermissions !== null && staffPermissions !== undefined && Array.isArray(staffPermissions)) {
+    const set = new Set<ClinicModule>(staffPermissions);
+
+    // Invariant: Reports is strictly Head Doctor only
+    if (role !== 'Head Doctor') {
+      set.delete('Reports');
+    }
+
+    if (role === 'Head Doctor') {
+      set.add('Staff Management');
+      set.add('Dashboard');
+    }
+
+    // Sub-modules linked to visible sidebar menu modules
+    if (set.has('Queue')) {
+      set.add('Doctor Workspace');
+      set.add('Prescriptions');
+    }
+    if (set.has('Reception Desk')) {
+      (['Appointments', 'Billing', 'Payments', 'Dispensing'] as ClinicModule[]).forEach(sub => {
+        set.add(sub);
+      });
+    }
+
+    return Array.from(set);
+  }
+  return roleDefault;
 }
 
 interface AuthContextType {
@@ -20,6 +54,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (username: string, password?: string) => Promise<{ success: boolean; error?: string; user?: SafeUser }>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -28,15 +63,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<SafeUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const refreshSession = async () => {
+    try {
+      const data = await api.get<{ user: SafeUser }>('/api/auth/me');
+      const permissions = computeEffectivePermissions(data.user.role, data.user.staff?.permissions);
+      const userWithUiName: SafeUser = {
+        ...data.user,
+        name: data.user.staff?.name || data.user.username,
+        permissions
+      };
+      setCurrentUser(userWithUiName);
+    } catch (err) {
+      setCurrentUser(null);
+    }
+  };
+
   // Restore session on mount
   useEffect(() => {
     async function restoreSession() {
       try {
-        const data = await api.get<{ user: SafeUser }>('/api/auth/me');
-        const userWithUiName = { ...data.user, name: data.user.staff?.name || data.user.username };
-        setCurrentUser(userWithUiName);
-      } catch (err) {
-        setCurrentUser(null);
+        await refreshSession();
       } finally {
         setIsLoading(false);
       }
@@ -52,7 +98,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (username: string, password?: string) => {
     try {
       const data = await api.post<{ message: string, user: SafeUser }>('/api/auth/login', { username, password });
-      const userWithUiName = { ...data.user, name: data.user.staff?.name || data.user.username };
+      const permissions = computeEffectivePermissions(data.user.role, data.user.staff?.permissions);
+      const userWithUiName: SafeUser = {
+        ...data.user,
+        name: data.user.staff?.name || data.user.username,
+        permissions
+      };
       setCurrentUser(userWithUiName);
       return { success: true, user: userWithUiName };
     } catch (err) {
@@ -78,7 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: !!currentUser,
       isLoading,
       login,
-      logout
+      logout,
+      refreshSession
     }}>
       {children}
     </AuthContext.Provider>

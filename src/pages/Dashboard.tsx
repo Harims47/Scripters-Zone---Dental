@@ -111,8 +111,8 @@ export function Dashboard() {
     try {
       // Find queue entry if not given
       const qEntry = data?.waitingPatients.find(p => p.visitId === visitId) || data?.dutyDoctor?.currentPatient
-      if (qEntry?.status !== 'With Doctor' && qEntry?.status !== 'In Progress') {
-        const targetQueueId = (qEntry as any)?.queueId || qEntry?.id
+      if (qEntry && ('status' in qEntry ? qEntry.status !== 'With Doctor' && qEntry.status !== 'In Progress' : true)) {
+        const targetQueueId = 'queueId' in qEntry ? qEntry.queueId : qEntry.id
         if (targetQueueId) {
           await api.patch(`/api/queue/${targetQueueId}/transition`, { action: 'START_CONSULTATION' })
         }

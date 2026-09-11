@@ -1,14 +1,8 @@
 import * as React from "react"
-import { Search, Download, FileText, FileSpreadsheet, File } from "lucide-react"
+import { Search, FileText, FileSpreadsheet, File } from "lucide-react"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { cn } from "../../lib/utils"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu"
 
 interface DataTableToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
   searchQuery: string

@@ -16,9 +16,7 @@ import {
   MapPin,
   Phone,
   Activity,
-  Printer,
-  Sparkles,
-  ClipboardList
+  Printer
 } from 'lucide-react'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -160,6 +158,19 @@ export function PatientCompleteHistory({
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+            {onEditPatient && (
+              <Button variant="outline" size="sm" onClick={onEditPatient} className="h-8 text-xs font-medium">
+                Edit Patient
+              </Button>
+            )}
+            {onClose && (
+              <Button variant="ghost" size="sm" onClick={onClose} className="h-8 text-xs font-medium">
+                Close
+              </Button>
+            )}
           </div>
         </div>
 

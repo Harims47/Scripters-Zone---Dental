@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
-import { IndianRupee, CreditCard, Banknote, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
+import { IndianRupee, Banknote, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { ReportChartCard, SvgLineChart, SvgDonutChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'

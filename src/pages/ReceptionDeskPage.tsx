@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Clock, Receipt, CheckCircle, Search, Calendar, Package, FileText, CheckCircle2, Pencil, Eye, Trash2, Send, CreditCard, Activity, XCircle, Camera, X, AlertTriangle, ArrowRightLeft } from 'lucide-react';
+import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { soundService } from '../lib/soundUtils';
 import { api } from '../lib/api';
@@ -12,18 +11,17 @@ import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
-import { Sheet, SheetContent, SheetScrollArea, SheetTitle } from '../components/ui/sheet';
-import { DrawerSection, DrawerFooterActions } from '../components/ui/drawer-patterns';
+import { Sheet, SheetContent, SheetTitle } from '../components/ui/sheet';
+import { DrawerSection } from '../components/ui/drawer-patterns';
 import { CameraCapture } from '../components/ui/camera-capture';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'react-hot-toast';
-import type { QueueEntry, Visit } from '../types/domain';
+import type { QueueEntry } from '../types/domain';
 
-import { DispensingMedicineItem } from '../components/dispensing/dispensing-components';
 import { PaymentMethodSelector } from '../components/payment/payment-components';
 import type { PaymentMethod } from '../components/payment/payment-components';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
-import { PatientClinicalSummary, PatientVisitHistory } from '../components/consultation/consultation-components';
+import { PatientClinicalSummary } from '../components/consultation/consultation-components';
 import { API_BASE_URL } from '../lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
@@ -32,8 +30,6 @@ const MySwal = withReactContent(Swal);
 
 export function ReceptionDeskPage() {
   const { queue, visits, patients, staff, refreshClinicOperations, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations, transferVisitsToNextDay } = useClinicContext();
-
-  const navigate = useNavigate();
 
   // Selected Queue Date (defaults to today)
   const todayStr = new Date().toISOString().split('T')[0];
@@ -1028,7 +1024,6 @@ export function ReceptionDeskPage() {
   const activeProcessVisit = visits.find(v => v.id === processVisitId);
   const activeProcessPatient = patients.find(p => p.id === activeProcessVisit?.patientId);
   const activeProcessDoctor = doctors.find(d => d.id === activeProcessVisit?.doctorId);
-  const activeProcessQueue = queue.find(q => q.visitId === processVisitId);
 
   return (
     <div className="flex-1 bg-slate-50/50 flex flex-col h-screen overflow-hidden">

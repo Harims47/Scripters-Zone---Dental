@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { toast } from 'react-hot-toast';
-import { Plus, Trash2, Eye, Edit2, Send, PackageCheck, XCircle, AlertCircle, ShoppingCart, Upload, Image as ImageIcon, FileText, X, Receipt, FilePlus2, CreditCard, ReceiptText, CheckCircle2, HandCoins, Coins } from 'lucide-react';
+import { Plus, Trash2, Eye, Edit2, Send, XCircle, ShoppingCart, Upload, Image as ImageIcon, FileText, X, Receipt, HandCoins } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';

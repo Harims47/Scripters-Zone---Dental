@@ -23,17 +23,13 @@ import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
-import { useAuth } from '../context/AuthContext';
-import { DEMO_STAFF } from '../lib/mock-data';
 import { api } from '../lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 
 const MySwal = withReactContent(Swal);
 export function PatientsPage() {
-  const { visits, addPatient, updatePatient, startVisit, updateVisit, normalizePhone } = useClinicContext();
-  const { currentUser } = useAuth();
-  const isDoctor = currentUser?.role === 'Duty Doctor' || currentUser?.role === 'Head Doctor';
+  const { visits, staff, addPatient, updatePatient, startVisit, updateVisit, normalizePhone } = useClinicContext();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterGender, setFilterGender] = useState('all');
@@ -86,7 +82,7 @@ export function PatientsPage() {
   const [visitReason, setVisitReason] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  const doctors = DEMO_STAFF.filter(s => ['Head Doctor', 'Duty Doctor'].includes(s.role));
+  const doctors = (staff || []).filter((s: any) => ['Head Doctor', 'Duty Doctor'].includes(s.role));
 
   const hasActiveVisit = (patientId: string) => {
     return visits.some(v => v.patientId === patientId && !['COMPLETED', 'CANCELLED'].includes(v.status));
@@ -296,6 +292,10 @@ export function PatientsPage() {
             Search patients and review their complete visit-by-visit clinical records.
           </p>
         </div>
+        <Button onClick={handleNewPatient} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
+          <UserPlus className="h-4 w-4" />
+          <span>New Patient</span>
+        </Button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
@@ -566,10 +566,13 @@ export function PatientsPage() {
                           <select 
                             value={visitDoctor}
                             onChange={e => setVisitDoctor(e.target.value)}
+                            disabled={doctors.length === 0}
                             className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                           >
-                            <option value="" disabled>Select a doctor...</option>
-                            {doctors.map(d => (
+                            <option value="" disabled>
+                              {doctors.length === 0 ? 'No doctors available...' : 'Select a doctor...'}
+                            </option>
+                            {doctors.map((d: any) => (
                               <option key={d.id} value={d.id}>{d.name} ({d.role})</option>
                             ))}
                           </select>
