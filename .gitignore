@@ -31,3 +31,4 @@ trace_unzip*/
 
 # Prisma generated
 server/prisma/seed.js
+backups/
