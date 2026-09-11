@@ -30,6 +30,9 @@ import dashboardRoutes from './routes/dashboardRoutes';
 const app = express();
 const port = process.env.PORT || 3001;
 
+// Trust reverse proxy (e.g. Render) for accurate client IP in express-rate-limit and secure cookies
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
