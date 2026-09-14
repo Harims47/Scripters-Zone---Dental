@@ -30,7 +30,7 @@ export interface ValidatedRow {
   matchedExistingPatient?: {
     id: string;
     name: string;
-    phone: string;
+    phone: string | null;
   };
   errors: string[];
 }
@@ -276,8 +276,12 @@ export async function validateRows(
       })
     : [];
 
-  const existingPhoneMap = new Map<string, { id: string; name: string; phone: string }>();
-  existingPatients.forEach(p => existingPhoneMap.set(p.phone, p));
+  const existingPhoneMap = new Map<string, { id: string; name: string; phone: string | null }>();
+  existingPatients.forEach(p => {
+    if (p.phone) {
+      existingPhoneMap.set(p.phone, p);
+    }
+  });
 
   const seenInFilePhones = new Map<string, { rowNumber: number; name: string }>();
 

@@ -43,6 +43,11 @@ export function canAccessRoute(role: ClinicRole, path: string, userPermissions?:
     return false
   }
 
+  // Invariant: Historical Migration is strictly Head Doctor only
+  if (path.startsWith('/historical-migration')) {
+    return role === 'Head Doctor';
+  }
+
   // If user has custom module access configured (non-null / non-undefined array)
   if (userPermissions !== null && userPermissions !== undefined && Array.isArray(userPermissions)) {
     // Head Doctor always retains Staff Management and Dashboard

@@ -564,9 +564,9 @@ export function ReceptionDeskPage() {
                   setEditingVisitId(row.original.visitId || null);
                   setRegData({
                     name: patient.name,
-                    phone: patient.phone,
-                    age: patient.age.toString(),
-                    gender: patient.gender,
+                    phone: patient.phone || '',
+                    age: patient.age != null ? patient.age.toString() : '',
+                    gender: patient.gender || '',
                     address: patient.address || '',
                     reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
                     photoUrl: patient.photoUrl || ''
@@ -593,9 +593,9 @@ export function ReceptionDeskPage() {
                   setEditingVisitId(row.original.visitId || null);
                   setRegData({
                     name: patient.name,
-                    phone: patient.phone,
-                    age: patient.age.toString(),
-                    gender: patient.gender,
+                    phone: patient.phone || '',
+                    age: patient.age != null ? patient.age.toString() : '',
+                    gender: patient.gender || '',
                     address: patient.address || '',
                     reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
                     photoUrl: patient.photoUrl || ''

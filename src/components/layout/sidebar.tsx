@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom"
 import { 
   LayoutDashboard, Users, Calendar, Clock, 
   Package, Stethoscope, Settings, Receipt,
-  LogOut, Menu, BarChart3
+  LogOut, Menu, BarChart3, FolderArchive
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { t } from "../../lib/i18n"
@@ -29,6 +29,7 @@ const navItems: NavItem[] = [
   { title: "Inventory", href: "/inventory", icon: Package },
   { title: "Staff", href: "/staff", icon: Stethoscope },
   { title: "Reports", href: "/reports", icon: BarChart3 },
+  { title: "Historical Migration", href: "/historical-migration", icon: FolderArchive },
   { title: "Settings", href: "/settings", icon: Settings },
 ]
 

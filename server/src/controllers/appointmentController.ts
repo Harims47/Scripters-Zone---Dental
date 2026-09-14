@@ -123,7 +123,7 @@ export const createAppointment = async (req: Request, res: Response, next: NextF
       patientId: patient.id,
       entityType: 'APPOINTMENT',
       entityId: appointment.id,
-      recipientPhone: patient.phone,
+      recipientPhone: patient.phone || undefined,
       recipientEmail: patient.email || undefined,
       recipientName: patient.name,
       variables: {

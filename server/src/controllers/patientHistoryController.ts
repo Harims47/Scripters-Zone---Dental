@@ -50,6 +50,13 @@ export const getPatientHistory = async (req: Request, res: Response, next: NextF
       orderBy: { createdAt: 'desc' }
     });
 
+    // Sort visits chronologically by clinical date (using visitDate when present, fallback to createdAt)
+    visits.sort((a, b) => {
+      const dateA = a.visitDate ? new Date(a.visitDate).getTime() : new Date(a.createdAt).getTime();
+      const dateB = b.visitDate ? new Date(b.visitDate).getTime() : new Date(b.createdAt).getTime();
+      return dateB - dateA;
+    });
+
     // Lookup staff/doctor details for visits where doctorId is present
     const doctorIds = Array.from(new Set(visits.map(v => v.doctorId).filter(Boolean))) as string[];
     const doctors = await prisma.staff.findMany({

@@ -28,7 +28,9 @@ import medicineCategoryRoutes from './routes/medicineCategoryRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import webhookRoutes from './routes/webhookRoutes';
+import historicalMigrationRoutes from './routes/historicalMigrationRoutes';
 import { QueueRunner } from './services/communication/queueRunner';
+import { HistoricalBatchService } from './services/historicalMigration/HistoricalBatchService';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -69,6 +71,7 @@ app.use('/api/patients', treatmentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks/communication', webhookRoutes);
+app.use('/api/historical-migration', historicalMigrationRoutes);
 
 // Minimal Health Endpoint for Phase 2.0
 app.get('/api/health', (req, res) => {
@@ -86,6 +89,9 @@ const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
   QueueRunner.start().catch((err) => {
     console.error('Failed to start communication QueueRunner:', err.message);
+  });
+  HistoricalBatchService.recoverStaleMigrationJobs().catch((err) => {
+    console.error('Failed to recover stale historical migration jobs:', err.message);
   });
 });
 

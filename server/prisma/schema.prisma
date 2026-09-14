@@ -34,9 +34,9 @@ model Staff {
 model Patient {
   id        String    @id @default(uuid())
   name      String
-  phone     String    @unique
-  age       Int
-  gender    String
+  phone     String?   @unique
+  age       Int?
+  gender    String?
   status    String    @default("Active")
   photoUrl  String?
   address   String?
@@ -50,6 +50,8 @@ model Patient {
   visits        Visit[]
   treatmentPlan TreatmentPlan?
   notifications Notification[]
+  matchedHistoricalRecords  HistoricalMigrationRecord[] @relation("MatchedHistoricalPatient")
+  importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalPatient")
 }
 
 model Appointment {
@@ -79,6 +81,7 @@ model Visit {
   medicineCost    Float?
   reasonForVisit  String?
   paymentOwner    String        @default("RECEPTION")
+  visitDate       DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   consultation    Consultation?
@@ -89,6 +92,9 @@ model Visit {
   appointment             Appointment?        @relation(fields: [appointmentId], references: [id])
   patient                 Patient             @relation(fields: [patientId], references: [id])
   completedTreatmentItems TreatmentPlanItem[]
+  importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalVisit")
+
+  @@index([visitDate])
 }
 
 model QueueEntry {
@@ -416,5 +422,106 @@ model Notification {
   @@index([patientId])
   @@index([entityType, entityId])
 }
+
+enum HistoricalBatchStatus {
+  UPLOADED
+  OCR_PROCESSING
+  AWAITING_REVIEW
+  IMPORTING
+  COMPLETED
+  FAILED
+}
+
+enum HistoricalRecordStatus {
+  PENDING_OCR
+  NEEDS_REVIEW
+  APPROVED
+  SKIPPED
+  IMPORTED
+  FAILED
+}
+
+enum DuplicateStatus {
+  UNIQUE
+  EXACT_MATCH
+  PHONE_CONFLICT
+  POSSIBLE_DUPLICATE
+}
+
+enum DuplicateResolution {
+  CREATE_NEW
+  USE_EXISTING
+  SKIP
+}
+
+model HistoricalMigrationBatch {
+  id               String                    @id @default(uuid())
+  name             String
+  status           HistoricalBatchStatus     @default(UPLOADED)
+  totalPages       Int                       @default(0)
+  processedRecords Int                       @default(0)
+  approvedRecords  Int                       @default(0)
+  importedRecords  Int                       @default(0)
+  skippedRecords   Int                       @default(0)
+  failedRecords    Int                       @default(0)
+  createdById      String?
+  errorMessage     String?                   @db.Text
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  records          HistoricalMigrationRecord[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model HistoricalMigrationRecord {
+  id                  String                   @id @default(uuid())
+  batchId             String
+  pageNumber          Int                      @default(1)
+  sourceFileKey       String
+  sourceFileName      String
+  status              HistoricalRecordStatus   @default(PENDING_OCR)
+  rawOcrText          String?                  @db.Text
+  ocrConfidence       Float?
+
+  // Proposed 6 fields from OCR
+  proposedName        String?
+  proposedPhone       String?
+  proposedAge         Int?
+  proposedGender      String?
+  proposedVisitDate   DateTime?
+  proposedReason      String?                  @db.Text
+
+  // Human reviewed 6 fields
+  reviewedName        String?
+  reviewedPhone       String?
+  reviewedAge         Int?
+  reviewedGender      String?
+  reviewedVisitDate   DateTime?
+  reviewedReason      String?                  @db.Text
+
+  // Duplicate handling
+  duplicateStatus     DuplicateStatus?
+  duplicateResolution DuplicateResolution?
+  matchedPatientId    String?
+
+  // Import link
+  importedPatientId   String?
+  importedVisitId     String?
+  importedAt          DateTime?
+  errorMessage        String?                  @db.Text
+
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  batch               HistoricalMigrationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  matchedPatient      Patient?                 @relation("MatchedHistoricalPatient", fields: [matchedPatientId], references: [id], onDelete: SetNull)
+  importedPatient     Patient?                 @relation("ImportedHistoricalPatient", fields: [importedPatientId], references: [id], onDelete: SetNull)
+  importedVisit       Visit?                   @relation("ImportedHistoricalVisit", fields: [importedVisitId], references: [id], onDelete: SetNull)
+
+  @@index([batchId, status])
+  @@index([status])
+}
+
 
 

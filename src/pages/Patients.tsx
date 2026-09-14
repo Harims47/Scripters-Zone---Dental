@@ -109,9 +109,9 @@ export function PatientsPage() {
     setSelectedPatient(patient);
     setNewPatient({
       name: patient.name,
-      phone: patient.phone,
-      age: patient.age.toString(),
-      gender: patient.gender,
+      phone: patient.phone || '',
+      age: patient.age != null ? patient.age.toString() : '',
+      gender: patient.gender || '',
       photoUrl: patient.photoUrl || '',
       address: patient.address || '',
       email: patient.email || '',
@@ -278,7 +278,11 @@ export function PatientsPage() {
     {
       accessorKey: "age",
       header: "Age / Gender",
-      cell: ({ row }) => <span className="text-slate-600">{row.original.age} Yrs • {row.original.gender}</span>
+      cell: ({ row }) => (
+        <span className="text-slate-600">
+          {row.original.age != null ? `${row.original.age} Yrs` : '—'} • {row.original.gender || '—'}
+        </span>
+      )
     },
     {
       id: "actions",
@@ -413,9 +417,9 @@ export function PatientsPage() {
                     <DrawerSection title="Basic Information">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
                         <ReadOnlyField label="Full Name" value={selectedPatient.name} />
-                        <ReadOnlyField label="Phone" value={selectedPatient.phone} />
-                        <ReadOnlyField label="Age" value={`${selectedPatient.age} Yrs`} />
-                        <ReadOnlyField label="Gender" value={selectedPatient.gender} />
+                        <ReadOnlyField label="Phone" value={selectedPatient.phone || '—'} />
+                        <ReadOnlyField label="Age" value={selectedPatient.age != null ? `${selectedPatient.age} Yrs` : '—'} />
+                        <ReadOnlyField label="Gender" value={selectedPatient.gender || '—'} />
                         <div className="sm:col-span-2 mt-2">
                           <ReadOnlyField label="Address" value={selectedPatient.address || 'Not provided'} />
                         </div>
