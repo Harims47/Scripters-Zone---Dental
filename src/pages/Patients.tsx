@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play } from 'lucide-react';
+import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play, Upload } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
@@ -23,13 +23,17 @@ import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
+import { useAuth } from '../context/AuthContext';
+import { PatientImportModal } from '../components/patients/PatientImportModal';
 import { api } from '../lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 
 const MySwal = withReactContent(Swal);
 export function PatientsPage() {
+  const { currentUser } = useAuth();
   const { visits, staff, addPatient, updatePatient, startVisit, updateVisit, normalizePhone } = useClinicContext();
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterGender, setFilterGender] = useState('all');
@@ -299,6 +303,15 @@ export function PatientsPage() {
             Search patients and review their complete visit-by-visit clinical records.
           </p>
         </div>
+        {currentUser?.role === 'Head Doctor' && (
+          <Button
+            onClick={() => setIsImportModalOpen(true)}
+            className="bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 h-9 px-3.5 rounded-xl self-start sm:self-auto transition-colors cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import Existing Patients
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
@@ -736,6 +749,15 @@ export function PatientsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Existing Patient Import Modal (Head Doctor Only) */}
+      <PatientImportModal
+        open={isImportModalOpen}
+        onOpenChange={setIsImportModalOpen}
+        onImportComplete={() => {
+          fetchPatients(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterGender);
+        }}
+      />
     </div>
   );
 }
