@@ -10,6 +10,7 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
       where: { id: visitId },
       include: {
         patient: true,
+        consultation: true,
         prescription: {
           include: {
             items: {
@@ -24,22 +25,25 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Prescription not found for this visit.' });
     }
 
-    const staff = await prisma.staff.findUnique({
+    const staff = visit.doctorId ? await prisma.staff.findUnique({
       where: { id: visit.doctorId }
-    });
+    }) : null;
 
     const prescriptionData = {
       clinicName: 'DentalCore Dental Clinic',
+      clinicAddress: 'Healthcare Plaza, Main Road',
+      clinicPhone: '+91 98765 43210',
       patientName: visit.patient.name,
       patientAge: visit.patient.age || '',
       patientGender: visit.patient.gender || '',
       patientId: visit.patient.id,
       patientPhone: visit.patient.phone,
+      diagnosis: visit.consultation?.reasonForVisit || visit.reasonForVisit || undefined,
       visitDate: visit.createdAt.toLocaleDateString('en-IN'),
       visitId: visit.id,
-      doctorName: staff ? staff.name : 'Unknown',
+      doctorName: staff ? staff.name : 'Doctor',
       items: visit.prescription.items.map((item: any) => ({
-        medicineName: item.medicine.name,
+        medicineName: item.medicine?.name || 'Medicine',
         quantity: item.quantity,
         dosage: item.dosage || undefined,
         frequency: item.frequency || undefined,
@@ -154,7 +158,13 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
       where: { id: visitId },
       include: {
         patient: true,
-        payments: true,
+        consultation: true,
+        payments: {
+          orderBy: { createdAt: 'asc' }
+        },
+        completedTreatmentItems: {
+          include: { catalogItem: true }
+        },
         dispensing: {
           include: {
             items: {
@@ -173,45 +183,85 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
     if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist') {
       return res.status(403).json({
         error: 'Access denied: Invoice and financial details for this doctor-owned visit are restricted from Reception.',
+        message: 'Handled by Doctor'
       });
     }
 
-    const paidTotal = (visit.payments || [])
-      .filter((p: any) => p.status === 'Paid' || p.status === 'Completed')
-      .reduce((sum: number, p: any) => sum + p.amount, 0);
-
-    let medicineCost = 0;
-    if (visit.dispensing && visit.dispensing.items) {
-      medicineCost = visit.dispensing.items.reduce(
-        (sum: number, item: any) => sum + (item.dispensedQuantity * item.medicine.unitPrice),
-        0
-      );
+    // Fetch doctor name
+    let doctorName = 'Doctor';
+    if (visit.doctorId) {
+      const doctorStaff = await prisma.staff.findUnique({
+        where: { id: visit.doctorId }
+      });
+      if (doctorStaff) doctorName = doctorStaff.name;
     }
 
     const consultationFee = visit.consultationFee || 0;
     const treatmentFee = visit.treatmentFee || 0;
+
+    let calculatedMedicineCost = 0;
+    const medicines = (visit.dispensing?.items || []).map((item: any) => {
+      const qty = item.dispensedQuantity || item.prescribedQuantity || 0;
+      const unitPrice = item.medicine?.unitPrice || 0;
+      const total = qty * unitPrice;
+      calculatedMedicineCost += total;
+      return {
+        name: item.medicine?.name || 'Medicine',
+        quantity: qty,
+        unitPrice,
+        total
+      };
+    });
+
+    const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
     const grossTotal = consultationFee + treatmentFee + medicineCost;
+
+    const validPayments = (visit.payments || []).filter((p: any) => p.status === 'Paid' || p.status === 'Completed');
+    const paidTotal = validPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
     const amountDue = Math.max(0, grossTotal - paidTotal);
+
+    const treatments = (visit.completedTreatmentItems || []).map((t: any) => ({
+      name: t.catalogItem?.name || 'Dental Procedure',
+      category: t.catalogItem?.category,
+      notes: t.notes || undefined,
+    }));
+
+    const payments = validPayments.map((p: any) => ({
+      receiptNo: p.id ? `RCPT-${p.id.substring(0, 8).toUpperCase()}` : 'RCPT',
+      date: p.date ? new Date(p.date).toLocaleDateString('en-IN') : new Date(p.createdAt).toLocaleDateString('en-IN'),
+      method: p.method || 'Cash',
+      amount: p.amount || 0
+    }));
+
+    const status = amountDue === 0 ? 'Fully Paid' : paidTotal > 0 ? 'Partially Paid' : 'Unpaid';
+    const invoiceNumber = `INV-${visit.id.substring(0, 8).toUpperCase()}`;
 
     const { generateInvoicePDF } = await import('../services/documentService');
     const pdfBuffer = await generateInvoicePDF({
       clinicName: 'DentalCore Dental Clinic',
+      clinicAddress: 'Healthcare Plaza, Main Road',
+      clinicPhone: '+91 98765 43210',
+      invoiceNumber,
+      visitId: visit.id,
+      visitDate: visit.createdAt.toLocaleDateString('en-IN'),
       patientName: visit.patient.name,
       patientId: visit.patient.id,
       patientPhone: visit.patient.phone,
-      visitId: visit.id,
-      visitDate: visit.createdAt.toLocaleDateString('en-IN'),
+      doctorName,
       consultationFee,
       treatmentFee,
       medicineCost,
       totalAmount: grossTotal,
       amountPaid: paidTotal,
       amountDue,
-      status: amountDue === 0 ? 'Fully Paid' : paidTotal > 0 ? 'Partially Paid' : 'Unpaid',
+      status,
+      treatments,
+      medicines,
+      payments
     });
 
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`invoice_${visit.id.substring(0, 8)}.pdf`);
+    res.attachment(`invoice_${invoiceNumber}.pdf`);
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating invoice PDF:', error);

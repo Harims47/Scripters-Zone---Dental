@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft } from 'lucide-react';
+import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { soundService } from '../lib/soundUtils';
 import { api } from '../lib/api';
@@ -1024,13 +1024,16 @@ export function ReceptionDeskPage() {
     }
   };
 
-  const handlePrintDocument = async (type: 'prescription' | 'receipt') => {
+  const handlePrintDocument = async (type: 'prescription' | 'receipt' | 'invoice') => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${processVisitId}`, {
         method: 'GET',
         credentials: 'include'
       });
-      if (!response.ok) throw new Error(`Failed to print ${type}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to print ${type}`);
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -1040,10 +1043,12 @@ export function ReceptionDeskPage() {
       if (type === 'receipt') {
         setHasPrintedReceipt(true);
         toast.success('Receipt generated! You can now click Done to complete checkout.');
+      } else if (type === 'invoice') {
+        toast.success('Tax invoice generated successfully.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error(`Failed to load ${type} document.`);
+      toast.error(err.message || `Failed to load ${type} document.`);
     }
   };
 
@@ -2506,6 +2511,15 @@ export function ReceptionDeskPage() {
                           >
                             <Receipt className="w-4 h-4 mr-2 text-teal-600" />
                             {hasPrintedReceipt ? 'Reprint Receipt' : 'Print Receipt'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium shadow-xs"
+                            onClick={() => handlePrintDocument('invoice')}
+                            title="Print Tax Invoice"
+                          >
+                            <FileText className="w-4 h-4 mr-1.5 text-blue-600" />
+                            Invoice
                           </Button>
                           {activeProcessVisit && activeProcessPatient && (
                             <WhatsAppActionButton

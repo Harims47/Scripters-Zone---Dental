@@ -195,22 +195,25 @@ export function BillingPage() {
     }
   }
 
-  const handlePrintDocument = async (type: 'prescription' | 'receipt') => {
+  const handlePrintDocument = async (type: 'prescription' | 'receipt' | 'invoice') => {
     if (!selectedRow) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${selectedRow.visitId}`, {
         method: 'GET',
         credentials: 'include'
       });
-      if (!response.ok) throw new Error(`Failed to print ${type}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to print ${type}`);
+      }
       
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert(`Failed to load ${type} document. Please ensure you are authorized.`);
+      alert(err.message || `Failed to load ${type} document. Please ensure you are authorized.`);
     }
   };
 
@@ -550,7 +553,42 @@ export function BillingPage() {
                   </div>
                   
                   {/* Fixed Footer */}
-                  <div className="bg-white border-t px-6 py-4 flex justify-end">
+                  <div className="bg-white border-t px-6 py-4 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePrintDocument('prescription')}
+                        className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+                      >
+                        <FileText className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                        Prescription
+                      </Button>
+                      {(!isReceptionist || selectedRow.paymentOwner !== 'DOCTOR') && (
+                        <>
+                          {selectedRow.paymentStatus === 'Paid' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePrintDocument('receipt')}
+                              className="text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                            >
+                              <Receipt className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                              Receipt
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePrintDocument('invoice')}
+                            className="text-xs text-blue-700 border-blue-300 hover:bg-blue-50"
+                          >
+                            <FileText className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                            Invoice
+                          </Button>
+                        </>
+                      )}
+                    </div>
                     <Button variant="outline" onClick={() => setDrawerOpen(false)}>Close</Button>
                   </div>
                 </>

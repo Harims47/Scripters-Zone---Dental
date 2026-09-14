@@ -37,21 +37,24 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
     return <div className="p-4 text-slate-500">Visit not found.</div>
   }
 
-  const handlePrintDocument = async (type: 'prescription' | 'receipt') => {
+  const handlePrintDocument = async (type: 'prescription' | 'receipt' | 'invoice') => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${visitId}`, {
         method: 'GET',
         credentials: 'include'
       });
-      if (!response.ok) throw new Error(`Failed to print ${type}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to print ${type}`);
+      }
       
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert(`Failed to load ${type} document. Please ensure you are authorized.`);
+      alert(err.message || `Failed to load ${type} document. Please ensure you are authorized.`);
     }
   };
 
@@ -217,9 +220,14 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden border-l-4 border-l-teal-500">
             <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
               <span>Payment Details ({visitPayments.length})</span>
-              <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')} className="h-7 text-xs bg-white">
-                <FileText className="w-3 h-3 mr-1.5 text-teal-600" /> Print Receipt
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')} className="h-7 text-xs bg-white">
+                  <FileText className="w-3 h-3 mr-1.5 text-teal-600" /> Print Receipt
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handlePrintDocument('invoice')} className="h-7 text-xs bg-white">
+                  <FileText className="w-3 h-3 mr-1.5 text-blue-600" /> Print Invoice
+                </Button>
+              </div>
             </div>
             <div className="divide-y divide-slate-100">
               {visitPayments.map((p, idx) => (
