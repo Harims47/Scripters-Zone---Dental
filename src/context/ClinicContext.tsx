@@ -38,7 +38,7 @@ interface ClinicContextType {
   // Phase 0P.3 Transitions
   callPatient: (visitId: string) => Promise<boolean>
   startConsultationFlow: (visitId: string) => Promise<boolean>
-  saveConsultation: (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number }, isComplete?: boolean) => Promise<{ success: boolean, error?: string }>
+  saveConsultation: (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number }, isComplete?: boolean, paymentOwner?: 'RECEPTION' | 'DOCTOR') => Promise<{ success: boolean, error?: string }>
   savePrescription: (prescription: Omit<Prescription, 'id'>) => Promise<{ success: boolean, error?: string }>
 
   // Phase 0P.5
@@ -403,10 +403,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return true
   }
 
-  const saveConsultation = async (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number }, isComplete = false) => {
+  const saveConsultation = async (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number }, isComplete = false, paymentOwner: 'RECEPTION' | 'DOCTOR' = 'RECEPTION') => {
     try {
       if (isComplete) {
-        await api.post<{ data: { visit: Visit } }>(`/api/consultations/visit/${visitId}/complete`)
+        await api.post<{ data: { visit: Visit } }>(`/api/consultations/visit/${visitId}/complete`, { paymentOwner })
         
         // Refresh visits data to pull updated consultation/prescription/queue statuses
         const freshVisitsRes = await api.get<{ data: any[] }>('/api/visits')

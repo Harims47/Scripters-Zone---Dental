@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
-import { Plus, Check, Loader2, Info } from 'lucide-react'
+import { Plus, Check, Loader2, Trash2, ChevronDown, ChevronUp, History } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { api } from '../../lib/api'
 import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem } from '../../types/domain'
@@ -96,6 +96,35 @@ export function TreatmentPlanUI({
     }
   }
 
+  const handleDelete = async (itemId: string) => {
+    setSaving(true)
+    try {
+      await api.delete(`/api/patients/${patientId}/treatment-plan/items/${itemId}`)
+      setPlan(prev => prev ? {
+        ...prev,
+        items: prev.items.filter(i => i.id !== itemId)
+      } : null)
+    } catch (err) {
+      console.error(err)
+      alert("Failed to delete treatment procedure.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const [showPastHistory, setShowPastHistory] = useState(false)
+
+  // Categorize items by visit context
+  const currentVisitItems = currentVisitId 
+    ? (plan?.items.filter(item => item.completedVisitId === currentVisitId) || [])
+    : (plan?.items || [])
+  const plannedItems = currentVisitId 
+    ? (plan?.items.filter(item => item.status === 'Planned') || [])
+    : []
+  const pastCompletedItems = currentVisitId 
+    ? (plan?.items.filter(item => item.status === 'Completed' && item.completedVisitId !== currentVisitId) || [])
+    : []
+
   if (loading) {
     return <div className="py-4 text-center text-sm text-slate-500"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" /> Loading Treatment Plan...</div>
   }
@@ -105,7 +134,9 @@ export function TreatmentPlanUI({
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Treatment Plan</h2>
-          <p className="text-sm text-slate-500">Long-term clinical roadmap for this patient.</p>
+          <p className="text-sm text-slate-500">
+            {currentVisitId ? "Record procedures and treatment fees for this visit." : "Long-term clinical roadmap for this patient."}
+          </p>
         </div>
         {!isAdding && (
           <Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
@@ -155,45 +186,126 @@ export function TreatmentPlanUI({
         </div>
       )}
 
-      {plan?.items.length === 0 && !isAdding && (
-        <div className="text-center py-6 text-sm text-slate-500 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-          No active treatment plan items for this patient.
-        </div>
-      )}
-
-      {plan && plan.items.length > 0 && (
-        <div className="space-y-3">
-          {plan.items.map(item => (
-            <div key={item.id} className={`flex items-start justify-between p-4 rounded-xl border ${item.status === 'Completed' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${item.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {item.status}
-                  </span>
-                  <span className="text-sm font-medium text-slate-900">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
-                </div>
-                <div className="text-xs text-slate-500 ml-1">
-                   {item.catalogItem?.category}
-                   {item.notes && <span className="ml-2 text-slate-600 font-medium">| {item.notes}</span>}
-                </div>
-              </div>
-              
-              {item.status === 'Completed' ? (
-                <div className="text-xs text-emerald-600 font-medium flex items-center h-8">
-                   <Check className="w-4 h-4 mr-1" /> {item.completedVisitId === currentVisitId ? 'Completed Today' : 'Completed'}
-                </div>
-              ) : currentVisitId ? (
-                <Button size="sm" variant="outline" className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50" disabled={saving} onClick={() => handleMarkCompleted(item.id)}>
-                   <Check className="w-3.5 h-3.5 mr-1" /> Complete
-                </Button>
-              ) : null}
+      {/* Active Visit Procedures */}
+      {currentVisitId ? (
+        <div className="space-y-4">
+          {currentVisitItems.length === 0 && !isAdding && (
+            <div className="text-center py-6 text-sm text-slate-500 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              No procedures added for this visit yet. Click "+ Add" above to record a procedure.
             </div>
-          ))}
-          
-          <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs flex gap-2 items-start mt-4">
-             <Info className="w-4 h-4 shrink-0 mt-0.5" />
-             <p>Marking a treatment as completed links it to the current visit. <strong>This does not automatically bill the patient.</strong> Please enter the treatment fee below for this procedure.</p>
-          </div>
+          )}
+
+          {currentVisitItems.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Procedures in This Visit ({currentVisitItems.length})</h4>
+              {currentVisitItems.map(item => (
+                <div key={item.id} className="flex items-start justify-between p-4 rounded-xl border bg-emerald-50/50 border-emerald-100">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Completed</span>
+                      <span className="text-sm font-medium text-slate-900">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 ml-1">
+                      {item.catalogItem?.category}
+                      {item.notes && <span className="ml-2 text-slate-600 font-medium">| {item.notes}</span>}
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(item.id)} title="Remove procedure">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Planned Roadmap Items (Pending) */}
+          {plannedItems.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Planned for Patient ({plannedItems.length})</h4>
+              {plannedItems.map(item => (
+                <div key={item.id} className="flex items-start justify-between p-4 rounded-xl border bg-white border-slate-200 shadow-xs">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Planned</span>
+                      <span className="text-sm font-medium text-slate-900">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 ml-1">
+                      {item.catalogItem?.category}
+                      {item.notes && <span className="ml-2 text-slate-600 font-medium">| {item.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" variant="outline" className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50" disabled={saving} onClick={() => handleMarkCompleted(item.id)}>
+                      <Check className="w-3.5 h-3.5 mr-1" /> Complete Today
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(item.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Past Completed History (Collapsed) */}
+          {pastCompletedItems.length > 0 && (
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowPastHistory(!showPastHistory)}
+                className="flex items-center justify-between w-full text-xs text-slate-500 hover:text-slate-800 py-1.5 font-medium transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-slate-400" />
+                  Past Visits History ({pastCompletedItems.length} previous {pastCompletedItems.length === 1 ? 'procedure' : 'procedures'})
+                </span>
+                {showPastHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              {showPastHistory && (
+                <div className="mt-2 space-y-2 pl-2 border-l-2 border-slate-200">
+                  {pastCompletedItems.map(item => (
+                    <div key={item.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs flex justify-between items-center text-slate-600">
+                      <div>
+                        <div className="font-semibold text-slate-800">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</div>
+                        <div className="text-[11px] text-slate-400">{item.catalogItem?.category} {item.notes ? `• ${item.notes}` : ''}</div>
+                      </div>
+                      <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-medium">Past Visit</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Full Longitudinal View (e.g. from Patients profile) */
+        <div className="space-y-3">
+          {plan?.items.length === 0 && !isAdding && (
+            <div className="text-center py-6 text-sm text-slate-500 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              No active treatment plan items for this patient.
+            </div>
+          )}
+          {plan && plan.items.length > 0 && (
+            plan.items.map(item => (
+              <div key={item.id} className={`flex items-start justify-between p-4 rounded-xl border ${item.status === 'Completed' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-white border-slate-200 shadow-sm'}`}>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${item.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {item.status}
+                    </span>
+                    <span className="text-sm font-medium text-slate-900">{item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 ml-1">
+                     {item.catalogItem?.category}
+                     {item.notes && <span className="ml-2 text-slate-600 font-medium">| {item.notes}</span>}
+                  </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(item.id)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))
+          )}
         </div>
       )}
 

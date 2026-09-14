@@ -40,11 +40,16 @@ model Patient {
   status    String    @default("Active")
   photoUrl  String?
   address   String?
+  email     String?
+  preferredCommunicationChannel CommunicationPreference @default(AUTO)
+  whatsappAvailable             Boolean?
+  whatsappCheckedAt             DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   payments      Payment[]
   visits        Visit[]
   treatmentPlan TreatmentPlan?
+  notifications Notification[]
 }
 
 model Appointment {
@@ -73,6 +78,7 @@ model Visit {
   treatmentFee    Float?
   medicineCost    Float?
   reasonForVisit  String?
+  paymentOwner    String        @default("RECEPTION")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   consultation    Consultation?
@@ -341,4 +347,74 @@ model StockMovement {
   createdAt     DateTime @default(now())
   medicine      Medicine @relation(fields: [medicineId], references: [id])
 }
+
+enum CommunicationPreference {
+  AUTO
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  FAILED
+  RETRYING
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_REMINDER
+  PAYMENT_RECEIPT
+  INVOICE
+  PRESCRIPTION
+  PURCHASE_ORDER_SENT
+}
+
+model Notification {
+  id                String                 @id @default(uuid())
+  type              NotificationType
+  channel           NotificationChannel
+  status            NotificationStatus     @default(QUEUED)
+  recipientPhone    String?
+  recipientEmail    String?
+  recipientName     String?
+  patientId         String?
+  entityType        String?                // "APPOINTMENT", "PAYMENT", "VISIT", "PURCHASE_ORDER"
+  entityId          String?
+  idempotencyKey    String?                @unique
+  manualSendKey     String?
+  isManualSend      Boolean                @default(false)
+  sentByUserId      String?
+  paymentOwner      String?                // Security context snapshot: "DOCTOR" | "RECEPTION"
+  templateName      String?
+  payload           Json?                  // Rendered variables, placeholders
+  provider          String?                // "AISENSY" | "MSG91" | "BREVO" | "MOCK"
+  providerMessageId String?
+  providerReference String?                // Client ref sent to provider to correlate uncertain responses
+  attempts          Int                    @default(0)
+  maxAttempts       Int                    @default(3)
+  lastError         String?                @db.Text
+  scheduledAt       DateTime               @default(now())
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  patient           Patient?               @relation(fields: [patientId], references: [id])
+
+  @@index([status, scheduledAt])
+  @@index([patientId])
+  @@index([entityType, entityId])
+}
+
 

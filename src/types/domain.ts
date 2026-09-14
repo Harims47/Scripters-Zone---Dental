@@ -9,6 +9,9 @@ export interface Patient {
   status: 'Active' | 'Inactive'
   photoUrl?: string
   address?: string
+  email?: string
+  preferredCommunicationChannel?: 'AUTO' | 'WHATSAPP' | 'SMS' | 'EMAIL'
+  whatsappAvailable?: boolean | null
   createdAt?: string
   updatedAt?: string
   // Notice: No visit-specific state (like queue status or current doctor)
@@ -37,6 +40,7 @@ export interface Visit {
   treatmentFee?: number
   medicineCost?: number
   reasonForVisit?: string
+  paymentOwner?: 'RECEPTION' | 'DOCTOR'
   
   // Workflow linkages (populated as the visit progresses)
   queueEntryId?: string

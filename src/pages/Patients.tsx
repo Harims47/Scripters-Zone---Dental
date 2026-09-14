@@ -76,7 +76,16 @@ export function PatientsPage() {
   const [historyModalPatient, setHistoryModalPatient] = useState<Patient | null>(null);
 
   // Form states
-  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '', address: '' });
+  const [newPatient, setNewPatient] = useState({
+    name: '',
+    phone: '',
+    age: '',
+    gender: 'Male' as 'Male' | 'Female' | 'Other',
+    photoUrl: '',
+    address: '',
+    email: '',
+    preferredCommunicationChannel: 'AUTO' as 'AUTO' | 'WHATSAPP' | 'SMS' | 'EMAIL'
+  });
   const [visitDoctor, setVisitDoctor] = useState('');
   const [activeVisitWarning, setActiveVisitWarning] = useState(false);
   const [visitReason, setVisitReason] = useState('');
@@ -94,6 +103,16 @@ export function PatientsPage() {
 
   const handleRowClick = (patient: Patient) => {
     setSelectedPatient(patient);
+    setNewPatient({
+      name: patient.name,
+      phone: patient.phone,
+      age: patient.age.toString(),
+      gender: patient.gender,
+      photoUrl: patient.photoUrl || '',
+      address: patient.address || '',
+      email: patient.email || '',
+      preferredCommunicationChannel: patient.preferredCommunicationChannel || 'AUTO'
+    });
     setDrawerMode('view');
     setDrawerOpen(true);
   };
@@ -135,7 +154,9 @@ export function PatientsPage() {
         gender: newPatient.gender,
         status: 'Active',
         photoUrl: newPatient.photoUrl || undefined,
-        address: (newPatient as any).address || undefined
+        address: (newPatient as any).address || undefined,
+        email: newPatient.email || undefined,
+        preferredCommunicationChannel: newPatient.preferredCommunicationChannel || 'AUTO',
       });
       
       setSelectedPatient(created);
@@ -159,6 +180,8 @@ export function PatientsPage() {
           age: parseInt(newPatient.age) || selectedPatient.age,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
+          email: newPatient.email !== undefined ? newPatient.email : selectedPatient.email,
+          preferredCommunicationChannel: newPatient.preferredCommunicationChannel || selectedPatient.preferredCommunicationChannel || 'AUTO',
         });
         setSelectedPatient(prev => prev ? {
           ...prev,
@@ -167,6 +190,8 @@ export function PatientsPage() {
           age: parseInt(newPatient.age) || selectedPatient.age,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
+          email: newPatient.email !== undefined ? newPatient.email : selectedPatient.email,
+          preferredCommunicationChannel: newPatient.preferredCommunicationChannel || selectedPatient.preferredCommunicationChannel || 'AUTO',
         } : prev);
       }
       const activeVisit = getActiveVisit(selectedPatient.id);
@@ -381,6 +406,19 @@ export function PatientsPage() {
                         <div className="sm:col-span-2 mt-2">
                           <ReadOnlyField label="Address" value={selectedPatient.address || 'Not provided'} />
                         </div>
+                        <ReadOnlyField label="Email" value={selectedPatient.email || 'Not provided'} />
+                        <ReadOnlyField 
+                          label="Communication Channel" 
+                          value={
+                            selectedPatient.preferredCommunicationChannel === 'WHATSAPP'
+                              ? 'WhatsApp Only'
+                              : selectedPatient.preferredCommunicationChannel === 'SMS'
+                              ? 'SMS Only'
+                              : selectedPatient.preferredCommunicationChannel === 'EMAIL'
+                              ? 'Email Only'
+                              : 'Auto (WhatsApp / SMS Fallback)'
+                          } 
+                        />
                         {getActiveVisit(selectedPatient.id) && (
                           <div className="sm:col-span-2 mt-2">
                             <ReadOnlyField label="Current Reason for Visit" value={getActiveVisit(selectedPatient.id)!.reasonForVisit || 'Not specified'} />
@@ -502,6 +540,36 @@ export function PatientsPage() {
                               <SelectItem value="Other">Other</SelectItem>
                             </SelectContent>
                           </Select>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Email Address (Optional)</label>
+                            <Input 
+                              type="email"
+                              value={newPatient.email} 
+                              onChange={e => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, email: e.target.value})}
+                              placeholder="e.g. patient@example.com"
+                              className="bg-white" 
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Preferred Channel</label>
+                            <Select 
+                              value={newPatient.preferredCommunicationChannel} 
+                              onValueChange={(val) => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, preferredCommunicationChannel: val as any})}
+                              disabled={drawerMode === 'view' as any}
+                            >
+                              <SelectTrigger className="w-full h-10 rounded-xl bg-white border-slate-200">
+                                <SelectValue placeholder="Select Channel" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="AUTO">Auto (WhatsApp primary, SMS fallback)</SelectItem>
+                                <SelectItem value="WHATSAPP">WhatsApp Only</SelectItem>
+                                <SelectItem value="SMS">SMS Only</SelectItem>
+                                <SelectItem value="EMAIL">Email Only</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Reason for Visit</label>

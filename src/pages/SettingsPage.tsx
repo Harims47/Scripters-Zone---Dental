@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Building2, Phone, Mail, MapPin, Edit2, Globe } from 'lucide-react'
+import { Building2, Phone, Mail, MapPin, Edit2, Globe, MessageSquare, CheckCircle2, ShieldCheck, Clock } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
@@ -159,6 +159,115 @@ export function SettingsPage() {
           </div>
         </div>
 
+      </div>
+
+      {/* Automated Communications & Messaging Card */}
+      <div className="bg-white rounded-2xl border border-slate-100/80 shadow-[0_2px_16px_-4px_rgba(15,23,42,0.04)] overflow-hidden">
+        <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+              <MessageSquare className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Automated Communication & Messaging</h2>
+                <Badge variant="statusActive" className="text-[11px] font-semibold px-2 py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />
+                  Active
+                </Badge>
+              </div>
+              <p className="text-slate-500 text-sm mt-0.5">
+                Automated multichannel delivery for appointment confirmations, receipts, invoices, and digital prescriptions.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Communication Channels Grid */}
+        <div className="p-6 sm:p-8 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            
+            {/* WhatsApp */}
+            <div className="p-5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200/50">
+                    Primary Channel
+                  </span>
+                  <span className="flex items-center text-xs font-semibold text-emerald-600 gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                  </span>
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">WhatsApp Messaging</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Sends instant appointment confirmations, 24-hour visit reminders, digital prescriptions, and official payment receipts directly to patient devices.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-200/60 text-[11px] text-slate-500 font-medium">
+                Auto-detected contact validation enabled
+              </div>
+            </div>
+
+            {/* SMS */}
+            <div className="p-5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/50">
+                    Fallback & Direct
+                  </span>
+                  <span className="flex items-center text-xs font-semibold text-emerald-600 gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                  </span>
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">SMS Notifications</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Automated fallback dispatch for patients without WhatsApp, as well as direct transactional SMS alerts and emergency notifications.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-200/60 text-[11px] text-slate-500 font-medium">
+                Instant delivery with guaranteed coverage
+              </div>
+            </div>
+
+            {/* Email */}
+            <div className="p-5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/50">
+                    Documents & Vendor
+                  </span>
+                  <span className="flex items-center text-xs font-semibold text-emerald-600 gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                  </span>
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">Email Dispatch</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Transmits formal Purchase Orders to medical suppliers with attached purchase order PDFs, detailed patient invoices, and treatment documentation.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-200/60 text-[11px] text-slate-500 font-medium">
+                High-deliverability transactional server
+              </div>
+            </div>
+
+          </div>
+
+          {/* System Security & Reliability Badges */}
+          <div className="pt-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-slate-600">
+            <div className="flex items-center gap-2.5">
+              <Clock className="w-4 h-4 text-teal-600 shrink-0" />
+              <span><strong>24-Hour Reminder Sweep:</strong> Automatically runs in background</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span><strong>Duplicate Guard:</strong> Atomic PostgreSQL locking & 60s cooldown</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span><strong>Doctor-Owned Privacy:</strong> Sensitive payment data masked</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Slide-out Edit Profile Drawer */}

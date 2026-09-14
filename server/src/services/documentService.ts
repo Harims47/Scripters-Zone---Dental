@@ -473,3 +473,204 @@ export const generateReceiptPDF = (data: any): Promise<Buffer> => {
     doc.end();
   });
 };
+
+export interface InvoiceData {
+  clinicName: string;
+  patientName: string;
+  patientId: string;
+  patientPhone: string;
+  visitId: string;
+  visitDate: string;
+  consultationFee: number;
+  treatmentFee: number;
+  medicineCost: number;
+  totalAmount: number;
+  amountPaid: number;
+  amountDue: number;
+  status: string;
+}
+
+export const generateInvoicePDF = (data: InvoiceData): Promise<Buffer> => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const buffers: Buffer[] = [];
+
+    const robotoReg = path.join(process.cwd(), 'src/assets/fonts/Roboto-Regular.ttf');
+    const robotoBold = path.join(process.cwd(), 'src/assets/fonts/Roboto-Bold.ttf');
+    doc.registerFont('Roboto', robotoReg);
+    doc.registerFont('Roboto-Bold', robotoBold);
+
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    const primaryColor = '#1E40AF';
+    const textDark = '#1F2937';
+
+    // Header
+    doc.rect(0, 0, doc.page.width, 90).fill(primaryColor);
+    doc.fillColor('#FFFFFF').font('Roboto-Bold').fontSize(22).text('DENTALCORE CLINIC', 40, 25);
+    doc.fontSize(11).font('Roboto').text('Official Treatment Invoice', 40, 52);
+    doc.fontSize(14).font('Roboto-Bold').text('TAX INVOICE', 400, 35, { align: 'right', width: 155 });
+
+    // Details Grid
+    const yTop = 115;
+    doc.fillColor(textDark).font('Roboto-Bold').fontSize(11).text('Billed To:', 40, yTop);
+    doc.font('Roboto').fontSize(10);
+    doc.text(`Patient: ${data.patientName}`, 40, yTop + 18);
+    doc.text(`Patient ID: ${data.patientId}`, 40, yTop + 32);
+    doc.text(`Phone: ${data.patientPhone}`, 40, yTop + 46);
+
+    doc.font('Roboto-Bold').text('Invoice Details:', 350, yTop);
+    doc.font('Roboto');
+    doc.text(`Visit ID: ${data.visitId}`, 350, yTop + 18);
+    doc.text(`Date: ${data.visitDate}`, 350, yTop + 32);
+    doc.text(`Status: ${data.status}`, 350, yTop + 46);
+
+    // Line Items Table
+    const tableY = 200;
+    doc.fillColor('#F3F4F6').rect(40, tableY, doc.page.width - 80, 24).fill();
+    doc.fillColor(primaryColor).font('Roboto-Bold').fontSize(10);
+    doc.text('ITEM / SERVICE', 50, tableY + 7);
+    doc.text('AMOUNT (INR)', 400, tableY + 7, { align: 'right', width: 145 });
+
+    let currentY = tableY + 30;
+    const items = [
+      { name: 'Consultation & Examination Fee', amount: data.consultationFee },
+      { name: 'Treatment & Dental Procedures', amount: data.treatmentFee },
+      { name: 'Pharmacy & Prescribed Medicines', amount: data.medicineCost },
+    ];
+
+    doc.font('Roboto').fontSize(10).fillColor(textDark);
+    for (const item of items) {
+      if (item.amount > 0) {
+        doc.text(item.name, 50, currentY);
+        doc.text(`₹${item.amount.toFixed(2)}`, 400, currentY, { align: 'right', width: 145 });
+        doc.moveTo(40, currentY + 16).lineTo(doc.page.width - 40, currentY + 16).lineWidth(0.5).strokeColor('#E5E7EB').stroke();
+        currentY += 24;
+      }
+    }
+
+    // Totals
+    currentY += 15;
+    doc.font('Roboto-Bold').fontSize(11).fillColor(textDark);
+    doc.text('Gross Total:', 300, currentY);
+    doc.text(`₹${data.totalAmount.toFixed(2)}`, 400, currentY, { align: 'right', width: 145 });
+
+    currentY += 20;
+    doc.text('Amount Paid:', 300, currentY);
+    doc.text(`₹${data.amountPaid.toFixed(2)}`, 400, currentY, { align: 'right', width: 145 });
+
+    currentY += 20;
+    doc.fillColor(data.amountDue > 0 ? '#B91C1C' : '#15803D');
+    doc.text('Balance Due:', 300, currentY);
+    doc.text(`₹${data.amountDue.toFixed(2)}`, 400, currentY, { align: 'right', width: 145 });
+
+    // Footer
+    const footY = Math.max(currentY + 50, 480);
+    doc.moveTo(40, footY).lineTo(doc.page.width - 40, footY).lineWidth(1).strokeColor(primaryColor).stroke();
+    doc.fillColor(textDark).font('Roboto').fontSize(9).text('Thank you for choosing DentalCore Clinic. Questions? Call +91 98765 43210', 0, footY + 12, { align: 'center' });
+
+    doc.end();
+  });
+};
+
+export interface PurchaseOrderData {
+  clinicName: string;
+  orderNumber: string;
+  orderDate: string;
+  supplierName: string;
+  supplierEmail?: string;
+  supplierPhone?: string;
+  items: {
+    medicineName: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }[];
+  totalAmount: number;
+  expectedDate?: string;
+  notes?: string;
+}
+
+export const generatePurchaseOrderPDF = (data: PurchaseOrderData): Promise<Buffer> => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const buffers: Buffer[] = [];
+
+    const robotoReg = path.join(process.cwd(), 'src/assets/fonts/Roboto-Regular.ttf');
+    const robotoBold = path.join(process.cwd(), 'src/assets/fonts/Roboto-Bold.ttf');
+    doc.registerFont('Roboto', robotoReg);
+    doc.registerFont('Roboto-Bold', robotoBold);
+
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    const primaryColor = '#0F766E'; // Teal for inventory/procurement
+    const textDark = '#1F2937';
+
+    // Header banner
+    doc.rect(0, 0, doc.page.width, 90).fill(primaryColor);
+    doc.fillColor('#FFFFFF').font('Roboto-Bold').fontSize(22).text('PURCHASE ORDER', 40, 25);
+    doc.fontSize(11).font('Roboto').text('DentalCore Clinic Procurement', 40, 52);
+    doc.fontSize(14).font('Roboto-Bold').text(`#${data.orderNumber}`, 400, 35, { align: 'right', width: 155 });
+
+    // Details Grid
+    const yTop = 115;
+    doc.fillColor(textDark).font('Roboto-Bold').fontSize(11).text('Supplier / Vendor:', 40, yTop);
+    doc.font('Roboto').fontSize(10);
+    doc.text(`Name: ${data.supplierName}`, 40, yTop + 18);
+    if (data.supplierEmail) doc.text(`Email: ${data.supplierEmail}`, 40, yTop + 32);
+    if (data.supplierPhone) doc.text(`Phone: ${data.supplierPhone}`, 40, yTop + 46);
+
+    doc.font('Roboto-Bold').text('Order Metadata:', 350, yTop);
+    doc.font('Roboto');
+    doc.text(`PO Date: ${data.orderDate}`, 350, yTop + 18);
+    if (data.expectedDate) doc.text(`Expected: ${data.expectedDate}`, 350, yTop + 32);
+    doc.text('Status: Sent to Supplier', 350, yTop + 46);
+
+    // Table Header
+    const tableY = 195;
+    doc.fillColor('#F3F4F6').rect(40, tableY, doc.page.width - 80, 24).fill();
+    doc.fillColor(primaryColor).font('Roboto-Bold').fontSize(10);
+    doc.text('ITEM DESCRIPTION', 50, tableY + 7);
+    doc.text('QTY', 290, tableY + 7, { width: 40, align: 'right' });
+    doc.text('UNIT PRICE', 360, tableY + 7, { width: 80, align: 'right' });
+    doc.text('TOTAL (INR)', 460, tableY + 7, { width: 85, align: 'right' });
+
+    let currentY = tableY + 30;
+    doc.font('Roboto').fontSize(10).fillColor(textDark);
+
+    for (const item of data.items) {
+      doc.text(item.medicineName, 50, currentY, { width: 230 });
+      doc.text(item.quantity.toString(), 290, currentY, { width: 40, align: 'right' });
+      doc.text(`₹${item.unitPrice.toFixed(2)}`, 360, currentY, { width: 80, align: 'right' });
+      doc.text(`₹${item.total.toFixed(2)}`, 460, currentY, { width: 85, align: 'right' });
+
+      doc.moveTo(40, currentY + 16).lineTo(doc.page.width - 40, currentY + 16).lineWidth(0.5).strokeColor('#E5E7EB').stroke();
+      currentY += 24;
+    }
+
+    // Total Amount
+    currentY += 15;
+    doc.fillColor('#F9FAFB').rect(320, currentY, doc.page.width - 360, 32).fill();
+    doc.font('Roboto-Bold').fontSize(12).fillColor(primaryColor);
+    doc.text('PO TOTAL:', 330, currentY + 9);
+    doc.text(`₹${data.totalAmount.toFixed(2)}`, 440, currentY + 9, { width: 105, align: 'right' });
+
+    if (data.notes) {
+      currentY += 45;
+      doc.font('Roboto-Bold').fontSize(10).fillColor(textDark).text('Notes & Instructions:', 40, currentY);
+      doc.font('Roboto').fontSize(9).text(data.notes, 40, currentY + 15, { width: doc.page.width - 80 });
+    }
+
+    // Footer
+    const footY = Math.max(currentY + 70, 520);
+    doc.moveTo(40, footY).lineTo(doc.page.width - 40, footY).lineWidth(1).strokeColor(primaryColor).stroke();
+    doc.fillColor(textDark).font('Roboto').fontSize(9).text('DentalCore Clinic • Procurement & Inventory Control • info@dentalcore.com', 0, footY + 12, { align: 'center' });
+
+    doc.end();
+  });
+};
+

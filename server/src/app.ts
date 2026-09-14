@@ -26,6 +26,9 @@ import purchaseOrderRoutes from './routes/purchaseOrderRoutes';
 import supplierBillRoutes from './routes/supplierBillRoutes';
 import medicineCategoryRoutes from './routes/medicineCategoryRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import notificationRoutes from './routes/notificationRoutes';
+import webhookRoutes from './routes/webhookRoutes';
+import { QueueRunner } from './services/communication/queueRunner';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -64,6 +67,8 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/treatments', treatmentRoutes);
 app.use('/api/patients', treatmentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/webhooks/communication', webhookRoutes);
 
 // Minimal Health Endpoint for Phase 2.0
 app.get('/api/health', (req, res) => {
@@ -79,11 +84,15 @@ import { prisma } from './db';
 
 const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+  QueueRunner.start().catch((err) => {
+    console.error('Failed to start communication QueueRunner:', err.message);
+  });
 });
 
 // Graceful Shutdown Mechanism
 const shutdown = async (signal: string) => {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+  QueueRunner.stop();
   server.close(async () => {
     console.log('HTTP server closed.');
     await prisma.$disconnect();

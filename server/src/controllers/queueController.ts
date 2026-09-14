@@ -13,7 +13,26 @@ export const getQueue = async (req: Request, res: Response, next: NextFunction) 
       orderBy: { position: 'asc' },
       include: { visit: { include: { patient: true } } }
     });
-    return res.json(queue);
+
+    const sanitizedQueue = req.user?.role === 'Receptionist'
+      ? queue.map((entry: any) => {
+          if (entry.visit?.paymentOwner === 'DOCTOR') {
+            return {
+              ...entry,
+              visit: {
+                ...entry.visit,
+                amountDue: 0,
+                consultationFee: null,
+                treatmentFee: null,
+                medicineCost: null,
+              }
+            };
+          }
+          return entry;
+        })
+      : queue;
+
+    return res.json(sanitizedQueue);
   } catch (error) {
     next(error);
   }
@@ -25,8 +44,16 @@ export const getQueueEntryById = async (req: Request, res: Response, next: NextF
     const entry = await prisma.queueEntry.findUnique({
       where: { id },
       include: { visit: true }
-    });
+    }) as any;
     if (!entry) return res.status(404).json({ error: 'Queue entry not found' });
+
+    if (req.user?.role === 'Receptionist' && entry.visit?.paymentOwner === 'DOCTOR') {
+      entry.visit.amountDue = 0;
+      entry.visit.consultationFee = null;
+      entry.visit.treatmentFee = null;
+      entry.visit.medicineCost = null;
+    }
+
     return res.json(entry);
   } catch (error) {
     next(error);
@@ -207,7 +234,7 @@ export const assignDoctor = async (req: Request, res: Response, next: NextFuncti
       const activePatient = await tx.queueEntry.findFirst({
         where: {
           assignedDoctorId: doctorId,
-          status: 'In Progress'
+          status: { in: ['In Progress', 'With Doctor'] }
         }
       });
 

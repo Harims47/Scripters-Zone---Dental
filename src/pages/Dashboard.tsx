@@ -9,6 +9,7 @@ import {
   ReadyForReceptionWidget, DoctorStatusWidget, type WaitingPatientItem
 } from "../components/dashboard/dashboard-components"
 import { useAuth } from "../context/AuthContext"
+import { useClinicContext } from "../context/ClinicContext"
 import { useNavigate } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { api } from "../lib/api"
@@ -55,6 +56,7 @@ interface DashboardPayload {
 
 export function Dashboard() {
   const { currentUser } = useAuth()
+  const { refreshClinicOperations } = useClinicContext()
   const navigate = useNavigate()
 
   const [data, setData] = useState<DashboardPayload | null>(null)
@@ -100,6 +102,7 @@ export function Dashboard() {
     try {
       await api.patch(`/api/queue/${item.id}/transition`, { action: 'CALL_PATIENT' })
       toast.success(`Patient ${item.patientName} called`)
+      refreshClinicOperations().catch(console.error)
       await fetchDashboard()
     } catch (err: any) {
       toast.error(err?.message || 'Failed to call patient')
@@ -117,9 +120,11 @@ export function Dashboard() {
           await api.patch(`/api/queue/${targetQueueId}/transition`, { action: 'START_CONSULTATION' })
         }
       }
+      refreshClinicOperations().catch(console.error)
       navigate(`/doctor/patient/${patientId}?visitId=${visitId}`)
     } catch (err: any) {
       console.error(err)
+      refreshClinicOperations().catch(console.error)
       navigate(`/doctor/patient/${patientId}?visitId=${visitId}`)
     }
   }
@@ -133,11 +138,17 @@ export function Dashboard() {
 
   const handleConfirmAssign = async () => {
     if (!selectedQueueItem || !selectedDoctorId) return
+    const targetDoc = (data?.doctorAvailability || []).find(d => d.id === selectedDoctorId)
+    if (targetDoc && targetDoc.status !== 'Available') {
+      toast.error(`${targetDoc.name} is currently occupied with a patient.`)
+      return
+    }
     try {
       setAssigning(true)
       await api.patch(`/api/queue/${selectedQueueItem.id}/assign`, { doctorId: selectedDoctorId })
       toast.success('Doctor assigned successfully')
       setAssignModalOpen(false)
+      refreshClinicOperations().catch(console.error)
       await fetchDashboard()
     } catch (err: any) {
       toast.error(err?.message || 'Failed to assign doctor')
@@ -172,6 +183,7 @@ export function Dashboard() {
       toast.success(`Patient ${createdPatient.name} registered and queued`)
       setRegisterModalOpen(false)
       setNewPatient({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' })
+      refreshClinicOperations().catch(console.error)
       await fetchDashboard()
     } catch (err: any) {
       toast.error(err?.message || 'Failed to register patient')
@@ -448,11 +460,43 @@ export function Dashboard() {
                   <SelectValue placeholder="Choose a doctor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(data?.doctorAvailability || []).map((doc) => (
-                    <SelectItem key={doc.id} value={doc.id}>
-                      {doc.name} ({doc.status})
-                    </SelectItem>
-                  ))}
+                  {(data?.doctorAvailability || []).map((doc) => {
+                    const isOccupied = doc.status !== 'Available';
+                    const statusText = doc.status === 'With Patient'
+                      ? 'Occupied (With Patient)'
+                      : doc.status === 'Available'
+                      ? 'Available'
+                      : doc.status;
+
+                    return (
+                      <SelectItem 
+                        key={doc.id} 
+                        value={doc.id}
+                        disabled={isOccupied}
+                        className={cn(
+                          isOccupied && "opacity-60 cursor-not-allowed text-slate-400 bg-slate-50/60"
+                        )}
+                      >
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className={cn(
+                            isOccupied ? "line-through text-slate-400" : "font-medium text-slate-900"
+                          )}>
+                            {doc.name}
+                          </span>
+                          <span className={cn(
+                            "text-[11px] font-medium px-2 py-0.5 rounded-full ml-auto",
+                            doc.status === 'Available'
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : doc.status === 'With Patient'
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200"
+                          )}>
+                            {statusText}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>

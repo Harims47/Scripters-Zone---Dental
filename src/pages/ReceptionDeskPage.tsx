@@ -16,6 +16,7 @@ import { DrawerSection } from '../components/ui/drawer-patterns';
 import { CameraCapture } from '../components/ui/camera-capture';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'react-hot-toast';
+import { WhatsAppActionButton } from '../components/communication/WhatsAppActionButton';
 import type { QueueEntry } from '../types/domain';
 
 import { PaymentMethodSelector } from '../components/payment/payment-components';
@@ -155,12 +156,30 @@ export function ReceptionDeskPage() {
     };
   }, []);
 
-  // Operational polling on Reception Desk (every 5 seconds) to ensure real-time queue & doctor status
+  // Real-time queue & doctor status sync on Reception Desk
   useEffect(() => {
+    // 1. Immediate fetch on mount so Reception Desk never shows stale data
+    refreshClinicOperations();
+
+    // 2. Operational polling every 5 seconds
     const timer = setInterval(() => {
       refreshClinicOperations();
     }, 5000);
-    return () => clearInterval(timer);
+
+    // 3. Immediately refresh when user switches back to this tab/window
+    const handleFocus = () => {
+      if (!document.hidden) {
+        refreshClinicOperations();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [refreshClinicOperations]);
 
   // Doctor status transition tracking
@@ -282,12 +301,15 @@ export function ReceptionDeskPage() {
       else if (q.status === 'Cancelled') stage = 'Cancelled';
       else stage = q.status; // fallback to raw status instead of incorrectly showing Waiting
 
+      const isDoctorHandled = v?.paymentOwner === 'DOCTOR';
       const visitPayments = payments.filter(pay => pay.visitId === v?.id);
       const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
       const amountDue = v?.amountDue || 0;
 
       let paymentStatus = '—';
-      if (stage === 'Ready at Reception' || stage === 'Completed') {
+      if (isDoctorHandled) {
+        paymentStatus = 'Handled by Doctor';
+      } else if (stage === 'Ready at Reception' || stage === 'Completed') {
         paymentStatus = 'Unpaid';
         if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
         else if (totalPaid > 0) paymentStatus = 'Partial';
@@ -326,12 +348,15 @@ export function ReceptionDeskPage() {
       const isTransferred = v.reasonForVisit?.startsWith('[Transferred');
       const oldQueueEntry = queue.find(q => q.visitId === v.id);
 
+      const isDoctorHandled = v.paymentOwner === 'DOCTOR';
       const visitPayments = payments.filter(pay => pay.visitId === v.id);
       const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
       const amountDue = v.amountDue || 0;
 
       let paymentStatus = '—';
-      if (v.status === 'COMPLETED') {
+      if (isDoctorHandled) {
+        paymentStatus = 'Handled by Doctor';
+      } else if (v.status === 'COMPLETED') {
         paymentStatus = 'Unpaid';
         if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
         else if (totalPaid > 0) paymentStatus = 'Partial';
@@ -388,7 +413,7 @@ export function ReceptionDeskPage() {
     });
 
     return data;
-  }, [queue, visits, patients, doctors, appointments, search, stageFilter, visitTypeFilter, selectedDate, todayStr]);
+  }, [queue, visits, patients, doctors, appointments, payments, search, stageFilter, visitTypeFilter, selectedDate, todayStr]);
 
   const columns: ColumnDef<any>[] = [
     {
@@ -488,7 +513,8 @@ export function ReceptionDeskPage() {
       cell: ({ row }) => {
         const s = row.original.paymentStatus;
         let badge = <span className="text-slate-400">—</span>;
-        if (s === 'Paid') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>;
+        if (s === 'Handled by Doctor') badge = <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">Payment Not Required</Badge>;
+        else if (s === 'Paid') badge = <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Paid</Badge>;
         else if (s === 'Partial') badge = <Badge className="bg-amber-100 text-amber-800 border-amber-200">Partial</Badge>;
         else if (s === 'Unpaid') badge = <Badge className="bg-rose-100 text-rose-800 border-rose-200">Unpaid</Badge>;
 
@@ -596,7 +622,7 @@ export function ReceptionDeskPage() {
               <Send className="w-4 h-4" />
             </Button>
 
-            {/* Process Visit / View Billing & Receipt */}
+            {/* Process Visit / View Billing & Receipt / Dispensing */}
             {(() => {
               const canProcess = isReadyForReception || stage === 'Completed';
               return (
@@ -604,7 +630,7 @@ export function ReceptionDeskPage() {
                   size="icon"
                   variant="ghost"
                   className={`w-8 h-8 text-emerald-600 ${canProcess ? 'hover:bg-emerald-50 cursor-pointer' : 'cursor-not-allowed opacity-75 hover:bg-transparent'}`}
-                  title={isReadyForReception ? "Checkout & Billing" : stage === 'Completed' ? "View Billing & Receipt" : "Checkout & Billing not ready for this stage"}
+                  title={isReadyForReception ? "Process Visit" : stage === 'Completed' ? "View Billing & Receipt" : "Not ready for this stage"}
                   onClick={(e) => {
                     e.preventDefault(); e.stopPropagation();
                     if (canProcess) handleOpenProcess(row.original);
@@ -909,6 +935,10 @@ export function ReceptionDeskPage() {
   };
 
   const handleMarkAsPaid = async () => {
+    if (activeProcessVisit?.paymentOwner === 'DOCTOR') {
+      toast.error('Payment for this visit is handled by Doctor');
+      return;
+    }
     if (!processVisitId || !activeMethod) {
       toast.error('Please select a payment method');
       return;
@@ -1038,8 +1068,8 @@ export function ReceptionDeskPage() {
             )}
           </div>
           <p className="text-sm text-slate-500">
-            {selectedDate === todayStr 
-              ? "Register patients, manage today's visits, and complete reception tasks." 
+            {selectedDate === todayStr
+              ? "Register patients, manage today's visits, and complete reception tasks."
               : `Reviewing scheduled queue and transferred patients for ${selectedDate}.`}
           </p>
         </div>
@@ -1050,22 +1080,20 @@ export function ReceptionDeskPage() {
             <button
               type="button"
               onClick={() => setSelectedDate(todayStr)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                selectedDate === todayStr
-                  ? 'bg-white text-teal-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all ${selectedDate === todayStr
+                ? 'bg-white text-teal-700 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Today
             </button>
             <button
               type="button"
               onClick={() => setSelectedDate(tomorrowStr)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                selectedDate === tomorrowStr
-                  ? 'bg-white text-purple-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all ${selectedDate === tomorrowStr
+                ? 'bg-white text-purple-700 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Tomorrow
             </button>
@@ -1560,8 +1588,8 @@ export function ReceptionDeskPage() {
         setIsRegisterOpen(open);
         resetRegistrationForm();
       }}>
-        <SheetContent 
-          side="right" 
+        <SheetContent
+          side="right"
           className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full"
           onInteractOutside={(e) => {
             if (isCameraOpen) e.preventDefault();
@@ -1838,8 +1866,8 @@ export function ReceptionDeskPage() {
 
       {/* Edit/View Patient Sheet */}
       <Sheet open={isEditPatientOpen} onOpenChange={setIsEditPatientOpen}>
-        <SheetContent 
-          side="right" 
+        <SheetContent
+          side="right"
           className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full"
           onInteractOutside={(e) => {
             if (isCameraOpen) e.preventDefault();
@@ -1858,11 +1886,10 @@ export function ReceptionDeskPage() {
                 return (
                   <Badge
                     variant="outline"
-                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                      isNew
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                        : 'bg-blue-50 text-blue-700 border-blue-300'
-                    }`}
+                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${isNew
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-blue-50 text-blue-700 border-blue-300'
+                      }`}
                   >
                     {isNew ? 'New Patient' : 'Existing Patient'}
                   </Badge>
@@ -2021,8 +2048,8 @@ export function ReceptionDeskPage() {
           handleCloseProcessVisit();
         }
       }}>
-        <SheetContent 
-          side="right" 
+        <SheetContent
+          side="right"
           className="w-[480px] sm:w-[680px] p-0 flex flex-col bg-slate-50 h-full"
         >
           <SheetTitle className="sr-only">Checkout & Billing</SheetTitle>
@@ -2037,6 +2064,7 @@ export function ReceptionDeskPage() {
 
             {/* Dynamic Step Calculations */}
             {(() => {
+              const isDoctorHandled = activeProcessVisit?.paymentOwner === 'DOCTOR';
               const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
               const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
               const isDispensingStep = hasPrescription && !hasCompletedDispensing;
@@ -2047,11 +2075,13 @@ export function ReceptionDeskPage() {
               const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
               const balance = amountDue - totalPaid;
 
-              const hasCompletedPayment = activeProcessVisit?.status === 'COMPLETED' || (balance <= 0 && (!hasPrescription || hasCompletedDispensing));
+              const hasCompletedPayment = isDoctorHandled || activeProcessVisit?.status === 'COMPLETED' || (balance <= 0 && (!hasPrescription || hasCompletedDispensing));
               // Only a step if dispensing is done AND balance is still > 0
-              const isPaymentStep = (!hasPrescription || hasCompletedDispensing) && balance > 0;
-              // Workflow is completed only when visit is COMPLETED or when both dispensing is done AND payment is completely paid (balance <= 0)
-              const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED' || ((!hasPrescription || hasCompletedDispensing) && balance <= 0);
+              const isPaymentStep = !isDoctorHandled && (!hasPrescription || hasCompletedDispensing) && balance > 0;
+              // Workflow is completed only when visit is COMPLETED or when both dispensing is done AND payment is completely paid (or handled by doctor)
+              const isWorkflowCompleted = isDoctorHandled
+                ? (!hasPrescription || hasCompletedDispensing)
+                : (activeProcessVisit?.status === 'COMPLETED' || ((!hasPrescription || hasCompletedDispensing) && balance <= 0));
               const activeConsultation = consultations.find(c => c.visitId === processVisitId);
 
               return (
@@ -2069,18 +2099,20 @@ export function ReceptionDeskPage() {
                         </div>
 
                         {/* Fees Breakdown */}
-                        <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-100 flex flex-col justify-center">
-                          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Fees</span>
-                          <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-slate-600">
-                              Consulting: <strong className="text-slate-900 font-semibold">₹{activeConsultation?.consultationFee || 0}</strong>
-                            </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="text-slate-600">
-                              Treatment: <strong className="text-slate-900 font-semibold">₹{activeProcessVisit?.treatmentFee || 0}</strong>
-                            </span>
+                        {!isDoctorHandled && (
+                          <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-100 flex flex-col justify-center">
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Fees</span>
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <span className="text-slate-600">
+                                Consulting: <strong className="text-slate-900 font-semibold">₹{activeConsultation?.consultationFee || 0}</strong>
+                              </span>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-600">
+                                Treatment: <strong className="text-slate-900 font-semibold">₹{activeProcessVisit?.treatmentFee || 0}</strong>
+                              </span>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
 
                       {/* Clinical Notes */}
@@ -2093,17 +2125,17 @@ export function ReceptionDeskPage() {
                         </div>
                       )}
 
-                      {/* Treatment Plan Section (if existed) */}
-                      {processTreatmentPlan && processTreatmentPlan.items && processTreatmentPlan.items.length > 0 && (
+                      {/* Treatment Plan Section (if existed for this active visit) */}
+                      {processTreatmentPlan && processTreatmentPlan.items && processTreatmentPlan.items.filter((item: any) => item.completedVisitId === activeProcessVisit?.id).length > 0 && (
                         <div className="pt-2 border-t border-slate-100 space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-slate-500 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
                               <Activity className="w-3.5 h-3.5 text-indigo-500" />
-                              Treatment Plan ({processTreatmentPlan.items.length})
+                              Treatment Procedures ({processTreatmentPlan.items.filter((item: any) => item.completedVisitId === activeProcessVisit?.id).length})
                             </span>
                           </div>
                           <div className="bg-slate-50/70 border border-slate-200/80 rounded-lg divide-y divide-slate-100 overflow-hidden">
-                            {processTreatmentPlan.items.map((item: any) => (
+                            {processTreatmentPlan.items.filter((item: any) => item.completedVisitId === activeProcessVisit?.id).map((item: any) => (
                               <div key={item.id} className="p-2.5 px-3 flex items-center justify-between gap-3 text-xs">
                                 <div className="min-w-0 flex-1">
                                   <div className="font-medium text-slate-800 truncate">
@@ -2119,10 +2151,10 @@ export function ReceptionDeskPage() {
                                     <p className="text-[11px] text-slate-500 italic mt-0.5">{item.notes}</p>
                                   )}
                                 </div>
-                                <Badge 
+                                <Badge
                                   variant="outline"
                                   className={
-                                    item.status === 'Completed' 
+                                    item.status === 'Completed'
                                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-medium shrink-0'
                                       : 'bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-medium shrink-0'
                                   }
@@ -2154,7 +2186,7 @@ export function ReceptionDeskPage() {
                                   <th className="py-2.5 px-2 text-center font-semibold w-12">Rx</th>
                                   <th className="py-2.5 px-2 text-center font-semibold w-12">Disp</th>
                                   <th className="py-2.5 px-2 text-center font-semibold w-14">Qty</th>
-                                  <th className="py-2.5 px-3 text-right font-semibold w-16">Cost</th>
+                                  {!isDoctorHandled && <th className="py-2.5 px-3 text-right font-semibold w-16">Cost</th>}
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
@@ -2168,7 +2200,7 @@ export function ReceptionDeskPage() {
                                       <td className="py-2.5 px-3 align-middle">
                                         <span className="font-semibold text-slate-900 line-clamp-1">{item.name}</span>
                                         <div className="text-[11px] text-slate-400">
-                                          {item.strength} • ₹{item.unitPrice}
+                                          {item.strength}{!isDoctorHandled ? ` • ₹${item.unitPrice}` : ''}
                                         </div>
                                         {item.availableStock <= 5 && (
                                           <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded px-1.5 py-0.5 w-fit">
@@ -2216,20 +2248,21 @@ export function ReceptionDeskPage() {
                                                 };
                                                 setActiveItems(newItems);
                                               }}
-                                              className={`h-7 w-14 text-center text-xs font-semibold px-1 py-0 ${
-                                                exceedsStock || exceedsPrescribed || item.dispensedQty < 1
-                                                  ? 'border-rose-500 focus-visible:ring-rose-500 text-rose-600'
-                                                  : 'border-slate-200'
-                                              }`}
+                                              className={`h-7 w-14 text-center text-xs font-semibold px-1 py-0 ${exceedsStock || exceedsPrescribed || item.dispensedQty < 1
+                                                ? 'border-rose-500 focus-visible:ring-rose-500 text-rose-600'
+                                                : 'border-slate-200'
+                                                }`}
                                             />
                                           </div>
                                         ) : (
                                           <span className="text-slate-400 font-mono text-xs">—</span>
                                         )}
                                       </td>
-                                      <td className="py-2.5 px-3 text-right align-middle whitespace-nowrap font-semibold text-slate-900">
-                                        ₹{itemCost}
-                                      </td>
+                                      {!isDoctorHandled && (
+                                        <td className="py-2.5 px-3 text-right align-middle whitespace-nowrap font-semibold text-slate-900">
+                                          ₹{itemCost}
+                                        </td>
+                                      )}
                                     </tr>
                                   );
                                 })}
@@ -2237,12 +2270,14 @@ export function ReceptionDeskPage() {
                             </table>
 
                             {/* Medicine Total Summary Row */}
-                            <div className="bg-slate-50 border-t border-slate-200 px-3.5 py-2.5 flex justify-between items-center text-xs">
-                              <span className="font-medium text-slate-600">Medicine Total</span>
-                              <span className="font-bold text-slate-900 text-sm">
-                                ₹{activeItems.reduce((sum, item) => sum + (item.isDispensed ? (item.dispensedQty || 0) * (item.unitPrice || 0) : 0), 0)}
-                              </span>
-                            </div>
+                            {!isDoctorHandled && (
+                              <div className="bg-slate-50 border-t border-slate-200 px-3.5 py-2.5 flex justify-between items-center text-xs">
+                                <span className="font-medium text-slate-600">Medicine Total</span>
+                                <span className="font-bold text-slate-900 text-sm">
+                                  ₹{activeItems.reduce((sum, item) => sum + (item.isDispensed ? (item.dispensedQty || 0) * (item.unitPrice || 0) : 0), 0)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <p className="text-xs text-slate-500 p-3 text-center bg-white border border-slate-200 rounded-lg">No medicines prescribed.</p>
@@ -2255,8 +2290,8 @@ export function ReceptionDeskPage() {
                           </div>
                         )}
 
-                        <Button 
-                          onClick={handleCompleteDispensing} 
+                        <Button
+                          onClick={handleCompleteDispensing}
                           disabled={activeItems.some(item => item.isDispensed && (item.dispensedQty < 1 || item.dispensedQty > item.prescribedQty || item.dispensedQty > item.availableStock))}
                           className="w-full bg-teal-600 hover:bg-teal-700 h-9 font-medium text-sm"
                         >
@@ -2271,162 +2306,170 @@ export function ReceptionDeskPage() {
                   </DrawerSection>
 
                   <DrawerSection title="2. Payment">
-                    {visitPayments.length > 0 && (
-                      <div className="mb-4 space-y-2">
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Payments</h4>
-                        <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden shadow-xs">
-                          {visitPayments.map((p, idx) => (
-                            <div key={p.id || idx} className="p-3 flex justify-between items-start gap-2">
-                              <div className="space-y-0.5 flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-slate-800 text-sm">{p.method}</span>
-                                  <span className="text-[11px] text-slate-400">
-                                    {new Date(p.createdAt || p.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </div>
-                                {p.notes && (
-                                  <p className="text-xs text-slate-600 italic break-words">{p.notes}</p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="font-bold text-slate-900 text-sm">₹{p.amount}</span>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handlePrintDocument('receipt')}
-                                  title="Print Receipt for this payment"
-                                  className="h-7 px-2 text-teal-600 hover:bg-teal-50 text-xs flex items-center gap-1"
-                                >
-                                  <Receipt className="w-3.5 h-3.5" />
-                                  <span className="hidden sm:inline">Receipt</span>
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {isPaymentStep ? (
-                      <div className="space-y-5 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between text-slate-600">
-                            <span>Consultation Fee</span>
-                            <span className="font-medium text-slate-800">₹{activeProcessVisit?.consultationFee || 0}</span>
-                          </div>
-                          <div className="flex justify-between text-slate-600">
-                            <span>Treatment Fee</span>
-                            <span className="font-medium text-slate-800">₹{activeProcessVisit?.treatmentFee || 0}</span>
-                          </div>
-                          <div className="flex justify-between text-slate-600">
-                            <span>Medicine Cost</span>
-                            <span className="font-medium text-slate-800">₹{activeProcessVisit?.medicineCost || 0}</span>
-                          </div>
-                          <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-sm">
-                            <span>Total Due</span>
-                            <span>₹{amountDue}</span>
-                          </div>
-                          <div className="flex justify-between font-semibold text-emerald-600 text-sm">
-                            <span>Total Paid</span>
-                            <span>₹{totalPaid}</span>
-                          </div>
-                          <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-base">
-                            <span>Balance</span>
-                            <span>₹{balance}</span>
-                          </div>
-                        </div>
-
-                        <div className="pt-4 border-t border-slate-100 space-y-4">
-                          <h4 className="text-sm font-semibold text-slate-900">Add Payment</h4>
-                          <div>
-                            <label className="text-xs font-medium text-slate-600 block mb-1">Payment Amount (₹)</label>
-                            <Input
-                              type="number"
-                              min="1"
-                              max={balance}
-                              placeholder={`Max ₹${balance}`}
-                              value={paymentAmount}
-                              onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
-                            />
-                          </div>
-
-                          <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
-
-                          {/* Dynamic Partial Payment Reason */}
-                          {paymentAmount !== '' && Number(paymentAmount) > 0 && Number(paymentAmount) < balance && (
-                            <div className="space-y-3 p-3 bg-amber-50/70 rounded-lg border border-amber-200">
-                              <label className="text-xs font-semibold text-amber-900 block">
-                                Reason for Partial Payment <span className="text-red-500">*</span>
-                              </label>
-                              <Select value={paymentReason} onValueChange={setPaymentReason}>
-                                <SelectTrigger className="bg-white border-amber-200 text-xs h-9">
-                                  <SelectValue placeholder="Select reason..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Patient requested partial payment">Patient requested partial payment</SelectItem>
-                                  <SelectItem value="Will pay remaining amount later">Will pay remaining amount later</SelectItem>
-                                  <SelectItem value="Financial difficulty">Financial difficulty</SelectItem>
-                                  <SelectItem value="Insurance / reimbursement pending">Insurance / reimbursement pending</SelectItem>
-                                  <SelectItem value="Other">Other</SelectItem>
-                                </SelectContent>
-                              </Select>
-
-                              {paymentReason === 'Other' && (
-                                <Input
-                                  placeholder="Specify reason..."
-                                  value={paymentReasonOther}
-                                  onChange={(e) => setPaymentReasonOther(e.target.value)}
-                                  className="bg-white border-amber-200 text-xs h-9"
-                                />
-                              )}
-
-                              <div>
-                                <label className="text-xs font-semibold text-amber-900 block mb-1">
-                                  Alternative Phone Number <span className="text-red-500">*</span>
-                                  <span className="text-[10px] font-normal text-amber-700 ml-1">(for pending balance follow-up)</span>
-                                </label>
-                                <Input
-                                  type="tel"
-                                  maxLength={10}
-                                  placeholder="10-digit mobile number"
-                                  value={altPhone}
-                                  onChange={(e) => setAltPhone(e.target.value.replace(/\D/g, ''))}
-                                  className="bg-white border-amber-200 text-xs h-9"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <Button
-                          onClick={handleMarkAsPaid}
-                          disabled={
-                            !activeMethod ||
-                            paymentAmount === '' ||
-                            Number(paymentAmount) <= 0 ||
-                            Number(paymentAmount) > balance ||
-                            (Number(paymentAmount) < balance && !paymentReason) ||
-                            (Number(paymentAmount) < balance && paymentReason === 'Other' && !paymentReasonOther.trim()) ||
-                            (Number(paymentAmount) < balance && altPhone.trim().length !== 10)
-                          }
-                          className="w-full bg-teal-600 hover:bg-teal-700 h-10 font-medium text-sm"
-                        >
-                          Add Payment
-                        </Button>
-                      </div>
-                    ) : hasCompletedPayment ? (
-                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-800">
-                        <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Payment Completed</span>
+                    {isDoctorHandled ? (
+                      <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center justify-between text-indigo-800">
+                        <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4 text-indigo-600" /> Payment Not Required</span>
                       </div>
                     ) : (
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-500 text-sm">
-                        Complete dispensing first to unlock payment.
-                      </div>
+                      <>
+                        {visitPayments.length > 0 && (
+                          <div className="mb-4 space-y-2">
+                            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Payments</h4>
+                            <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden shadow-xs">
+                              {visitPayments.map((p, idx) => (
+                                <div key={p.id || idx} className="p-3 flex justify-between items-start gap-2">
+                                  <div className="space-y-0.5 flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-slate-800 text-sm">{p.method}</span>
+                                      <span className="text-[11px] text-slate-400">
+                                        {new Date(p.createdAt || p.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                    {p.notes && (
+                                      <p className="text-xs text-slate-600 italic break-words">{p.notes}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="font-bold text-slate-900 text-sm">₹{p.amount}</span>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handlePrintDocument('receipt')}
+                                      title="Print Receipt for this payment"
+                                      className="h-7 px-2 text-teal-600 hover:bg-teal-50 text-xs flex items-center gap-1"
+                                    >
+                                      <Receipt className="w-3.5 h-3.5" />
+                                      <span className="hidden sm:inline">Receipt</span>
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {isPaymentStep ? (
+                          <div className="space-y-5 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+                            <div className="space-y-2 text-xs">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Consultation Fee</span>
+                                <span className="font-medium text-slate-800">₹{activeProcessVisit?.consultationFee || 0}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-600">
+                                <span>Treatment Fee</span>
+                                <span className="font-medium text-slate-800">₹{activeProcessVisit?.treatmentFee || 0}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-600">
+                                <span>Medicine Cost</span>
+                                <span className="font-medium text-slate-800">₹{activeProcessVisit?.medicineCost || 0}</span>
+                              </div>
+                              <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-sm">
+                                <span>Total Due</span>
+                                <span>₹{amountDue}</span>
+                              </div>
+                              <div className="flex justify-between font-semibold text-emerald-600 text-sm">
+                                <span>Total Paid</span>
+                                <span>₹{totalPaid}</span>
+                              </div>
+                              <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-base">
+                                <span>Balance</span>
+                                <span>₹{balance}</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-100 space-y-4">
+                              <h4 className="text-sm font-semibold text-slate-900">Add Payment</h4>
+                              <div>
+                                <label className="text-xs font-medium text-slate-600 block mb-1">Payment Amount (₹)</label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max={balance}
+                                  placeholder={`Max ₹${balance}`}
+                                  value={paymentAmount}
+                                  onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
+                                />
+                              </div>
+
+                              <PaymentMethodSelector value={activeMethod} onChange={setActiveMethod} />
+
+                              {/* Dynamic Partial Payment Reason */}
+                              {paymentAmount !== '' && Number(paymentAmount) > 0 && Number(paymentAmount) < balance && (
+                                <div className="space-y-3 p-3 bg-amber-50/70 rounded-lg border border-amber-200">
+                                  <label className="text-xs font-semibold text-amber-900 block">
+                                    Reason for Partial Payment <span className="text-red-500">*</span>
+                                  </label>
+                                  <Select value={paymentReason} onValueChange={setPaymentReason}>
+                                    <SelectTrigger className="bg-white border-amber-200 text-xs h-9">
+                                      <SelectValue placeholder="Select reason..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Patient requested partial payment">Patient requested partial payment</SelectItem>
+                                      <SelectItem value="Will pay remaining amount later">Will pay remaining amount later</SelectItem>
+                                      <SelectItem value="Financial difficulty">Financial difficulty</SelectItem>
+                                      <SelectItem value="Insurance / reimbursement pending">Insurance / reimbursement pending</SelectItem>
+                                      <SelectItem value="Other">Other</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+
+                                  {paymentReason === 'Other' && (
+                                    <Input
+                                      placeholder="Specify reason..."
+                                      value={paymentReasonOther}
+                                      onChange={(e) => setPaymentReasonOther(e.target.value)}
+                                      className="bg-white border-amber-200 text-xs h-9"
+                                    />
+                                  )}
+
+                                  <div>
+                                    <label className="text-xs font-semibold text-amber-900 block mb-1">
+                                      Alternative Phone Number <span className="text-red-500">*</span>
+                                      <span className="text-[10px] font-normal text-amber-700 ml-1">(for pending balance follow-up)</span>
+                                    </label>
+                                    <Input
+                                      type="tel"
+                                      maxLength={10}
+                                      placeholder="10-digit mobile number"
+                                      value={altPhone}
+                                      onChange={(e) => setAltPhone(e.target.value.replace(/\D/g, ''))}
+                                      className="bg-white border-amber-200 text-xs h-9"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <Button
+                              onClick={handleMarkAsPaid}
+                              disabled={
+                                !activeMethod ||
+                                paymentAmount === '' ||
+                                Number(paymentAmount) <= 0 ||
+                                Number(paymentAmount) > balance ||
+                                (Number(paymentAmount) < balance && !paymentReason) ||
+                                (Number(paymentAmount) < balance && paymentReason === 'Other' && !paymentReasonOther.trim()) ||
+                                (Number(paymentAmount) < balance && altPhone.trim().length !== 10)
+                              }
+                              className="w-full bg-teal-600 hover:bg-teal-700 h-10 font-medium text-sm"
+                            >
+                              Add Payment
+                            </Button>
+                          </div>
+                        ) : hasCompletedPayment ? (
+                          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-emerald-800">
+                            <span className="text-sm font-medium flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Payment Completed</span>
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-500 text-sm">
+                            Complete dispensing first to unlock payment.
+                          </div>
+                        )}
+                      </>
                     )}
                   </DrawerSection>
 
-                  {(visitPayments.length > 0 || isWorkflowCompleted) && (
+                  {!isDoctorHandled && (visitPayments.length > 0 || isWorkflowCompleted) && (
                     <DrawerSection title="3. Print">
                       <div className="p-5 bg-white border border-slate-200 rounded-lg space-y-4">
                         <div className="flex items-center justify-between mb-4">
@@ -2455,15 +2498,30 @@ export function ReceptionDeskPage() {
                             </Badge>
                           )}
                         </div>
-                        <div>
-                          <Button 
+                        <div className="flex gap-2">
+                          <Button
                             variant="outline"
-                            className="w-full border-teal-600 text-teal-700 hover:bg-teal-50 font-medium shadow-xs"
+                            className="flex-1 border-teal-600 text-teal-700 hover:bg-teal-50 font-medium shadow-xs"
                             onClick={() => handlePrintDocument('receipt')}
                           >
                             <Receipt className="w-4 h-4 mr-2 text-teal-600" />
                             {hasPrintedReceipt ? 'Reprint Receipt' : 'Print Receipt'}
                           </Button>
+                          {activeProcessVisit && activeProcessPatient && (
+                            <WhatsAppActionButton
+                              type="PAYMENT_RECEIPT"
+                              entityType="VISIT"
+                              entityId={activeProcessVisit.id}
+                              patientId={activeProcessPatient.id}
+                              recipientName={activeProcessPatient.name}
+                              recipientPhone={activeProcessPatient.phone}
+                              paymentOwner={activeProcessVisit.paymentOwner}
+                              preferredCommunicationChannel={activeProcessPatient.preferredCommunicationChannel}
+                              whatsappAvailable={activeProcessPatient.whatsappAvailable}
+                              variant="outline"
+                              className="h-9 px-3"
+                            />
+                          )}
                         </div>
                       </div>
                     </DrawerSection>
@@ -2476,6 +2534,7 @@ export function ReceptionDeskPage() {
 
           <div className="border-t border-slate-200 bg-white p-4 shrink-0 flex flex-col gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
             {(() => {
+              const isDoctorHandled = activeProcessVisit?.paymentOwner === 'DOCTOR';
               const visitPayments = payments.filter(p => p.visitId === processVisitId);
               const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
               const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
@@ -2484,12 +2543,14 @@ export function ReceptionDeskPage() {
               const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
               const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
 
-              // Only true when payment is fully completed and dispensing is done
-              const isWorkflowCompleted = activeProcessVisit?.status === 'COMPLETED' || ((!hasPrescription || hasCompletedDispensing) && balance <= 0);
+              // Only true when payment is fully completed (or doctor handled) and dispensing is done
+              const isWorkflowCompleted = isDoctorHandled
+                ? (!hasPrescription || hasCompletedDispensing)
+                : (activeProcessVisit?.status === 'COMPLETED' || ((!hasPrescription || hasCompletedDispensing) && balance <= 0));
 
               return (
-                <Button 
-                  onClick={handleCloseProcessVisit} 
+                <Button
+                  onClick={handleCloseProcessVisit}
                   className="w-full bg-teal-600 hover:bg-teal-700 text-white font-medium"
                 >
                   {isWorkflowCompleted ? 'Done' : 'Close'}

@@ -37,7 +37,7 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
     const { visitId, prescriptionId, items } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
-      const visit = await tx.visit.findUnique({ where: { id: visitId }, include: { dispensing: true } });
+      const visit = await tx.visit.findUnique({ where: { id: visitId }, include: { dispensing: true, payments: true } });
       if (!visit) throw { status: 404, message: 'Visit not found' };
 
       if (visit.dispensing) {
@@ -130,14 +130,29 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
       });
 
       // Transition Visit
+      const totalPaid = visit.payments?.reduce((sum: number, p: any) => sum + p.amount, 0) || 0;
+      const finalAmountDue = (visit.consultationFee || 0) + (visit.treatmentFee || 0) + medicineCost;
+      const isFullyPaid = visit.paymentOwner === 'DOCTOR' || (totalPaid >= finalAmountDue);
+
+      const nextStatus = isFullyPaid ? 'COMPLETED' : 'READY_FOR_PAYMENT';
       const updatedVisit = await tx.visit.update({
         where: { id: visitId },
         data: {
-          status: 'READY_FOR_PAYMENT',
+          status: nextStatus,
           medicineCost,
-          amountDue: (visit.consultationFee || 0) + (visit.treatmentFee || 0) + medicineCost
+          amountDue: finalAmountDue
         }
       });
+
+      if (isFullyPaid) {
+        const qEntry = await tx.queueEntry.findUnique({ where: { visitId } });
+        if (qEntry && qEntry.status !== 'Completed') {
+          await tx.queueEntry.update({
+            where: { id: qEntry.id },
+            data: { status: 'Completed' }
+          });
+        }
+      }
 
       return { dispensing, visit: updatedVisit };
     });

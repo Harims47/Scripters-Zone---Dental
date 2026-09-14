@@ -19,6 +19,6 @@ export const updateConsultationSchema = z.object({
 
 export const completeConsultationSchema = z.object({
   body: z.object({
-    // any explicit completion params if needed, mostly handled by route params
+    paymentOwner: z.enum(['RECEPTION', 'DOCTOR']).optional().default('RECEPTION')
   })
 });

@@ -14,6 +14,9 @@ export const getBillingQueue = async (req: Request, res: Response, next: NextFun
     const where: any = {
       status: { in: allowedStatuses }
     };
+    if (req.user?.role === 'Receptionist') {
+      where.paymentOwner = { not: 'DOCTOR' };
+    }
 
     if (search) {
       where.OR = [
@@ -68,6 +71,9 @@ export const exportBillingQueue = async (req: Request, res: Response, next: Next
     const where: any = {
       status: { in: allowedStatuses }
     };
+    if (req.user?.role === 'Receptionist') {
+      where.paymentOwner = { not: 'DOCTOR' };
+    }
 
     if (search) {
       where.OR = [

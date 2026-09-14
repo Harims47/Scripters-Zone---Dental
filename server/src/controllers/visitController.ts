@@ -157,10 +157,28 @@ export const getVisits = async (req: Request, res: Response, next: NextFunction)
         queueEntry: true,
         consultation: true,
         prescription: { include: { items: true } },
-        dispensing: { include: { items: true } }
+        dispensing: { include: { items: true } },
+        payments: true
       }
     });
-    return res.json(visits);
+
+    const sanitizedVisits = req.user?.role === 'Receptionist'
+      ? visits.map(v => {
+          if (v.paymentOwner === 'DOCTOR') {
+            return {
+              ...v,
+              amountDue: 0,
+              consultationFee: null,
+              treatmentFee: null,
+              medicineCost: null,
+              payments: []
+            };
+          }
+          return v;
+        })
+      : visits;
+
+    return res.json(sanitizedVisits);
   } catch (error) {
     next(error);
   }
@@ -175,10 +193,20 @@ export const getVisitById = async (req: Request, res: Response, next: NextFuncti
         queueEntry: true,
         consultation: true,
         prescription: { include: { items: true } },
-        dispensing: { include: { items: true } }
+        dispensing: { include: { items: true } },
+        payments: true
       }
     });
     if (!visit) return res.status(404).json({ error: 'Visit not found' });
+
+    if (req.user?.role === 'Receptionist' && visit.paymentOwner === 'DOCTOR') {
+      visit.amountDue = 0;
+      visit.consultationFee = null;
+      visit.treatmentFee = null;
+      visit.medicineCost = null;
+      visit.payments = [];
+    }
+
     return res.json(visit);
   } catch (error) {
     next(error);
@@ -230,7 +258,7 @@ export const cancelVisit = async (req: Request, res: Response, next: NextFunctio
 export const updateVisit = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { reasonForVisit, doctorId, isUrgent, amountDue } = req.body;
+    const { reasonForVisit, doctorId, isUrgent, amountDue, paymentOwner } = req.body;
 
     const existingVisit = await prisma.visit.findUnique({
       where: { id },
@@ -242,11 +270,16 @@ export const updateVisit = async (req: Request, res: Response, next: NextFunctio
       return res.status(404).json({ error: 'Visit not found' });
     }
 
+    if (paymentOwner !== undefined && paymentOwner !== 'RECEPTION' && paymentOwner !== 'DOCTOR') {
+      return res.status(400).json({ error: 'paymentOwner must be either RECEPTION or DOCTOR' });
+    }
+
     const updatedVisit = await prisma.$transaction(async (tx) => {
       const visitData: any = {};
       if (reasonForVisit !== undefined) visitData.reasonForVisit = reasonForVisit;
       if (doctorId !== undefined) visitData.doctorId = doctorId;
       if (amountDue !== undefined) visitData.amountDue = amountDue;
+      if (paymentOwner !== undefined) visitData.paymentOwner = paymentOwner;
 
       const v = await tx.visit.update({
         where: { id },
@@ -375,10 +408,13 @@ export const exportVisits = async (req: Request, res: Response, next: NextFuncti
         else calcStage = v.queueEntry.status;
       }
 
-      const totalPaid = (v.payments || []).reduce((sum, p) => sum + p.amount, 0);
-      const amountDue = v.amountDue || 0;
+      const isDoctorHandled = v.paymentOwner === 'DOCTOR';
+      const totalPaid = isDoctorHandled ? 0 : (v.payments || []).reduce((sum, p) => sum + p.amount, 0);
+      const amountDue = isDoctorHandled ? 0 : (v.amountDue || 0);
       let paymentStatus = '—';
-      if (calcStage === 'Ready at Reception' || calcStage === 'Completed') {
+      if (isDoctorHandled) {
+        paymentStatus = 'Handled by Doctor';
+      } else if (calcStage === 'Ready at Reception' || calcStage === 'Completed') {
         paymentStatus = 'Unpaid';
         if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
         else if (totalPaid > 0) paymentStatus = 'Partial';

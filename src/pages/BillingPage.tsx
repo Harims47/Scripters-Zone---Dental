@@ -13,9 +13,13 @@ import type { DispensingItem } from '../components/dispensing/dispensing-compone
 import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components'
 import { useClinicContext } from '../context/ClinicContext'
+import { useAuth } from '../context/AuthContext'
 import { api, API_BASE_URL } from '../lib/api'
+import { WhatsAppActionButton } from '../components/communication/WhatsAppActionButton'
 
 export function BillingPage() {
+  const { currentUser } = useAuth()
+  const isReceptionist = currentUser?.role === 'Receptionist'
   const [searchParams] = useSearchParams()
   const urlPatientId = searchParams.get('patientId')
   
@@ -68,7 +72,8 @@ export function BillingPage() {
 
   // 1. Data Aggregation
   const billingData = useMemo(() => {
-    return billingVisits.map(v => {
+    const list = isReceptionist ? billingVisits.filter(v => v.paymentOwner !== 'DOCTOR') : billingVisits
+    return list.map(v => {
       const p = v.patient
       const rx = v.prescription
       const disp = v.dispensing
@@ -118,7 +123,10 @@ export function BillingPage() {
         paymentStatus,
         action,
         items,
-        paymentMethod: payRecord?.method || null
+        paymentMethod: payRecord?.method || null,
+        paymentOwner: v.paymentOwner,
+        preferredCommunicationChannel: p?.preferredCommunicationChannel,
+        whatsappAvailable: p?.whatsappAvailable
       }
     })
   }, [billingVisits, medicines])
@@ -386,15 +394,44 @@ export function BillingPage() {
                     </div>
                   </div>
                   <div className="pt-8 flex flex-col gap-3 max-w-sm mx-auto w-full">
-                    <Button variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handlePrintDocument('receipt')}>
-                      <FileText className="w-4 h-4 mr-2" />
-                      Print Receipt
-                    </Button>
-                    {selectedRow.prescriptionId && (
-                      <Button variant="outline" onClick={() => handlePrintDocument('prescription')}>
-                        <FileText className="w-4 h-4 mr-2 text-indigo-500" />
-                        Print Prescription
+                    <div className="flex gap-2">
+                      <Button variant="default" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handlePrintDocument('receipt')}>
+                        <FileText className="w-4 h-4 mr-2" />
+                        Print Receipt
                       </Button>
+                      <WhatsAppActionButton
+                        type="PAYMENT_RECEIPT"
+                        entityType="VISIT"
+                        entityId={selectedRow.visitId}
+                        patientId={selectedRow.patientId}
+                        recipientName={selectedRow.patientName}
+                        recipientPhone={selectedRow.patientPhone}
+                        paymentOwner={selectedRow.paymentOwner}
+                        preferredCommunicationChannel={selectedRow.preferredCommunicationChannel}
+                        whatsappAvailable={selectedRow.whatsappAvailable}
+                        variant="outline"
+                        className="h-10 px-3"
+                      />
+                    </div>
+                    {selectedRow.prescriptionId && (
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={() => handlePrintDocument('prescription')}>
+                          <FileText className="w-4 h-4 mr-2 text-indigo-500" />
+                          Print Prescription
+                        </Button>
+                        <WhatsAppActionButton
+                          type="PRESCRIPTION"
+                          entityType="VISIT"
+                          entityId={selectedRow.visitId}
+                          patientId={selectedRow.patientId}
+                          recipientName={selectedRow.patientName}
+                          recipientPhone={selectedRow.patientPhone}
+                          preferredCommunicationChannel={selectedRow.preferredCommunicationChannel}
+                          whatsappAvailable={selectedRow.whatsappAvailable}
+                          variant="outline"
+                          className="h-10 px-3"
+                        />
+                      </div>
                     )}
                     <Button variant="ghost" onClick={() => setDrawerOpen(false)}>Close</Button>
                   </div>

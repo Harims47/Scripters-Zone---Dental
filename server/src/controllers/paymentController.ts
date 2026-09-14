@@ -10,6 +10,9 @@ export const getPayments = async (req: Request, res: Response, next: NextFunctio
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    if (req.user?.role === 'Receptionist') {
+      where.visit = { paymentOwner: { not: 'DOCTOR' } };
+    }
     if (method && method !== 'all') {
       where.method = method;
     }
@@ -52,6 +55,11 @@ export const getPayment = async (req: Request, res: Response, next: NextFunction
       include: { patient: true, visit: true }
     });
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
+
+    if (req.user?.role === 'Receptionist' && payment.visit?.paymentOwner === 'DOCTOR') {
+      return res.status(403).json({ error: 'Access denied: Payment is handled by Doctor.' });
+    }
+
     return res.json(payment);
   } catch (error) {
     next(error);
@@ -68,13 +76,53 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
 
       const visit = await tx.visit.findUnique({
         where: { id: visitId },
-        include: { patient: true, payments: true, prescription: true }
+        include: { 
+          patient: true, 
+          payments: true, 
+          prescription: { include: { items: true } },
+          dispensing: true 
+        }
       });
 
       if (!visit) throw { status: 404, message: 'Visit not found' };
 
+      const userRole = req.user?.role;
+      const userStaffId = req.user?.staffId;
+
+      // Ownership-based authorization
+      if (userRole === 'Receptionist') {
+        if (visit.paymentOwner === 'DOCTOR') {
+          throw { status: 403, message: 'Payment for this visit is handled by the doctor.' };
+        }
+      } else if (userRole === 'Duty Doctor') {
+        if (visit.paymentOwner !== 'DOCTOR') {
+          throw { status: 403, message: 'Payment for this visit is handled by Reception Desk.' };
+        }
+        if (visit.doctorId && visit.doctorId !== userStaffId) {
+          throw { status: 403, message: 'You are not authorized to collect payment for another doctor\'s patient.' };
+        }
+      }
+      // Note: Head Doctor has authority across all visits
+
+      let expectedAmount = visit.amountDue || 0;
+      // If medicineCost is not yet computed, but prescription has items, compute and persist
+      if ((!visit.medicineCost || visit.medicineCost === 0) && visit.prescription?.items?.length) {
+        const medIds = visit.prescription.items.map((i: any) => i.medicineId);
+        const meds = await tx.medicine.findMany({ where: { id: { in: medIds } } });
+        const medCost = visit.prescription.items.reduce((sum: number, item: any) => {
+          const m = meds.find(med => med.id === item.medicineId);
+          return sum + (item.quantity * (m?.unitPrice || 0));
+        }, 0);
+        if (medCost > 0) {
+          expectedAmount = (visit.consultationFee || 0) + (visit.treatmentFee || 0) + medCost;
+          await tx.visit.update({
+            where: { id: visit.id },
+            data: { medicineCost: medCost, amountDue: expectedAmount }
+          });
+        }
+      }
+
       const totalPaid = visit.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
-      const expectedAmount = visit.amountDue || 0;
       const balance = expectedAmount - totalPaid;
 
       if (visit.status === 'COMPLETED' || balance <= 0) {
@@ -82,16 +130,24 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
       }
 
       // Check state readiness
-      if (visit.status === 'READY_FOR_RECEPTION') {
-        // If there's a prescription but no dispensing, it's not ready
-        if (visit.prescription) {
-          const disp = await tx.dispensing.findUnique({ where: { visitId } });
-          if (!disp) {
-            throw { status: 409, message: 'Visit requires dispensing before payment can be collected.' };
-          }
+      const isDoctorHandling = visit.paymentOwner === 'DOCTOR';
+      if (isDoctorHandling && (userRole === 'Duty Doctor' || userRole === 'Head Doctor')) {
+        // Allowed in WITH_DOCTOR, READY_FOR_RECEPTION, or READY_FOR_PAYMENT
+        if (!['WITH_DOCTOR', 'READY_FOR_RECEPTION', 'READY_FOR_PAYMENT'].includes(visit.status)) {
+          throw { status: 409, message: `Cannot process payment for visit in status: ${visit.status}` };
         }
-      } else if (visit.status !== 'READY_FOR_PAYMENT') {
-        throw { status: 409, message: `Cannot process payment for visit in status: ${visit.status}` };
+      } else {
+        if (visit.status === 'READY_FOR_RECEPTION') {
+          // If there's a prescription but no dispensing, it's not ready
+          if (visit.prescription) {
+            const disp = await tx.dispensing.findUnique({ where: { visitId } });
+            if (!disp) {
+              throw { status: 409, message: 'Visit requires dispensing before payment can be collected.' };
+            }
+          }
+        } else if (visit.status !== 'READY_FOR_PAYMENT') {
+          throw { status: 409, message: `Cannot process payment for visit in status: ${visit.status}` };
+        }
       }
 
       if (amount <= 0) {
@@ -137,24 +193,60 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
       // A partial payment must NOT complete the visit.
       // Only when the authoritative backend balance becomes exactly 0 does the visit complete.
       if (newBalance === 0) {
-        updatedVisit = await tx.visit.update({
-          where: { id: visit.id },
-          data: { status: 'COMPLETED' },
-          include: { patient: true, payments: true, prescription: true }
-        });
-        
-        // Ensure QueueEntry is marked Completed
-        const qEntry = await tx.queueEntry.findUnique({ where: { visitId: visit.id } });
-        if (qEntry && qEntry.status !== 'Completed') {
-          await tx.queueEntry.update({
-            where: { id: qEntry.id },
-            data: { status: 'Completed' }
+        // Check if there is a prescription with items that still requires dispensing
+        const hasPendingDispensing = (visit.prescription?.items?.length ?? 0) > 0 && !visit.dispensing;
+
+        if (hasPendingDispensing) {
+          // Keep visit in READY_FOR_RECEPTION so Reception can dispense medicines
+          updatedVisit = await tx.visit.update({
+            where: { id: visit.id },
+            data: { status: 'READY_FOR_RECEPTION' },
+            include: { patient: true, payments: true, prescription: true, dispensing: true }
           });
+
+          const qEntry = await tx.queueEntry.findUnique({ where: { visitId: visit.id } });
+          if (qEntry && qEntry.status !== 'Ready at Reception') {
+            await tx.queueEntry.update({
+              where: { id: qEntry.id },
+              data: { status: 'Ready at Reception' }
+            });
+          }
+        } else {
+          updatedVisit = await tx.visit.update({
+            where: { id: visit.id },
+            data: { status: 'COMPLETED' },
+            include: { patient: true, payments: true, prescription: true, dispensing: true }
+          });
+          
+          // Ensure QueueEntry is marked Completed
+          const qEntry = await tx.queueEntry.findUnique({ where: { visitId: visit.id } });
+          if (qEntry && qEntry.status !== 'Completed') {
+            await tx.queueEntry.update({
+              where: { id: qEntry.id },
+              data: { status: 'Completed' }
+            });
+          }
         }
       }
 
       return { payment, visit: updatedVisit };
     });
+
+    // Asynchronously queue payment receipt notification
+    const { NotificationService } = await import('../services/communication/NotificationService');
+    NotificationService.requestNotification({
+      type: 'PAYMENT_RECEIPT',
+      patientId: result.payment.patientId,
+      entityType: 'PAYMENT',
+      entityId: result.payment.id,
+      paymentOwner: result.visit.paymentOwner,
+      variables: {
+        amount: result.payment.amount,
+        paymentMethod: result.payment.method,
+        receiptNumber: `RCPT-${result.payment.id.substring(0, 8).toUpperCase()}`,
+        date: new Date(result.payment.date).toLocaleDateString('en-IN'),
+      },
+    }).catch((err) => console.error('[Notification] Failed to queue payment receipt:', err.message));
 
     return res.status(201).json(result);
   } catch (error: any) {
@@ -174,6 +266,9 @@ export const exportPayments = async (req: Request, res: Response, next: NextFunc
     const format = req.query.format as string;
 
     const where: any = {};
+    if (req.user?.role === 'Receptionist') {
+      where.visit = { paymentOwner: { not: 'DOCTOR' } };
+    }
     if (method && method !== 'all') {
       where.method = method;
     }
@@ -237,8 +332,13 @@ export const exportPartialPayments = async (req: Request, res: Response, next: N
     const overdueFilter = req.query.overdue as string; // 'all' | 'overdue' | 'normal'
     const format = req.query.format as string;
 
+    const whereVisits: any = { status: { not: 'CANCELLED' } };
+    if (req.user?.role === 'Receptionist') {
+      whereVisits.paymentOwner = { not: 'DOCTOR' };
+    }
+
     const visits = await prisma.visit.findMany({
-      where: { status: { not: 'CANCELLED' } },
+      where: whereVisits,
       include: {
         patient: true,
         payments: true

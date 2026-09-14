@@ -115,6 +115,24 @@ export const createAppointment = async (req: Request, res: Response, next: NextF
         photoUrl: data.photoUrl
       }
     });
+
+    // Asynchronously queue appointment confirmation notification
+    const { NotificationService } = await import('../services/communication/NotificationService');
+    NotificationService.requestNotification({
+      type: 'APPOINTMENT_CONFIRMATION',
+      patientId: patient.id,
+      entityType: 'APPOINTMENT',
+      entityId: appointment.id,
+      recipientPhone: patient.phone,
+      recipientEmail: patient.email || undefined,
+      recipientName: patient.name,
+      variables: {
+        date: appointment.date,
+        time: appointment.time,
+        type: appointment.type,
+      },
+    }).catch((err) => console.error('[Notification] Failed to queue appointment confirmation:', err.message));
+
     return res.status(201).json(appointment);
   } catch (error) {
     next(error);

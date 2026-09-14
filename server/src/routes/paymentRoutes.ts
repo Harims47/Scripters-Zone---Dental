@@ -14,11 +14,11 @@ const router = Router();
 
 router.use(requireAuth);
 
-// Receptionists and Head Doctors can view and process payments
+// Payments access
 router.get('/export-partial', requireRole('Head Doctor', 'Receptionist'), exportPartialPayments);
 router.get('/export', requireRole('Head Doctor', 'Receptionist'), exportPayments);
 router.get('/', requireRole('Head Doctor', 'Receptionist'), getPayments);
-router.get('/:id', requireRole('Head Doctor', 'Receptionist'), getPayment);
-router.post('/', requireRole('Head Doctor', 'Receptionist'), validateRequest(createPaymentSchema), createPayment);
+router.get('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getPayment);
+router.post('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), validateRequest(createPaymentSchema), createPayment);
 
 export default router;
