@@ -69,12 +69,16 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
 
   return (
     <div className={cn("flex flex-col h-full bg-white border-r border-slate-100 shadow-[4px_0_24px_rgba(0,0,0,0.01)]", className)}>
-      <div className={cn("h-[72px] flex items-center border-b border-slate-100 shrink-0", isCollapsed ? "justify-center" : "px-5 justify-between")}>
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-teal-500/20 shrink-0">
-            D
-          </div>
-          {!isCollapsed && <span className="font-bold text-xl tracking-tight text-slate-900 whitespace-nowrap">DentalCore</span>}
+      <div className={cn("h-[72px] flex items-center border-b border-slate-100 shrink-0", isCollapsed ? "justify-center px-2" : "pl-4 pr-3 justify-between gap-2")}>
+        <div className="flex items-center min-w-0 flex-1 overflow-hidden">
+          <img
+            src={isCollapsed ? "/dental-icon.png" : "/dental-logo-trimmed.png"}
+            alt="Rafi Dental Clinic"
+            className={cn(
+              "object-contain transition-all duration-200",
+              isCollapsed ? "h-10 w-10" : "h-[56px] w-auto max-w-[195px] object-left"
+            )}
+          />
         </div>
         
         {onToggleCollapse && (

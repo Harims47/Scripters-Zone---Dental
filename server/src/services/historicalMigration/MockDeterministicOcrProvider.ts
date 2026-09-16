@@ -20,6 +20,25 @@ export class MockDeterministicOcrProvider implements IOcrProvider {
   }
 
   async extractText(imageBuffer: Buffer, mimeType?: string): Promise<OcrResult> {
+    // If buffer is a PDF document, extract embedded metadata text
+    if (imageBuffer.slice(0, 5).toString('ascii') === '%PDF-') {
+      try {
+        const { PDFDocument } = await import('pdf-lib');
+        const pdfDoc = await PDFDocument.load(imageBuffer, { ignoreEncryption: true });
+        const metaText = pdfDoc.getTitle() || pdfDoc.getSubject();
+        if (metaText && (metaText.includes('Pt:') || metaText.includes('Date:'))) {
+          const lines = metaText.split(/\r?\n/).map(l => ({ text: l, confidence: 0.95 }));
+          return {
+            rawText: metaText,
+            confidence: 0.95,
+            lines
+          };
+        }
+      } catch (e) {
+        // continue to string search
+      }
+    }
+
     // If buffer contains embedded UTF-8 string (useful for testing)
     const rawString = imageBuffer.toString('utf-8');
     if (rawString.includes('Patient:') || rawString.includes('Pt:') || rawString.includes('Date:')) {

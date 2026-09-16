@@ -114,7 +114,45 @@ const INSTRUCTION_OPTIONS = [
   'After Lunch',
   'Before Dinner',
   'After Dinner',
+  'At Bedtime',
+  'SOS (As needed)',
 ]
+
+export function calculatePrescriptionQuantity(
+  dosage: string | undefined,
+  duration: string | undefined,
+  instructions: string | undefined
+): number {
+  // 1. Duration in days (e.g. '5 days' -> 5, '1 day' -> 1)
+  const daysMatch = duration?.match(/(\d+)/)
+  const days = daysMatch ? parseInt(daysMatch[1], 10) : 1
+
+  // 2. Doses per day from instructions
+  const instList = instructions
+    ? instructions.split(',').map(s => s.trim()).filter(Boolean)
+    : []
+  
+  // Non-SOS meal instructions represent daily dosage frequency
+  const mealDoses = instList.filter(i => !i.includes('SOS'))
+  const dosesPerDay = mealDoses.length > 0 ? mealDoses.length : 1
+
+  // 3. Units per dose (e.g. '1 Tablet', '2 Tablets', '½ Tablet', '1 Capsule')
+  let unitsPerDose = 1
+  if (dosage) {
+    if (dosage.includes('½') || dosage.includes('0.5')) {
+      unitsPerDose = 0.5
+    } else if (dosage.includes('1½') || dosage.includes('1.5')) {
+      unitsPerDose = 1.5
+    } else {
+      const numMatch = dosage.match(/^(\d+)/)
+      if (numMatch) {
+        unitsPerDose = parseInt(numMatch[1], 10)
+      }
+    }
+  }
+
+  return Math.max(1, Math.ceil(unitsPerDose * dosesPerDay * days))
+}
 
 const CLINICAL_NOTE_TAGS = [
   'Routine Examination',
@@ -129,7 +167,17 @@ const CLINICAL_NOTE_TAGS = [
   'Extraction Advised'
 ]
 
-function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; onRemove: (id: string) => void }) {
+function RxRow({ 
+  item, 
+  onUpdateField, 
+  onUpdateFields,
+  onRemove 
+}: { 
+  item: PrescriptionLineItem; 
+  onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; 
+  onUpdateFields?: (id: string, updates: Partial<PrescriptionLineItem>) => void;
+  onRemove: (id: string) => void 
+}) {
   const selectedInstructions = item.instructions
     ? item.instructions.split(',').map(s => s.trim()).filter(Boolean)
     : []
@@ -142,18 +190,57 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
       next = [...selectedInstructions, inst]
     }
     const joined = next.join(', ')
-    onUpdateField(item.id, 'instructions', joined)
 
     // Automatically calculate and sync frequency based on meal instruction count
-    let autoFreq = 'Once daily'
-    if (next.length === 2) autoFreq = 'Twice daily'
-    else if (next.length === 3) autoFreq = 'Three times daily'
-    else if (next.length >= 4) autoFreq = 'Four times daily'
-    else if (next.length === 1) {
-      if (next[0].includes('Dinner')) autoFreq = 'At bedtime'
+    let autoFreq = ''
+    const mealCount = next.filter(i => !i.includes('SOS')).length
+    if (next.some(i => i.includes('SOS'))) {
+      autoFreq = mealCount > 0 ? `${mealCount === 1 ? 'Once daily' : mealCount === 2 ? 'Twice daily' : `${mealCount} times daily`} (SOS)` : 'SOS (As needed)'
+    } else if (mealCount === 2) {
+      autoFreq = 'Twice daily'
+    } else if (mealCount === 3) {
+      autoFreq = 'Three times daily'
+    } else if (mealCount >= 4) {
+      autoFreq = 'Four times daily'
+    } else if (mealCount === 1) {
+      if (next[0].includes('Dinner') || next[0].includes('Bedtime')) autoFreq = 'At bedtime'
       else autoFreq = 'Once daily'
     }
-    onUpdateField(item.id, 'frequency', autoFreq)
+
+    // Auto-calculate quantity based on days and instructions
+    const newQty = calculatePrescriptionQuantity(item.dosage, item.duration, joined)
+
+    if (onUpdateFields) {
+      onUpdateFields(item.id, {
+        instructions: joined,
+        frequency: autoFreq,
+        quantity: newQty
+      })
+    } else {
+      onUpdateField(item.id, 'instructions', joined)
+      onUpdateField(item.id, 'frequency', autoFreq)
+      onUpdateField(item.id, 'quantity', newQty)
+    }
+  }
+
+  const handleDosageChange = (newDosage: string) => {
+    const newQty = calculatePrescriptionQuantity(newDosage, item.duration, item.instructions)
+    if (onUpdateFields) {
+      onUpdateFields(item.id, { dosage: newDosage, quantity: newQty })
+    } else {
+      onUpdateField(item.id, 'dosage', newDosage)
+      onUpdateField(item.id, 'quantity', newQty)
+    }
+  }
+
+  const handleDurationChange = (newDuration: string) => {
+    const newQty = calculatePrescriptionQuantity(item.dosage, newDuration, item.instructions)
+    if (onUpdateFields) {
+      onUpdateFields(item.id, { duration: newDuration, quantity: newQty })
+    } else {
+      onUpdateField(item.id, 'duration', newDuration)
+      onUpdateField(item.id, 'quantity', newQty)
+    }
   }
 
   const isLowStock = item.currentStock <= (item.stockWarningLevel || 10)
@@ -174,7 +261,10 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {/* Quantity */}
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Qty</label>
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Qty</label>
+            <span className="text-[10px] text-slate-400 font-medium">auto-calc</span>
+          </div>
           <div className="flex items-center border rounded-md overflow-hidden bg-slate-50">
             <button className="px-2 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => onUpdateField(item.id, 'quantity', Math.max(1, item.quantity - 1))}><Minus className="h-3 w-3" /></button>
             <input
@@ -188,7 +278,7 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
         {/* Dosage */}
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Dosage</label>
-          <Select value={item.dosage || ''} onValueChange={v => onUpdateField(item.id, 'dosage', v)}>
+          <Select value={item.dosage || ''} onValueChange={handleDosageChange}>
             <SelectTrigger className="h-9 bg-slate-50 text-sm">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
@@ -218,7 +308,7 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
         {/* Duration */}
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Duration</label>
-          <Select value={item.duration || ''} onValueChange={v => onUpdateField(item.id, 'duration', v)}>
+          <Select value={item.duration || ''} onValueChange={handleDurationChange}>
             <SelectTrigger className="h-9 bg-slate-50 text-sm">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
@@ -229,11 +319,13 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
         </div>
       </div>
       {/* Instructions (Multi-select) */}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Instructions (Select All That Apply)</label>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+            Instructions (Select As Applicable)
+          </label>
           {selectedInstructions.length > 0 && (
-            <span className="text-[11px] text-indigo-600 font-medium">
+            <span className="text-[11px] text-indigo-700 font-semibold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
               {item.frequency || (selectedInstructions.length === 1 ? 'Once daily' : selectedInstructions.length === 2 ? 'Twice daily' : `${selectedInstructions.length} times daily`)}
             </span>
           )}
@@ -247,7 +339,7 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
                 type="button"
                 onClick={() => toggleInstruction(o)}
                 className={cn(
-                  'text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium',
+                  'text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium cursor-pointer',
                   isSelected
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                     : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
@@ -258,6 +350,16 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
               </button>
             )
           })}
+        </div>
+
+        {/* Custom Instructions Input */}
+        <div className="pt-0.5">
+          <Input
+            placeholder="Custom instructions (e.g. SOS for severe pain, take with milk, rinse after use)..."
+            value={item.customInstructions || ''}
+            onChange={e => onUpdateField(item.id, 'customInstructions', e.target.value)}
+            className="h-8 text-xs bg-slate-50 border-slate-200 placeholder:text-slate-400 focus:bg-white"
+          />
         </div>
       </div>
     </div>
@@ -379,6 +481,10 @@ export function DoctorWorkspacePage() {
     if (prescription) {
       const mappedItems = prescription.items.map(item => {
         const med = medicines.find(m => m.id === item.medicineId)
+        const parts = (item.instructions || '').split(' | ')
+        const standardInst = parts[0] || ''
+        const customInst = parts.length > 1 ? parts.slice(1).join(' | ') : ''
+
         return {
           id: item.medicineId,
           name: med?.name || 'Unknown',
@@ -391,7 +497,8 @@ export function DoctorWorkspacePage() {
           dosage: item.dosage,
           frequency: item.frequency,
           duration: item.duration,
-          instructions: item.instructions
+          instructions: standardInst,
+          customInstructions: customInst
         }
       })
       setActivePrescription(mappedItems as any[])
@@ -459,14 +566,21 @@ export function DoctorWorkspacePage() {
       doctorId: visit.doctorId || '',
       status: 'Finalized',
       notes: '',
-      items: activePrescription.map(item => ({
-        medicineId: item.id,
-        quantity: item.quantity,
-        dosage: item.dosage,
-        frequency: item.frequency,
-        duration: item.duration,
-        instructions: item.instructions || ''
-      }))
+      items: activePrescription.map(item => {
+        const combinedInstructions = [
+          item.instructions?.trim(),
+          item.customInstructions?.trim()
+        ].filter(Boolean).join(' | ');
+
+        return {
+          medicineId: item.id,
+          quantity: item.quantity,
+          dosage: item.dosage,
+          frequency: item.frequency || '',
+          duration: item.duration,
+          instructions: combinedInstructions || ''
+        };
+      })
     })
     if (result.success) {
       setPrescriptionModalOpen(false)
@@ -612,6 +726,11 @@ export function DoctorWorkspacePage() {
   // --- Prescription Helpers ---
   const filteredMedicines = medicines.filter(med => {
     if (med.status === 'Inactive') return false
+    // Clinical rule: Only medicines can be prescribed, never clinic materials or equipment
+    const formLower = (med.form || '').toLowerCase()
+    if (formLower.includes('material') || formLower.includes('equipment') || formLower.includes('consumable') || formLower.includes('instrument') || formLower.includes('disposable')) {
+      return false
+    }
     const matchesSearch = med.name.toLowerCase().includes(medSearch.toLowerCase()) ||
       med.genericName?.toLowerCase().includes(medSearch.toLowerCase())
     return matchesSearch && med.currentStock > 0
@@ -627,6 +746,11 @@ export function DoctorWorkspacePage() {
 
   const handleAddMedicine = (med: Medicine) => {
     if (activePrescription.some(item => item.id === med.id)) return
+    const initialDosage = '1 Tablet'
+    const initialDuration = '5 days'
+    const initialInstructions = ''
+    const initialQty = calculatePrescriptionQuantity(initialDosage, initialDuration, initialInstructions)
+
     const newItem: PrescriptionLineItem = {
       id: med.id,
       name: med.name,
@@ -636,17 +760,21 @@ export function DoctorWorkspacePage() {
       stockWarningLevel: med.stockWarningLevel,
       currentStock: med.currentStock,
       unitPrice: med.unitPrice,
-      quantity: 1,
-      dosage: '1 Tablet',
-      frequency: 'Twice daily',
-      duration: '5 days',
-      instructions: 'After Breakfast, After Dinner'
+      quantity: initialQty,
+      dosage: initialDosage,
+      frequency: '',
+      duration: initialDuration,
+      instructions: initialInstructions,
+      customInstructions: ''
     }
     setActivePrescription(prev => [...prev, newItem])
   }
 
   const updateItemField = (id: string, field: keyof PrescriptionLineItem, value: any) => {
     setActivePrescription(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item))
+  }
+  const updateItemFields = (id: string, updates: Partial<PrescriptionLineItem>) => {
+    setActivePrescription(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item))
   }
   const removeItem = (id: string) => {
     setActivePrescription(prev => prev.filter(item => item.id !== id))
@@ -1297,6 +1425,7 @@ export function DoctorWorkspacePage() {
                             key={item.id}
                             item={item}
                             onUpdateField={updateItemField}
+                            onUpdateFields={updateItemFields}
                             onRemove={removeItem}
                           />
                         ))}

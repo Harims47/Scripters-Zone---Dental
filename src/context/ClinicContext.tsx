@@ -187,7 +187,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('dc_v2_payments')
   }, [])
 
-  const normalizePhone = (phone: string) => {
+  const normalizePhone = (phone?: string | null) => {
+    if (!phone) return ''
     return phone.replace(/[\s\-\(\)\+]/g, '')
   }
 

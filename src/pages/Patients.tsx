@@ -134,7 +134,7 @@ export function PatientsPage() {
 
     // Duplicate Protection
     const normPhone = normalizePhone(newPatient.phone);
-    const existing = patients.find(p => normalizePhone(p.phone) === normPhone);
+    const existing = patients.find(p => p.phone && normalizePhone(p.phone) === normPhone);
     if (existing) {
       MySwal.fire({
         title: 'Duplicate Phone Number',

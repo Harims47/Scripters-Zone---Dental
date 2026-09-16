@@ -395,6 +395,18 @@ export function SettingsPage() {
         </SheetContent>
       </Sheet>
 
+      {/* System Information & Copyright Card */}
+      <div className="bg-white rounded-2xl border border-slate-100/80 shadow-[0_2px_16px_-4px_rgba(15,23,42,0.04)] p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-base font-bold text-slate-900 tracking-tight">DentalCore Clinic Management System</h3>
+          <p className="text-slate-500 text-sm mt-0.5">Version 1.0.0 • Production Ready</p>
+        </div>
+        <div className="text-left sm:text-right text-xs text-slate-500 font-medium">
+          <div>Developed & Maintained by <span className="font-semibold text-slate-700">Scripters Zone</span></div>
+          <div className="text-slate-400 mt-0.5">© {new Date().getFullYear()} Scripters Zone. All rights reserved.</div>
+        </div>
+      </div>
+
     </div>
   )
 }

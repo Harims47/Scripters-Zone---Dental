@@ -4,21 +4,22 @@ import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
+import { User, Lock, Eye, EyeOff, Users, Stethoscope, Crown, ShieldCheck, Calendar, AlertCircle } from 'lucide-react'
 
 export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const executeLogin = async (userToLogin: string, passToLogin: string) => {
     setError('')
     setIsSubmitting(true)
-    const { success, error: authError, user } = await login(username, password)
+    const { success, error: authError, user } = await login(userToLogin, passToLogin)
     setIsSubmitting(false)
     if (success && user) {
       const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
@@ -28,161 +29,284 @@ export function LoginPage() {
     }
   }
 
-  const handleDemoLogin = async (demoUsername: string) => {
-    setError('')
-    setIsSubmitting(true)
-    
-    // Map demo ID to real username
-    let realUsername = demoUsername;
-    if (demoUsername === 'reception') realUsername = 'receptionist';
-    else if (demoUsername === 'doctor') realUsername = 'dutydoctor';
-    else if (demoUsername === 'U-001') realUsername = 'headdoctor';
-
-    const { success, error: authError, user } = await login(realUsername, 'demo123')
-    setIsSubmitting(false)
-    if (success && user) {
-      const defaultRoute = user.role === 'Receptionist' ? '/reception-desk' : '/dashboard'
-      navigate(defaultRoute, { replace: true })
-    } else {
-      setError(authError || 'Demo login failed')
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username and password')
+      return
     }
+    executeLogin(username.trim(), password)
+  }
+
+  const handleDemoSelect = (demoUser: string) => {
+    setUsername(demoUser)
+    setPassword('demo123')
+    executeLogin(demoUser, 'demo123')
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      
-      {/* Left Side: Branding */}
-      <div className="hidden md:flex flex-col justify-center items-center md:w-1/2 bg-gradient-to-br from-teal-800 via-teal-700 to-emerald-800 p-12 text-white relative overflow-hidden">
-        {/* Subtle background pattern */}
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent bg-[length:20px_20px]" />
-        
-        <div className="relative z-10 max-w-md text-left w-full space-y-8">
-          <div className="flex items-center gap-4 mb-12">
-            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-teal-700 font-bold text-2xl shadow-lg">
-              D
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight">DentalCore</h1>
+    <div
+      className="h-screen w-full relative bg-slate-100 flex flex-col justify-between overflow-hidden bg-cover bg-center bg-no-repeat selection:bg-teal-500 selection:text-white"
+      style={{ backgroundImage: "url('/dental-bg.png')" }}
+    >
+      {/* Main Content Grid */}
+      <div className="relative z-10 w-full flex-1 max-w-7xl mx-auto px-6 sm:px-10 lg:px-14 py-3 sm:py-5 flex flex-col lg:flex-row items-center justify-between gap-8 min-h-0">
+
+        {/* Left Hero & Branding Section - Shifted to the left side */}
+        <div className="w-full lg:max-w-[450px] xl:max-w-[480px] flex flex-col items-start text-left space-y-4 sm:space-y-5 h-full justify-start pt-1 sm:pt-3 pb-2 z-10">
+
+          {/* Top: Broad Logo - Exactly -55px left shift */}
+          <div className="w-72 sm:w-80 md:w-[350px] max-w-full transition-transform hover:scale-[1.01] duration-300" style={{ marginLeft: '-55px' }}>
+            <img
+              src="/dental-logo.png"
+              alt="Rafi Dental Clinic"
+              className="w-full h-auto object-contain drop-shadow-sm"
+            />
           </div>
-          
-          <h2 className="text-4xl font-bold leading-tight tracking-tight">
-            Better care starts with a better connected clinic.
-          </h2>
-          <p className="text-teal-100 text-lg leading-relaxed">
-            Manage every patient journey from arrival to completed visit in one simple, unified workspace.
-          </p>
+
+          {/* Headline, Subtitle & Badges with radiant soft white daylight glare - Shifted right to clear leaves */}
+          <div className="relative w-full flex flex-col items-start text-left pt-1" style={{ marginLeft: '38px' }}>
+            {/* Soft radiant white daylight glare bloom directly behind this section */}
+            <div className="absolute -inset-x-8 -inset-y-6 bg-[radial-gradient(ellipse_at_center,_rgba(255,255,255,0.85)_0%,_rgba(255,255,255,0.45)_50%,_transparent_75%)] blur-2xl pointer-events-none -z-10" />
+
+            {/* Middle: Headline & Subtitle - Left aligned */}
+            <div className="space-y-2 select-none text-left">
+              <div className="space-y-0.5">
+                <h1 className="text-3xl sm:text-4xl lg:text-[45px] font-extrabold text-[#0f3b56] tracking-tight leading-[1.06]">
+                  Your Smile
+                </h1>
+                <h1 className="text-3xl sm:text-4xl lg:text-[45px] font-extrabold text-[#008985] tracking-tight leading-[1.06]" style={{ marginLeft: '40px' }}>
+                  Our Priority
+                </h1>
+              </div>
+              <p style={{ marginLeft: '40px' }} className="text-[#3b576c] text-xs sm:text-sm font-medium leading-relaxed max-w-sm mt-1.5 text-left">
+                Compassionate care. Modern dentistry.<br />
+                Healthier smiles for a brighter tomorrow.
+              </p>
+            </div>
+
+            {/* 3 Circular Feature Badges - Left-aligned row */}
+            <div style={{ marginLeft: '40px' }} className="flex items-start justify-start gap-4 sm:gap-6 pt-3 sm:pt-4">
+              {/* Feature 1 */}
+              <div className="flex flex-col items-center text-center group">
+                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.08)] flex items-center justify-center border border-slate-100/90 group-hover:scale-105 group-hover:shadow-md transition-all duration-300">
+                  <ShieldCheck className="w-6 h-6 text-[#0f3b56]" strokeWidth={1.8} />
+                </div>
+                <span className="text-[11px] sm:text-xs font-semibold text-[#0f3b56] mt-2 leading-tight text-center">
+                  Trusted<br />Dental Care
+                </span>
+              </div>
+
+              {/* Feature 2 */}
+              <div className="flex flex-col items-center text-center group">
+                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.08)] flex items-center justify-center border border-slate-100/90 group-hover:scale-105 group-hover:shadow-md transition-all duration-300">
+                  <Calendar className="w-6 h-6 text-[#0f3b56]" strokeWidth={1.8} />
+                </div>
+                <span className="text-[11px] sm:text-xs font-semibold text-[#0f3b56] mt-2 leading-tight text-center">
+                  Convenient<br />Appointments
+                </span>
+              </div>
+
+              {/* Feature 3 */}
+              <div className="flex flex-col items-center text-center group">
+                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.08)] flex items-center justify-center border border-slate-100/90 group-hover:scale-105 group-hover:shadow-md transition-all duration-300">
+                  <Users className="w-6 h-6 text-[#0f3b56]" strokeWidth={1.8} />
+                </div>
+                <span className="text-[11px] sm:text-xs font-semibold text-[#0f3b56] mt-2 leading-tight text-center">
+                  A Healthier<br />Happier You
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Right Side: Login Form */}
-      <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-12 bg-white shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.1)] z-10 relative">
-        <div className="w-full max-w-sm space-y-8">
-          
-          {/* Mobile Header (Hidden on Desktop) */}
-          <div className="md:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-teal-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md">
-              D
+        {/* Right Floating Card */}
+        <div className="w-full lg:w-auto lg:min-w-[420px] xl:min-w-[450px] max-w-lg">
+          <div className="bg-white/95 backdrop-blur-xl rounded-[28px] p-6 sm:p-7 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.22)] border border-white/80 transition-all">
+
+            {/* Card Header */}
+            <div className="text-center space-y-1.5 mb-6">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                Welcome Back
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium">
+                Sign in to your Rafi Dental Clinic account
+              </p>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">DentalCore</h1>
-          </div>
 
-          <div className="space-y-2 text-center md:text-left">
-            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
-            <p className="text-slate-500">Sign in to continue to DentalCore.</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-6">
+            {/* Error Message */}
             {error && (
-              <div className="bg-rose-50 text-rose-600 p-3 rounded-md text-sm font-medium border border-rose-100 text-center">
-                {error}
+              <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span className="font-medium">{error}</span>
               </div>
             )}
-            
-            <div className="space-y-4">
-              <div className="space-y-2 text-left">
-                <Label htmlFor="username" className="text-slate-700 font-medium">Username</Label>
-                <Input 
-                  id="username" 
-                  type="text" 
-                  placeholder="Enter your username" 
-                  className="h-11 bg-slate-50 border-slate-200"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={isSubmitting}
-                  required
-                />
+
+            {/* Login Form */}
+            <form onSubmit={handleLogin} className="space-y-3.5">
+              {/* Username Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="username" className="text-xs font-semibold text-slate-700">
+                  Username
+                </Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="e.g. receptionist"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={isSubmitting}
+                    className="pl-10 h-11 bg-white border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:border-teal-600 focus:ring-teal-600/20 shadow-xs"
+                    required
+                  />
+                </div>
               </div>
-              <div className="space-y-2 text-left">
-                <Label htmlFor="password" className="text-slate-700 font-medium">Password</Label>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  placeholder="••••••••" 
-                  className="h-11 bg-slate-50 border-slate-200"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isSubmitting}
-                  required
-                />
+
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="password" className="text-xs font-semibold text-slate-700">
+                  Password
+                </Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isSubmitting}
+                    className="pl-10 pr-10 h-11 bg-white border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:border-teal-600 focus:ring-teal-600/20 shadow-xs"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
+
+              {/* Submit Button */}
+              <div className="pt-1.5">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-11 bg-[#008b8b] hover:bg-[#007575] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all text-sm cursor-pointer disabled:opacity-70"
+                >
+                  {isSubmitting ? 'Signing in...' : 'Sign in'}
+                </Button>
+              </div>
+            </form>
+
+            {/* Divider */}
+            <div className="relative my-5 text-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200/80" />
+              </div>
+              <span className="relative bg-white px-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                OR TRY A DEMO ACCOUNT
+              </span>
             </div>
 
-            <Button type="submit" disabled={isSubmitting} className="w-full h-11 text-base font-semibold bg-teal-600 hover:bg-teal-700 shadow-md hover:shadow-lg transition-all">
-              {isSubmitting ? 'Signing In...' : 'Sign In'}
-            </Button>
-          </form>
+            {/* 3 Quick Demo Account Cards */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+              {/* Receptionist */}
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleDemoSelect('receptionist')}
+                className="flex flex-col items-center p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 hover:border-teal-500 hover:bg-teal-50/60 bg-slate-50/40 transition-all text-center group cursor-pointer disabled:opacity-50"
+              >
+                <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-100 flex items-center justify-center transition-colors">
+                  <Users className="w-3.5 h-3.5 text-teal-700" />
+                </div>
+                <div className="font-bold text-slate-800 group-hover:text-teal-900 text-xs mt-1.5">
+                  Receptionist
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5 leading-tight">
+                  <div>receptionist</div>
+                  <div>demo123</div>
+                </div>
+              </button>
 
-          {/* Demo Accounts Helper - Development Only */}
-          {import.meta.env.DEV && (
-            <div className="pt-8 border-t border-slate-100">
-              <div className="text-center mb-4">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Demo Accounts</h3>
-                <p className="text-xs text-slate-500 mt-1">For development and testing purposes</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <button 
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleDemoLogin('reception')}
-                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-teal-500 hover:bg-teal-50 group transition-all text-left w-full disabled:opacity-50"
-                >
-                  <span className="font-semibold text-slate-900 group-hover:text-teal-700 text-sm mb-1">Receptionist</span>
-                  <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                    <div>user: receptionist</div>
-                    <div>pass: demo123</div>
-                  </div>
-                </button>
-                
-                <button 
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleDemoLogin('doctor')}
-                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 group transition-all text-left w-full disabled:opacity-50"
-                >
-                  <span className="font-semibold text-slate-900 group-hover:text-emerald-700 text-sm mb-1">Duty Doctor</span>
-                  <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                    <div>user: dutydoctor</div>
-                    <div>pass: demo123</div>
-                  </div>
-                </button>
+              {/* Duty Doctor */}
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleDemoSelect('dutydoctor')}
+                className="flex flex-col items-center p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 hover:border-teal-500 hover:bg-teal-50/60 bg-slate-50/40 transition-all text-center group cursor-pointer disabled:opacity-50"
+              >
+                <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-100 flex items-center justify-center transition-colors">
+                  <Stethoscope className="w-3.5 h-3.5 text-teal-700" />
+                </div>
+                <div className="font-bold text-slate-800 group-hover:text-teal-900 text-xs mt-1.5">
+                  Duty Doctor
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5 leading-tight">
+                  <div>dutydoctor</div>
+                  <div>demo123</div>
+                </div>
+              </button>
 
-                <button 
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleDemoLogin('U-001')}
-                  className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 group transition-all text-left w-full disabled:opacity-50"
-                >
-                  <span className="font-semibold text-slate-900 group-hover:text-indigo-700 text-sm mb-1">Head Doctor</span>
-                  <div className="text-[10px] text-slate-500 font-mono w-full text-center">
-                    <div>user: headdoctor</div>
-                    <div>pass: demo123</div>
-                  </div>
-                </button>
-              </div>
+              {/* Head Doctor */}
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => handleDemoSelect('headdoctor')}
+                className="flex flex-col items-center p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 hover:border-teal-500 hover:bg-teal-50/60 bg-slate-50/40 transition-all text-center group cursor-pointer disabled:opacity-50"
+              >
+                <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-100 flex items-center justify-center transition-colors">
+                  <Crown className="w-3.5 h-3.5 text-teal-700" />
+                </div>
+                <div className="font-bold text-slate-800 group-hover:text-teal-900 text-xs mt-1.5">
+                  Head Doctor
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5 leading-tight">
+                  <div>headdoctor</div>
+                  <div>demo123</div>
+                </div>
+              </button>
             </div>
-          )}
 
+            {/* Motivational Quote & Mini Smile */}
+            <div className="text-center mt-4 pt-1 select-none">
+              <p className="text-xs italic text-slate-500 font-serif">
+                “Caring for smiles today, tomorrow and always.”
+              </p>
+              <svg className="w-13 h-3 mx-auto text-teal-600 mt-0.5" viewBox="0 0 60 14" fill="none">
+                <path d="M6 3C22 11 38 11 54 3" stroke="#008b8b" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+            </div>
+
+          </div>
         </div>
+
       </div>
+
+      {/* Footer Bar */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 lg:px-14 pb-2.5 pt-1 flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-700 font-medium gap-1 shrink-0">
+        <div>
+          © 2026 Scripters Zone. All rights reserved.
+        </div>
+        {/* <div className="flex items-center gap-4 text-slate-700">
+          <button type="button" className="hover:text-slate-950 transition-colors cursor-pointer">Privacy</button>
+          <span>|</span>
+          <button type="button" className="hover:text-slate-950 transition-colors cursor-pointer">Terms</button>
+          <span>|</span>
+          <button type="button" className="hover:text-slate-950 transition-colors cursor-pointer">Help</button>
+        </div> */}
+      </div>
+
     </div>
   )
 }

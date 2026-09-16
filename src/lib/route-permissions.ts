@@ -30,6 +30,11 @@ export function canAccessRoute(role: ClinicRole, path: string, userPermissions?:
   const config = ROLE_CONFIG[role]
   if (!config) return false
 
+  // Invariant: Historical Migration is strictly Head Doctor only
+  if (path.startsWith('/historical-migration')) {
+    return role === 'Head Doctor'
+  }
+
   // Find the matching module for the path
   const matchingKey = Object.keys(ROUTE_MODULE_MAP).find(prefix => path.startsWith(prefix))
   
@@ -41,11 +46,6 @@ export function canAccessRoute(role: ClinicRole, path: string, userPermissions?:
   // Invariant: Reports is strictly Head Doctor only
   if (requiredModule === 'Reports' && role !== 'Head Doctor') {
     return false
-  }
-
-  // Invariant: Historical Migration is strictly Head Doctor only
-  if (path.startsWith('/historical-migration')) {
-    return role === 'Head Doctor';
   }
 
   // If user has custom module access configured (non-null / non-undefined array)

@@ -52,95 +52,101 @@ export class HistoricalImportService {
       errors: []
     };
 
-    // Process records in chunks of 25
-    for (let i = 0; i < approvedRecords.length; i += this.CHUNK_SIZE) {
-      const chunk = approvedRecords.slice(i, i + this.CHUNK_SIZE);
-
-      await prisma.$transaction(async (tx) => {
-        for (const record of chunk) {
-          try {
-            // Mandatory Pre-Import Validation
-            if (!record.reviewedName || !record.reviewedName.trim()) {
-              throw new Error(`Record #${record.pageNumber} is missing required Patient Name.`);
-            }
-            if (!record.reviewedVisitDate) {
-              throw new Error(`Record #${record.pageNumber} is missing required Visit Date.`);
-            }
-
-            const resolution = record.duplicateResolution || 'CREATE_NEW';
-
-            if (resolution === 'SKIP') {
-              await tx.historicalMigrationRecord.update({
-                where: { id: record.id },
-                data: { status: 'SKIPPED' }
-              });
-              summary.recordsSkipped++;
-              continue;
-            }
-
-            let targetPatientId = record.matchedPatientId;
-
-            // 1. Create Patient if CREATE_NEW or if matched patient is invalid
-            if (resolution === 'CREATE_NEW' || !targetPatientId) {
-              const newPatient = await tx.patient.create({
-                data: {
-                  name: record.reviewedName.trim(),
-                  phone: record.reviewedPhone ? record.reviewedPhone.trim() : null, // Nullable, never fake phone
-                  age: record.reviewedAge ?? null,                                   // Nullable, never fake 0
-                  gender: record.reviewedGender ?? null,                             // Nullable, never fake "Unknown"
-                  status: 'Active',
-                  preferredCommunicationChannel: 'AUTO'
-                }
-              });
-              targetPatientId = newPatient.id;
-              summary.patientsCreated++;
-            }
-
-            // 2. Create Historical Visit
-            const historicalVisit = await tx.visit.create({
-              data: {
-                patientId: targetPatientId,
-                status: 'COMPLETED',
-                visitDate: record.reviewedVisitDate, // Actual clinical historical date
-                reasonForVisit: record.reviewedReason || null, // Clean null
-                amountDue: 0,
-                consultationFee: 0,
-                treatmentFee: 0,
-                medicineCost: 0,
-                paymentOwner: 'RECEPTION',
-                createdAt: new Date() // Actual database ingestion audit timestamp
-              }
-            });
-
-            // 3. Mark Record as IMPORTED
-            await tx.historicalMigrationRecord.update({
-              where: { id: record.id },
-              data: {
-                status: 'IMPORTED',
-                importedPatientId: targetPatientId,
-                importedVisitId: historicalVisit.id,
-                importedAt: new Date()
-              }
-            });
-
-            summary.visitsImported++;
-          } catch (recError: any) {
-            console.error(`[HistoricalImportService] Record ${record.id} import error:`, recError);
-            summary.errors.push({
-              recordId: record.id,
-              error: recError.message || 'Unknown import error'
-            });
-
-            await tx.historicalMigrationRecord.update({
-              where: { id: record.id },
-              data: {
-                status: 'FAILED',
-                errorMessage: recError.message || 'Import error'
-              }
-            });
+    // Process records atomically per record for strict fault isolation
+    for (const record of approvedRecords) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Mandatory Pre-Import Validation
+          if (!record.reviewedName || !record.reviewedName.trim()) {
+            throw new Error(`Record #${record.pageNumber} is missing required Patient Name.`);
           }
-        }
-      });
+          if (!record.reviewedVisitDate) {
+            throw new Error(`Record #${record.pageNumber} is missing required Visit Date.`);
+          }
+
+          const resolution = record.duplicateResolution || 'CREATE_NEW';
+
+          if (resolution === 'SKIP') {
+            await tx.historicalMigrationRecord.update({
+              where: { id: record.id },
+              data: { status: 'SKIPPED' }
+            });
+            summary.recordsSkipped++;
+            return;
+          }
+
+          let targetPatientId = record.matchedPatientId;
+
+          // 1. Create Patient if CREATE_NEW or if matched patient is invalid
+          if (resolution === 'CREATE_NEW' || !targetPatientId) {
+            const cleanPhone = record.reviewedPhone ? record.reviewedPhone.trim() : null;
+            if (cleanPhone) {
+              const existingWithPhone = await tx.patient.findFirst({
+                where: { phone: cleanPhone }
+              });
+              if (existingWithPhone) {
+                throw new Error(`Cannot create new patient: Phone ${cleanPhone} already belongs to patient ${existingWithPhone.name}. Resolve phone conflict before import.`);
+              }
+            }
+
+            const newPatient = await tx.patient.create({
+              data: {
+                name: record.reviewedName.trim(),
+                phone: cleanPhone,                    // Nullable, never fake phone
+                age: record.reviewedAge ?? null,      // Nullable, never fake 0
+                gender: record.reviewedGender ?? null,// Nullable, never fake "Unknown"
+                status: 'Active',
+                preferredCommunicationChannel: 'AUTO'
+              }
+            });
+            targetPatientId = newPatient.id;
+            summary.patientsCreated++;
+          }
+
+          // 2. Create Historical Visit
+          const historicalVisit = await tx.visit.create({
+            data: {
+              patientId: targetPatientId,
+              status: 'COMPLETED',
+              visitDate: record.reviewedVisitDate, // Actual clinical historical date
+              reasonForVisit: record.reviewedReason || null, // Clean null
+              amountDue: 0,
+              consultationFee: 0,
+              treatmentFee: 0,
+              medicineCost: 0,
+              paymentOwner: 'RECEPTION',
+              createdAt: new Date() // Actual database ingestion audit timestamp
+            }
+          });
+
+          // 3. Mark Record as IMPORTED
+          await tx.historicalMigrationRecord.update({
+            where: { id: record.id },
+            data: {
+              status: 'IMPORTED',
+              importedPatientId: targetPatientId,
+              importedVisitId: historicalVisit.id,
+              importedAt: new Date()
+            }
+          });
+
+          summary.visitsImported++;
+        });
+      } catch (recError: any) {
+        console.error(`[HistoricalImportService] Record ${record.id} import error:`, recError);
+        summary.errors.push({
+          recordId: record.id,
+          error: recError.message || 'Unknown import error'
+        });
+
+        await prisma.historicalMigrationRecord.update({
+          where: { id: record.id },
+          data: {
+            status: 'FAILED',
+            errorMessage: recError.message || 'Import error'
+          }
+        });
+      }
     }
 
     // Refresh final counts on batch

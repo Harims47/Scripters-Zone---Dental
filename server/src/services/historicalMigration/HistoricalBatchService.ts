@@ -93,6 +93,15 @@ export class HistoricalBatchService {
           const subDoc = await PDFDocument.create();
           const [copiedPage] = await subDoc.copyPages(pdfDoc, [i]);
           subDoc.addPage(copiedPage);
+          if (pdfDoc.getTitle()) subDoc.setTitle(pdfDoc.getTitle()!);
+          if (pdfDoc.getSubject()) subDoc.setSubject(pdfDoc.getSubject()!);
+          try {
+            const author = pdfDoc.getAuthor();
+            if (author && author.startsWith('[')) {
+              const pageTexts = JSON.parse(author);
+              if (pageTexts[i]) subDoc.setTitle(pageTexts[i]);
+            }
+          } catch (e) {}
           const pagePdfBytes = await subDoc.save();
           const pageBuffer = Buffer.from(pagePdfBytes);
 

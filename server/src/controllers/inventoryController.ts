@@ -10,6 +10,9 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
 
     const category = req.query.category as string;
     const status = req.query.status as string;
+    const itemType = (req.query.type as string || req.query.itemType as string || '').toLowerCase();
+
+    const MATERIAL_FORMS = ['Material', 'Dental Material', 'Consumable', 'Instrument / Tool', 'Disposable', 'Equipment', 'Other Material'];
 
     const where: any = {};
     if (search) {
@@ -20,6 +23,11 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
     }
     if (category && category !== 'all') {
       where.categoryId = category;
+    }
+    if (itemType === 'material') {
+      where.form = { in: MATERIAL_FORMS };
+    } else if (itemType === 'medicine') {
+      where.form = { notIn: MATERIAL_FORMS };
     }
 
     // Since Prisma doesn't natively support comparing two columns in simple findMany,
@@ -287,6 +295,9 @@ export const exportInventory = async (req: Request, res: Response, next: NextFun
     const category = req.query.category as string;
     const status = req.query.status as string;
     const format = req.query.format as string;
+    const itemType = (req.query.type as string || req.query.itemType as string || '').toLowerCase();
+
+    const MATERIAL_FORMS = ['Material', 'Dental Material', 'Consumable', 'Instrument / Tool', 'Disposable', 'Equipment', 'Other Material'];
 
     const where: any = {};
     if (search) {
@@ -297,6 +308,11 @@ export const exportInventory = async (req: Request, res: Response, next: NextFun
     }
     if (category && category !== 'all') {
       where.categoryId = category;
+    }
+    if (itemType === 'material') {
+      where.form = { in: MATERIAL_FORMS };
+    } else if (itemType === 'medicine') {
+      where.form = { notIn: MATERIAL_FORMS };
     }
 
     if (status && status !== 'all-status') {
