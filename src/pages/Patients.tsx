@@ -105,21 +105,6 @@ export function PatientsPage() {
     return visits.find(v => v.patientId === patientId && !['COMPLETED', 'CANCELLED'].includes(v.status));
   }
 
-  const handleRowClick = (patient: Patient) => {
-    setSelectedPatient(patient);
-    setNewPatient({
-      name: patient.name,
-      phone: patient.phone || '',
-      age: patient.age != null ? patient.age.toString() : '',
-      gender: patient.gender || '',
-      photoUrl: patient.photoUrl || '',
-      address: patient.address || '',
-      email: patient.email || '',
-      preferredCommunicationChannel: patient.preferredCommunicationChannel || 'AUTO'
-    });
-    setDrawerMode('view');
-    setDrawerOpen(true);
-  };
 
 
   const handleSaveNewPatient = async () => {
@@ -289,8 +274,18 @@ export function PatientsPage() {
       header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button size="icon" className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); setHistoryModalPatient(row.original); }} aria-label="View patient history">
-            <Eye className="h-4 w-4" />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setHistoryModalPatient(row.original);
+            }}
+            title="View Patient Records"
+            aria-label="View patient history"
+          >
+            <Eye className="w-4 h-4" />
           </Button>
         </div>
       )
@@ -355,7 +350,6 @@ export function PatientsPage() {
             columns={columns} 
             data={patients} 
             selectable={false}
-            onRowClick={handleRowClick}
             loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}

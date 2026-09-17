@@ -52,6 +52,7 @@ model Patient {
   notifications Notification[]
   matchedHistoricalRecords  HistoricalMigrationRecord[] @relation("MatchedHistoricalPatient")
   importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalPatient")
+  reimbursementDocuments    ReimbursementDocument[]
 }
 
 model Appointment {
@@ -521,6 +522,41 @@ model HistoricalMigrationRecord {
 
   @@index([batchId, status])
   @@index([status])
+}
+
+model ReimbursementDocument {
+  id                    String    @id @default(uuid())
+  documentNumber        String    @unique
+  patientId             String
+  doctorId              String?
+  visitId               String?
+  documentDate          String    // "YYYY-MM-DD"
+  subject               String    @default("Reimbursement of Dental Treatment Expenses")
+  content               String    @db.Text
+  treatmentDescription  String?   @db.Text
+  amount                Float?
+  
+  // Immutable snapshots
+  patientNameSnapshot   String
+  patientAgeSnapshot    Int?
+  patientGenderSnapshot String?
+  patientPhoneSnapshot  String?
+  doctorNameSnapshot    String?
+  doctorRegNoSnapshot   String?
+  clinicNameSnapshot    String?
+  clinicAddressSnapshot String?
+  clinicPhoneSnapshot   String?
+  clinicLogoSnapshot    String?
+  
+  status                String    @default("Issued") // "Issued"
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  patient               Patient   @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([documentDate])
+  @@index([documentNumber])
 }
 
 

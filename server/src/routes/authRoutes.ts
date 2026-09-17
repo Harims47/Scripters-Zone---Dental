@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { login, logout, me } from '../controllers/authController';
-import { requireAuth, requireRole } from '../middleware/authMiddleware';
+import { login, logout, me, updateProfile } from '../controllers/authController';
+import { requireAuth } from '../middleware/authMiddleware';
 
 const router = Router();
 
@@ -19,6 +19,8 @@ const loginLimiter = rateLimit({
 router.post('/login', loginLimiter, login);
 router.post('/logout', logout);
 router.get('/me', requireAuth, me);
+router.put('/profile', requireAuth, updateProfile);
+router.put('/me', requireAuth, updateProfile);
 
 
 

@@ -30,9 +30,9 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
     }) : null;
 
     const prescriptionData = {
-      clinicName: 'DentalCore Dental Clinic',
-      clinicAddress: 'Healthcare Plaza, Main Road',
-      clinicPhone: '+91 98765 43210',
+      clinicName: 'Rafi Dental Clinic',
+      clinicAddress: '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452',
+      clinicPhone: '094430 23648',
       patientName: visit.patient.name,
       patientAge: visit.patient.age || '',
       patientGender: visit.patient.gender || '',
@@ -121,7 +121,9 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
     const consultationFee = Math.max(0, payment.amount - medicineCost);
 
     const receiptData = {
-      clinicName: 'DentalCore Dental Clinic',
+      clinicName: 'Rafi Dental Clinic',
+      clinicAddress: '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452',
+      clinicPhone: '094430 23648',
       patientName: visit.patient.name,
       patientId: visit.patient.id,
       patientPhone: visit.patient.phone,
@@ -238,9 +240,9 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
 
     const { generateInvoicePDF } = await import('../services/documentService');
     const pdfBuffer = await generateInvoicePDF({
-      clinicName: 'DentalCore Dental Clinic',
-      clinicAddress: 'Healthcare Plaza, Main Road',
-      clinicPhone: '+91 98765 43210',
+      clinicName: 'Rafi Dental Clinic',
+      clinicAddress: '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452',
+      clinicPhone: '094430 23648',
       invoiceNumber,
       visitId: visit.id,
       visitDate: visit.createdAt.toLocaleDateString('en-IN'),

@@ -238,15 +238,15 @@ export function StaffPage() {
         <div className="flex items-center justify-end gap-2">
           {row.original.status === 'Active' && (
             <>
-              <Button size="icon" className="h-8 w-8 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg" aria-label="Edit staff" onClick={() => handleOpenEdit(row.original)}>
+              <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors" aria-label="Edit staff" title="Edit Staff" onClick={() => handleOpenEdit(row.original)}>
                 <Edit2 className="w-4 h-4" />
               </Button>
-              <Button size="icon" className="h-8 w-8 shadow-sm bg-rose-500 hover:bg-rose-600 text-white rounded-lg" aria-label="Deactivate staff" onClick={() => setDeactivateId(row.original.id)}>
+              <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-colors" aria-label="Deactivate staff" title="Deactivate Staff" onClick={() => setDeactivateId(row.original.id)}>
                 <ShieldOff className="w-4 h-4" />
               </Button>
             </>
           )}
-          <Button size="icon" onClick={() => handleOpenView(row.original)} className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" aria-label="View staff">
+          <Button size="icon" variant="ghost" onClick={() => handleOpenView(row.original)} className="h-8 w-8 rounded-lg text-slate-500 hover:text-teal-600 hover:bg-teal-50 transition-colors" aria-label="View staff" title="View Staff">
             <Eye className="w-4 h-4" />
           </Button>
         </div>

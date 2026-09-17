@@ -12,6 +12,7 @@ export interface SafeUser {
   staff?: {
     id: string;
     name: string;
+    phone?: string;
     permissions?: ClinicModule[] | null;
   };
   permissions?: ClinicModule[];
@@ -55,6 +56,7 @@ interface AuthContextType {
   login: (username: string, password?: string) => Promise<{ success: boolean; error?: string; user?: SafeUser }>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  updateProfile: (data: { name: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -123,6 +125,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(null);
   };
 
+  const updateProfile = async (data: { name: string; phone?: string }) => {
+    try {
+      await api.put('/api/auth/profile', data);
+      await refreshSession();
+      return { success: true };
+    } catch (err: any) {
+      if (err instanceof ApiError) {
+        return { success: false, error: err.message };
+      }
+      return { success: false, error: err.message || 'Failed to update profile' };
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       currentUser,
@@ -130,7 +145,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       login,
       logout,
-      refreshSession
+      refreshSession,
+      updateProfile
     }}>
       {children}
     </AuthContext.Provider>
