@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { User, Lock, Eye, EyeOff, Users, Stethoscope, Crown, ShieldCheck, Calendar, AlertCircle } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, Users, ShieldCheck, Calendar, AlertCircle } from 'lucide-react'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -38,11 +38,6 @@ export function LoginPage() {
     executeLogin(username.trim(), password)
   }
 
-  const handleDemoSelect = (demoUser: string) => {
-    setUsername(demoUser)
-    setPassword('demo123')
-    executeLogin(demoUser, 'demo123')
-  }
 
   return (
     <div
@@ -208,78 +203,8 @@ export function LoginPage() {
               </div>
             </form>
 
-            {/* Divider */}
-            <div className="relative my-5 text-center">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200/80" />
-              </div>
-              <span className="relative bg-white px-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                OR TRY A DEMO ACCOUNT
-              </span>
-            </div>
-
-            {/* 3 Quick Demo Account Cards */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-              {/* Receptionist */}
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleDemoSelect('receptionist')}
-                className="flex flex-col items-center p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 hover:border-teal-500 hover:bg-teal-50/60 bg-slate-50/40 transition-all text-center group cursor-pointer disabled:opacity-50"
-              >
-                <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-100 flex items-center justify-center transition-colors">
-                  <Users className="w-3.5 h-3.5 text-teal-700" />
-                </div>
-                <div className="font-bold text-slate-800 group-hover:text-teal-900 text-xs mt-1.5">
-                  Receptionist
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5 leading-tight">
-                  <div>receptionist</div>
-                  <div>demo123</div>
-                </div>
-              </button>
-
-              {/* Duty Doctor */}
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleDemoSelect('dutydoctor')}
-                className="flex flex-col items-center p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 hover:border-teal-500 hover:bg-teal-50/60 bg-slate-50/40 transition-all text-center group cursor-pointer disabled:opacity-50"
-              >
-                <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-100 flex items-center justify-center transition-colors">
-                  <Stethoscope className="w-3.5 h-3.5 text-teal-700" />
-                </div>
-                <div className="font-bold text-slate-800 group-hover:text-teal-900 text-xs mt-1.5">
-                  Duty Doctor
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5 leading-tight">
-                  <div>dutydoctor</div>
-                  <div>demo123</div>
-                </div>
-              </button>
-
-              {/* Head Doctor */}
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => handleDemoSelect('headdoctor')}
-                className="flex flex-col items-center p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 hover:border-teal-500 hover:bg-teal-50/60 bg-slate-50/40 transition-all text-center group cursor-pointer disabled:opacity-50"
-              >
-                <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-100 flex items-center justify-center transition-colors">
-                  <Crown className="w-3.5 h-3.5 text-teal-700" />
-                </div>
-                <div className="font-bold text-slate-800 group-hover:text-teal-900 text-xs mt-1.5">
-                  Head Doctor
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5 leading-tight">
-                  <div>headdoctor</div>
-                  <div>demo123</div>
-                </div>
-              </button>
-            </div>
-
             {/* Motivational Quote & Mini Smile */}
-            <div className="text-center mt-4 pt-1 select-none">
+            <div className="text-center mt-6 pt-1 select-none">
               <p className="text-xs italic text-slate-500 font-serif">
                 “Caring for smiles today, tomorrow and always.”
               </p>
