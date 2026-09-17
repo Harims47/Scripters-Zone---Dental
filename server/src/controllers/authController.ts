@@ -76,3 +76,70 @@ export const me = (req: Request, res: Response) => {
   }
   return res.json({ user: req.user });
 };
+
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { name, phone } = req.body;
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const trimmedName = name.trim();
+    const trimmedPhone = typeof phone === 'string' ? phone.trim() : '';
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { staff: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let updatedStaff;
+    if (user.staffId) {
+      updatedStaff = await prisma.staff.update({
+        where: { id: user.staffId },
+        data: {
+          name: trimmedName,
+          phone: trimmedPhone,
+        }
+      });
+    } else {
+      updatedStaff = await prisma.staff.create({
+        data: {
+          name: trimmedName,
+          phone: trimmedPhone,
+          role: user.role,
+          status: 'Active'
+        }
+      });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { staffId: updatedStaff.id }
+      });
+    }
+
+    const safeUser = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      staffId: updatedStaff.id,
+      staff: updatedStaff
+    };
+
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: safeUser
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return res.status(500).json({ error: 'Internal server error while updating profile' });
+  }
+};

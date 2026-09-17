@@ -21,7 +21,8 @@ export const generateCSV = (columns: ExportColumn[], data: any[]): string => {
     return columns.map(c => escapeCsv(row[c.key])).join(',');
   });
 
-  return [headerRow, ...dataRows].join('\n');
+  // Prepend UTF-8 BOM (\uFEFF) so Excel on Windows properly recognizes UTF-8 formatting and symbols like ₹
+  return '\uFEFF' + [headerRow, ...dataRows].join('\n');
 };
 
 export const generateXLSX = async (columns: ExportColumn[], data: any[], sheetName: string = 'Data'): Promise<Buffer> => {

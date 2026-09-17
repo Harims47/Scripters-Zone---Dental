@@ -14,6 +14,9 @@ export const getBillingQueue = async (req: Request, res: Response, next: NextFun
     const where: any = {
       status: { in: allowedStatuses }
     };
+    if (req.user?.role === 'Receptionist') {
+      where.paymentOwner = { not: 'DOCTOR' };
+    }
 
     if (search) {
       where.OR = [
@@ -68,6 +71,9 @@ export const exportBillingQueue = async (req: Request, res: Response, next: Next
     const where: any = {
       status: { in: allowedStatuses }
     };
+    if (req.user?.role === 'Receptionist') {
+      where.paymentOwner = { not: 'DOCTOR' };
+    }
 
     if (search) {
       where.OR = [
@@ -90,9 +96,10 @@ export const exportBillingQueue = async (req: Request, res: Response, next: Next
       patientId: v.patientId,
       patientName: v.patient?.name || 'Unknown',
       status: v.status,
-      consultationFee: v.consultationFee,
-      medicineCost: v.medicineCost,
-      amountDue: v.amountDue
+      consultationFee: v.consultationFee ?? 0,
+      treatmentFee: v.treatmentFee ?? 0,
+      medicineCost: v.medicineCost ?? 0,
+      amountDue: v.amountDue ?? 0
     }));
 
     const columns: ExportColumn[] = [
@@ -101,6 +108,7 @@ export const exportBillingQueue = async (req: Request, res: Response, next: Next
       { key: 'patientName', label: 'Patient Name' },
       { key: 'status', label: 'Status' },
       { key: 'consultationFee', label: 'Consultation Fee' },
+      { key: 'treatmentFee', label: 'Treatment Fee' },
       { key: 'medicineCost', label: 'Medicine Cost' },
       { key: 'amountDue', label: 'Amount Due' }
     ];

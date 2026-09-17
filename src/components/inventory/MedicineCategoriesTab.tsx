@@ -177,10 +177,7 @@ export function MedicineCategoriesTab({ onCategoriesChanged }: MedicineCategorie
         return (
           <div className="flex items-center gap-3">
             <div className={`w-2.5 h-2.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-            <div>
-              <div className="font-semibold text-slate-900 text-sm">{cat.name}</div>
-              <div className="text-[11px] text-slate-400 font-mono">ID: {cat.id}</div>
-            </div>
+            <div className="font-semibold text-slate-900 text-sm">{cat.name}</div>
           </div>
         );
       }
@@ -387,7 +384,6 @@ export function MedicineCategoriesTab({ onCategoriesChanged }: MedicineCategorie
                       </div>
                     </div>
                     <ReadOnlyField label="Associated Medicines" value={`${selectedCategory._count?.medicines ?? 0} medicines assigned`} />
-                    <ReadOnlyField label="System ID" value={selectedCategory.id} isMono />
                     <ReadOnlyField
                       label="Created At"
                       value={new Date(selectedCategory.createdAt).toLocaleDateString(undefined, {

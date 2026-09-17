@@ -9,7 +9,7 @@ export interface Medicine {
     status: 'Active' | 'Inactive';
     description?: string | null;
   };
-  form: 'Tablet' | 'Capsule' | 'Syrup' | 'Injection' | 'Ointment' | 'Liquid' | 'Mouthwash' | 'Other';
+  form: 'Tablet' | 'Capsule' | 'Syrup' | 'Injection' | 'Ointment' | 'Liquid' | 'Mouthwash' | 'Other' | 'Material' | 'Dental Material' | 'Consumable' | 'Instrument / Tool' | 'Disposable' | 'Equipment' | string;
   unit: string;
   stockWarningLevel: number;
   currentStock: number;

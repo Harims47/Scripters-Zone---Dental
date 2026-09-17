@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play } from 'lucide-react';
+import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play, Upload } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
@@ -23,13 +23,17 @@ import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
+import { useAuth } from '../context/AuthContext';
+import { PatientImportModal } from '../components/patients/PatientImportModal';
 import { api } from '../lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 
 const MySwal = withReactContent(Swal);
 export function PatientsPage() {
+  const { currentUser } = useAuth();
   const { visits, staff, addPatient, updatePatient, startVisit, updateVisit, normalizePhone } = useClinicContext();
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterGender, setFilterGender] = useState('all');
@@ -76,7 +80,16 @@ export function PatientsPage() {
   const [historyModalPatient, setHistoryModalPatient] = useState<Patient | null>(null);
 
   // Form states
-  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male' as 'Male' | 'Female' | 'Other', photoUrl: '', address: '' });
+  const [newPatient, setNewPatient] = useState({
+    name: '',
+    phone: '',
+    age: '',
+    gender: 'Male' as 'Male' | 'Female' | 'Other',
+    photoUrl: '',
+    address: '',
+    email: '',
+    preferredCommunicationChannel: 'AUTO' as 'AUTO' | 'WHATSAPP' | 'SMS' | 'EMAIL'
+  });
   const [visitDoctor, setVisitDoctor] = useState('');
   const [activeVisitWarning, setActiveVisitWarning] = useState(false);
   const [visitReason, setVisitReason] = useState('');
@@ -92,11 +105,6 @@ export function PatientsPage() {
     return visits.find(v => v.patientId === patientId && !['COMPLETED', 'CANCELLED'].includes(v.status));
   }
 
-  const handleRowClick = (patient: Patient) => {
-    setSelectedPatient(patient);
-    setDrawerMode('view');
-    setDrawerOpen(true);
-  };
 
 
   const handleSaveNewPatient = async () => {
@@ -111,7 +119,7 @@ export function PatientsPage() {
 
     // Duplicate Protection
     const normPhone = normalizePhone(newPatient.phone);
-    const existing = patients.find(p => normalizePhone(p.phone) === normPhone);
+    const existing = patients.find(p => p.phone && normalizePhone(p.phone) === normPhone);
     if (existing) {
       MySwal.fire({
         title: 'Duplicate Phone Number',
@@ -135,7 +143,9 @@ export function PatientsPage() {
         gender: newPatient.gender,
         status: 'Active',
         photoUrl: newPatient.photoUrl || undefined,
-        address: (newPatient as any).address || undefined
+        address: (newPatient as any).address || undefined,
+        email: newPatient.email || undefined,
+        preferredCommunicationChannel: newPatient.preferredCommunicationChannel || 'AUTO',
       });
       
       setSelectedPatient(created);
@@ -159,6 +169,8 @@ export function PatientsPage() {
           age: parseInt(newPatient.age) || selectedPatient.age,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
+          email: newPatient.email !== undefined ? newPatient.email : selectedPatient.email,
+          preferredCommunicationChannel: newPatient.preferredCommunicationChannel || selectedPatient.preferredCommunicationChannel || 'AUTO',
         });
         setSelectedPatient(prev => prev ? {
           ...prev,
@@ -167,6 +179,8 @@ export function PatientsPage() {
           age: parseInt(newPatient.age) || selectedPatient.age,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
+          email: newPatient.email !== undefined ? newPatient.email : selectedPatient.email,
+          preferredCommunicationChannel: newPatient.preferredCommunicationChannel || selectedPatient.preferredCommunicationChannel || 'AUTO',
         } : prev);
       }
       const activeVisit = getActiveVisit(selectedPatient.id);
@@ -249,15 +263,29 @@ export function PatientsPage() {
     {
       accessorKey: "age",
       header: "Age / Gender",
-      cell: ({ row }) => <span className="text-slate-600">{row.original.age} Yrs • {row.original.gender}</span>
+      cell: ({ row }) => (
+        <span className="text-slate-600">
+          {row.original.age != null ? `${row.original.age} Yrs` : '—'} • {row.original.gender || '—'}
+        </span>
+      )
     },
     {
       id: "actions",
       header: () => <div className="text-right">Actions</div>,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
-          <Button size="icon" className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" onClick={(e) => { e.stopPropagation(); setHistoryModalPatient(row.original); }} aria-label="View patient history">
-            <Eye className="h-4 w-4" />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setHistoryModalPatient(row.original);
+            }}
+            title="View Patient Records"
+            aria-label="View patient history"
+          >
+            <Eye className="w-4 h-4" />
           </Button>
         </div>
       )
@@ -274,6 +302,15 @@ export function PatientsPage() {
             Search patients and review their complete visit-by-visit clinical records.
           </p>
         </div>
+        {currentUser?.role === 'Head Doctor' && (
+          <Button
+            onClick={() => setIsImportModalOpen(true)}
+            className="bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 h-9 px-3.5 rounded-xl self-start sm:self-auto transition-colors cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import Existing Patients
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
@@ -313,7 +350,6 @@ export function PatientsPage() {
             columns={columns} 
             data={patients} 
             selectable={false}
-            onRowClick={handleRowClick}
             loading={isLoading}
           manualPagination={true}
           pageCount={meta.totalPages}
@@ -375,12 +411,25 @@ export function PatientsPage() {
                     <DrawerSection title="Basic Information">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
                         <ReadOnlyField label="Full Name" value={selectedPatient.name} />
-                        <ReadOnlyField label="Phone" value={selectedPatient.phone} />
-                        <ReadOnlyField label="Age" value={`${selectedPatient.age} Yrs`} />
-                        <ReadOnlyField label="Gender" value={selectedPatient.gender} />
+                        <ReadOnlyField label="Phone" value={selectedPatient.phone || '—'} />
+                        <ReadOnlyField label="Age" value={selectedPatient.age != null ? `${selectedPatient.age} Yrs` : '—'} />
+                        <ReadOnlyField label="Gender" value={selectedPatient.gender || '—'} />
                         <div className="sm:col-span-2 mt-2">
                           <ReadOnlyField label="Address" value={selectedPatient.address || 'Not provided'} />
                         </div>
+                        <ReadOnlyField label="Email" value={selectedPatient.email || 'Not provided'} />
+                        <ReadOnlyField 
+                          label="Communication Channel" 
+                          value={
+                            selectedPatient.preferredCommunicationChannel === 'WHATSAPP'
+                              ? 'WhatsApp Only'
+                              : selectedPatient.preferredCommunicationChannel === 'SMS'
+                              ? 'SMS Only'
+                              : selectedPatient.preferredCommunicationChannel === 'EMAIL'
+                              ? 'Email Only'
+                              : 'Auto (WhatsApp / SMS Fallback)'
+                          } 
+                        />
                         {getActiveVisit(selectedPatient.id) && (
                           <div className="sm:col-span-2 mt-2">
                             <ReadOnlyField label="Current Reason for Visit" value={getActiveVisit(selectedPatient.id)!.reasonForVisit || 'Not specified'} />
@@ -502,6 +551,36 @@ export function PatientsPage() {
                               <SelectItem value="Other">Other</SelectItem>
                             </SelectContent>
                           </Select>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Email Address (Optional)</label>
+                            <Input 
+                              type="email"
+                              value={newPatient.email} 
+                              onChange={e => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, email: e.target.value})}
+                              placeholder="e.g. patient@example.com"
+                              className="bg-white" 
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Preferred Channel</label>
+                            <Select 
+                              value={newPatient.preferredCommunicationChannel} 
+                              onValueChange={(val) => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, preferredCommunicationChannel: val as any})}
+                              disabled={drawerMode === 'view' as any}
+                            >
+                              <SelectTrigger className="w-full h-10 rounded-xl bg-white border-slate-200">
+                                <SelectValue placeholder="Select Channel" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="AUTO">Auto (WhatsApp primary, SMS fallback)</SelectItem>
+                                <SelectItem value="WHATSAPP">WhatsApp Only</SelectItem>
+                                <SelectItem value="SMS">SMS Only</SelectItem>
+                                <SelectItem value="EMAIL">Email Only</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">Reason for Visit</label>
@@ -668,6 +747,15 @@ export function PatientsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Existing Patient Import Modal (Head Doctor Only) */}
+      <PatientImportModal
+        open={isImportModalOpen}
+        onOpenChange={setIsImportModalOpen}
+        onImportComplete={() => {
+          fetchPatients(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterGender);
+        }}
+      />
     </div>
   );
 }

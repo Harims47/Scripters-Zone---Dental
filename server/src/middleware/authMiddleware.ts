@@ -69,9 +69,9 @@ export const DEFAULT_ROLE_MODULES: Record<string, string[]> = {
   'Head Doctor': [
     'Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments',
     'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing',
-    'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports'
+    'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports', 'Reimbursement'
   ],
-  'Duty Doctor': ['Dashboard', 'Patients', 'Queue', 'Doctor Workspace', 'Prescriptions'],
+  'Duty Doctor': ['Dashboard', 'Patients', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Reimbursement'],
   'Receptionist': [
     'Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments',
     'Queue', 'Dispensing', 'Billing', 'Payments'

@@ -71,7 +71,9 @@ export const createPatient = async (req: Request, res: Response, next: NextFunct
         gender: data.gender,
         status: data.status || 'Active',
         photoUrl: data.photoUrl,
-        address: data.address
+        address: data.address,
+        email: data.email || null,
+        preferredCommunicationChannel: data.preferredCommunicationChannel || 'AUTO'
       }
     });
     return res.status(201).json(patient);

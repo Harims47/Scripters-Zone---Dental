@@ -1,8 +1,9 @@
+import { useState, useRef, useEffect } from "react"
 import { NavLink } from "react-router-dom"
 import { 
   LayoutDashboard, Users, Calendar, Clock, 
   Package, Stethoscope, Settings, Receipt,
-  LogOut, Menu, BarChart3
+  LogOut, Menu, BarChart3, FolderArchive, FileText
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { t } from "../../lib/i18n"
@@ -26,9 +27,11 @@ const navItems: NavItem[] = [
   { title: "Appointments", href: "/appointments", icon: Calendar },
   { title: "Queue", href: "/queue", icon: Clock },
   { title: "Billing", href: "/billing", icon: Receipt },
+  { title: "Reimbursement", href: "/reimbursement", icon: FileText },
   { title: "Inventory", href: "/inventory", icon: Package },
   { title: "Staff", href: "/staff", icon: Stethoscope },
   { title: "Reports", href: "/reports", icon: BarChart3 },
+  { title: "Historical Migration", href: "/historical-migration", icon: FolderArchive },
   { title: "Settings", href: "/settings", icon: Settings },
 ]
 
@@ -42,6 +45,26 @@ interface SidebarProps {
 
 export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCollapse }: SidebarProps) {
   const { currentUser, logout } = useAuth()
+  const [isScrolling, setIsScrolling] = useState(false)
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleScroll = () => {
+    setIsScrolling(true)
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false)
+    }, 1000)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [])
   
   // Filter navItems based on the current user's role and the centralized permission map
   const filteredNav = navItems.filter(item => {
@@ -68,12 +91,16 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
 
   return (
     <div className={cn("flex flex-col h-full bg-white border-r border-slate-100 shadow-[4px_0_24px_rgba(0,0,0,0.01)]", className)}>
-      <div className={cn("h-[72px] flex items-center border-b border-slate-100 shrink-0", isCollapsed ? "justify-center" : "px-5 justify-between")}>
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-teal-500/20 shrink-0">
-            D
-          </div>
-          {!isCollapsed && <span className="font-bold text-xl tracking-tight text-slate-900 whitespace-nowrap">DentalCore</span>}
+      <div className={cn("h-[72px] flex items-center border-b border-slate-100 shrink-0 relative", isCollapsed ? "justify-center px-3" : "pl-4 pr-3 justify-between gap-2")}>
+        <div className={cn("flex items-center min-w-0", isCollapsed ? "justify-center w-full" : "flex-1 overflow-hidden")}>
+          <img
+            src={isCollapsed ? "/dental-icon.png" : "/dental-logo-trimmed.png"}
+            alt="Rafi Dental Clinic"
+            className={cn(
+              "object-contain transition-all duration-200",
+              isCollapsed ? "h-11 w-11 shrink-0" : "h-[56px] w-auto max-w-[195px] object-left"
+            )}
+          />
         </div>
         
         {onToggleCollapse && (
@@ -82,15 +109,21 @@ export function Sidebar({ className, onNavigate, isCollapsed = false, onToggleCo
             title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             className={cn(
               "hidden md:flex items-center justify-center rounded-lg p-1.5 transition-colors text-slate-400 hover:bg-slate-100 hover:text-slate-900",
-              isCollapsed && "absolute -right-3 top-6 bg-white border border-slate-200 shadow-sm rounded-full z-50 h-7 w-7 p-0"
+              isCollapsed && "absolute -right-3.5 top-1/2 -translate-y-1/2 bg-white border border-slate-200 shadow-sm rounded-full z-50 h-7 w-7 p-0 hover:text-teal-600 hover:border-teal-300"
             )}
           >
-            <Menu className="h-5 w-5 shrink-0" />
+            <Menu className="h-4 w-4 shrink-0" />
           </button>
         )}
       </div>
       
-      <div className="flex-1 overflow-y-auto py-5 px-3 space-y-1">
+      <div 
+        onScroll={handleScroll}
+        className={cn(
+          "flex-1 overflow-y-auto py-5 px-3 space-y-1 sidebar-scrollbar",
+          isScrolling && "is-scrolling"
+        )}
+      >
         {!isCollapsed && (
           <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3 mt-2 whitespace-nowrap">
             {t('sidebar.clinic', 'Main Menu')}

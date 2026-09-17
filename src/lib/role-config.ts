@@ -16,6 +16,7 @@ export type ClinicModule =
   | 'Settings'
   | 'Reports'
   | 'Partial Payments'
+  | 'Reimbursement'
 
 export interface RoleConfig {
   role: ClinicRole
@@ -29,7 +30,7 @@ export const ROLE_CONFIG: Record<ClinicRole, RoleConfig> = {
     role: 'Head Doctor',
     label: 'Head Doctor (Super Admin)',
     description: 'Full clinic access including staff and settings management.',
-    permissions: ['Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports']
+    permissions: ['Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports', 'Reimbursement']
   },
   'Duty Doctor': {
     role: 'Duty Doctor',
@@ -49,7 +50,7 @@ export const ROLE_CONFIG: Record<ClinicRole, RoleConfig> = {
 export const ALL_MODULES: ClinicModule[] = [
   'Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 
   'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 
-  'Staff Management', 'Settings', 'Reports'
+  'Staff Management', 'Settings', 'Reports', 'Reimbursement'
 ]
 
 // Active modules corresponding strictly to the visible sidebar navigation menu items
@@ -59,8 +60,10 @@ export const SIDEBAR_MODULES: ClinicModule[] = [
   'Partial Payments',
   'Patients',
   'Queue',
+  'Reimbursement',
   'Inventory',
   'Staff Management',
   'Reports',
   'Settings'
 ]
+

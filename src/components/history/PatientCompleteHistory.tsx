@@ -199,7 +199,7 @@ export function PatientCompleteHistory({
         ) : (
           visits.map((visit) => {
             const isExpanded = !!expandedVisits[visit.id]
-            const visitDate = new Date(visit.createdAt)
+            const visitDate = (visit as any).visitDate ? new Date((visit as any).visitDate) : new Date(visit.createdAt)
             const formattedDate = visitDate.toLocaleDateString(undefined, { 
               year: 'numeric', 
               month: 'short', 

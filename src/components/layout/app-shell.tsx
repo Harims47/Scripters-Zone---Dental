@@ -20,10 +20,13 @@ export function AppShell() {
         <Topbar />
         
         {/* Main Content Area via Router Outlet */}
-        <main className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6">
-          <div className="mx-auto w-full max-w-[1600px]">
+        <main className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6 flex flex-col justify-between">
+          <div className="mx-auto w-full max-w-[1600px] flex-1">
             <Outlet />
           </div>
+          <footer className="mt-8 pt-4 pb-2 border-t border-slate-200/80 text-center text-xs text-slate-500 font-medium">
+            © {new Date().getFullYear()} Scripters Zone. All rights reserved.
+          </footer>
         </main>
 
         {/* Global Operational Alerts */}

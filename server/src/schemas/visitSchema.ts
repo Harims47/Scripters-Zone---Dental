@@ -21,6 +21,7 @@ export const updateVisitSchema = z.object({
     doctorId: z.string().nullable().optional(),
     isUrgent: z.boolean().optional(),
     amountDue: z.number().optional(),
+    paymentOwner: z.enum(['RECEPTION', 'DOCTOR']).optional(),
   })
 });
 

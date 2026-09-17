@@ -15,6 +15,8 @@ import { AppointmentsPage } from './pages/AppointmentsPage';
 import { StaffPage } from './pages/StaffPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PartialPaymentAlertsPage } from './pages/PartialPaymentAlertsPage';
+import { HistoricalMigrationPage } from './pages/HistoricalMigrationPage';
+import { ReimbursementPage } from './pages/ReimbursementPage';
 import { ClinicProvider } from './context/ClinicContext';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -54,8 +56,10 @@ function App() {
             <Route path="queue" element={<QueuePage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="billing" element={<BillingPage />} />
+            <Route path="reimbursement" element={<ReimbursementPage />} />
             <Route path="staff" element={<StaffPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="historical-migration" element={<HistoricalMigrationPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="premium-reference" element={<PremiumReferencePage />} />
             

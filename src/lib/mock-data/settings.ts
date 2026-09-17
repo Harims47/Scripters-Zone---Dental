@@ -9,12 +9,12 @@ export interface ClinicProfile {
 }
 
 export const DEMO_CLINIC_PROFILE: ClinicProfile = {
-  name: "DentalCore Dental Clinic",
-  phone: "+91 98765 43210",
-  email: "clinic@dentalcore.demo",
-  address: "12 MG Road",
-  city: "Bengaluru",
-  pin: "560001",
+  name: "Rafi Dental Clinic",
+  phone: "094430 23648",
+  email: "clinic@rafidental.com",
+  address: "37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam",
+  city: "Gobichettipalayam",
+  pin: "638452",
   language: "English"
 }
 

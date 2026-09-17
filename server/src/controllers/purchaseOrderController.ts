@@ -285,6 +285,25 @@ export const updatePurchaseOrderStatus = async (req: Request, res: Response, nex
       }
     });
 
+    // When PO is sent to supplier (Ordered), queue Purchase Order email notification
+    if (targetStatus === 'Ordered' && updated.supplier?.email) {
+      const { NotificationService } = await import('../services/communication/NotificationService');
+      const totalAmount = updated.items.reduce((sum: number, item: any) => sum + (item.orderedQuantity * item.unitCost), 0);
+      NotificationService.requestNotification({
+        type: 'PURCHASE_ORDER_SENT',
+        entityType: 'PURCHASE_ORDER',
+        entityId: updated.id,
+        recipientEmail: updated.supplier.email,
+        recipientName: updated.supplier.name,
+        variables: {
+          orderNumber: updated.orderNumber,
+          supplierName: updated.supplier.name,
+          totalAmount,
+        },
+      }, { userId: req.user?.id, role: req.user?.role })
+      .catch((err: any) => console.error('[Notification] Failed to queue purchase order email:', err.message));
+    }
+
     return res.json(updated);
   } catch (error) {
     next(error);

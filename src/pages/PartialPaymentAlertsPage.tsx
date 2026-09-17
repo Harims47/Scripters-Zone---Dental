@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useClinicContext } from '../context/ClinicContext';
+import { useAuth } from '../context/AuthContext';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -14,6 +15,8 @@ import { API_BASE_URL, api } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export function PartialPaymentAlertsPage() {
+  const { currentUser } = useAuth();
+  const isReceptionist = currentUser?.role === 'Receptionist';
   const { visits, payments, patients, staff, consultations, recordPayment } = useClinicContext();
   
   const [selectedAlert, setSelectedAlert] = useState<any | null>(null);
@@ -28,7 +31,11 @@ export function PartialPaymentAlertsPage() {
     let alertData: any[] = [];
     
     // We want to check all visits that aren't cancelled or completed for balances
-    const activeVisits = visits.filter(v => v.status !== 'CANCELLED' && v.status !== 'COMPLETED');
+    const activeVisits = visits.filter(v => 
+      v.status !== 'CANCELLED' && 
+      v.status !== 'COMPLETED' && 
+      (!isReceptionist || v.paymentOwner !== 'DOCTOR')
+    );
 
     for (const v of activeVisits) {
       const vPayments = payments.filter(p => p.visitId === v.id);
@@ -112,6 +119,13 @@ export function PartialPaymentAlertsPage() {
   }, [visits, payments, patients, staff, search, overdueFilter]);
 
   const handleCollect = async () => {
+    if (selectedAlert && isReceptionist) {
+      const v = visits.find(vis => vis.id === selectedAlert.visitId);
+      if (v?.paymentOwner === 'DOCTOR') {
+        toast.error('Payment for this visit is handled by Doctor');
+        return;
+      }
+    }
     if (!selectedAlert || !paymentAmount || paymentAmount <= 0) {
       toast.error('Please enter a valid amount');
       return;

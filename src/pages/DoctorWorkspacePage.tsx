@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 
@@ -16,8 +16,10 @@ import { Badge } from '../components/ui/badge'
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI'
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails'
 import type { PrescriptionLineItem } from '../components/prescription/prescription-components'
+import { PaymentMethodSelector, type PaymentMethod } from '../components/payment/payment-components'
 import { MEDICINE_CATEGORIES } from '../lib/medicine-categories'
 import type { Medicine } from '../lib/mock-data'
+import { WhatsAppActionButton } from '../components/communication/WhatsAppActionButton'
 
 import { useClinicContext } from '../context/ClinicContext'
 import { api, API_BASE_URL } from '../lib/api'
@@ -112,7 +114,45 @@ const INSTRUCTION_OPTIONS = [
   'After Lunch',
   'Before Dinner',
   'After Dinner',
+  'At Bedtime',
+  'SOS (As needed)',
 ]
+
+export function calculatePrescriptionQuantity(
+  dosage: string | undefined,
+  duration: string | undefined,
+  instructions: string | undefined
+): number {
+  // 1. Duration in days (e.g. '5 days' -> 5, '1 day' -> 1)
+  const daysMatch = duration?.match(/(\d+)/)
+  const days = daysMatch ? parseInt(daysMatch[1], 10) : 1
+
+  // 2. Doses per day from instructions
+  const instList = instructions
+    ? instructions.split(',').map(s => s.trim()).filter(Boolean)
+    : []
+  
+  // Non-SOS meal instructions represent daily dosage frequency
+  const mealDoses = instList.filter(i => !i.includes('SOS'))
+  const dosesPerDay = mealDoses.length > 0 ? mealDoses.length : 1
+
+  // 3. Units per dose (e.g. '1 Tablet', '2 Tablets', '½ Tablet', '1 Capsule')
+  let unitsPerDose = 1
+  if (dosage) {
+    if (dosage.includes('½') || dosage.includes('0.5')) {
+      unitsPerDose = 0.5
+    } else if (dosage.includes('1½') || dosage.includes('1.5')) {
+      unitsPerDose = 1.5
+    } else {
+      const numMatch = dosage.match(/^(\d+)/)
+      if (numMatch) {
+        unitsPerDose = parseInt(numMatch[1], 10)
+      }
+    }
+  }
+
+  return Math.max(1, Math.ceil(unitsPerDose * dosesPerDay * days))
+}
 
 const CLINICAL_NOTE_TAGS = [
   'Routine Examination',
@@ -127,7 +167,17 @@ const CLINICAL_NOTE_TAGS = [
   'Extraction Advised'
 ]
 
-function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; onRemove: (id: string) => void }) {
+function RxRow({ 
+  item, 
+  onUpdateField, 
+  onUpdateFields,
+  onRemove 
+}: { 
+  item: PrescriptionLineItem; 
+  onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; 
+  onUpdateFields?: (id: string, updates: Partial<PrescriptionLineItem>) => void;
+  onRemove: (id: string) => void 
+}) {
   const selectedInstructions = item.instructions
     ? item.instructions.split(',').map(s => s.trim()).filter(Boolean)
     : []
@@ -140,18 +190,57 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
       next = [...selectedInstructions, inst]
     }
     const joined = next.join(', ')
-    onUpdateField(item.id, 'instructions', joined)
 
     // Automatically calculate and sync frequency based on meal instruction count
-    let autoFreq = 'Once daily'
-    if (next.length === 2) autoFreq = 'Twice daily'
-    else if (next.length === 3) autoFreq = 'Three times daily'
-    else if (next.length >= 4) autoFreq = 'Four times daily'
-    else if (next.length === 1) {
-      if (next[0].includes('Dinner')) autoFreq = 'At bedtime'
+    let autoFreq = ''
+    const mealCount = next.filter(i => !i.includes('SOS')).length
+    if (next.some(i => i.includes('SOS'))) {
+      autoFreq = mealCount > 0 ? `${mealCount === 1 ? 'Once daily' : mealCount === 2 ? 'Twice daily' : `${mealCount} times daily`} (SOS)` : 'SOS (As needed)'
+    } else if (mealCount === 2) {
+      autoFreq = 'Twice daily'
+    } else if (mealCount === 3) {
+      autoFreq = 'Three times daily'
+    } else if (mealCount >= 4) {
+      autoFreq = 'Four times daily'
+    } else if (mealCount === 1) {
+      if (next[0].includes('Dinner') || next[0].includes('Bedtime')) autoFreq = 'At bedtime'
       else autoFreq = 'Once daily'
     }
-    onUpdateField(item.id, 'frequency', autoFreq)
+
+    // Auto-calculate quantity based on days and instructions
+    const newQty = calculatePrescriptionQuantity(item.dosage, item.duration, joined)
+
+    if (onUpdateFields) {
+      onUpdateFields(item.id, {
+        instructions: joined,
+        frequency: autoFreq,
+        quantity: newQty
+      })
+    } else {
+      onUpdateField(item.id, 'instructions', joined)
+      onUpdateField(item.id, 'frequency', autoFreq)
+      onUpdateField(item.id, 'quantity', newQty)
+    }
+  }
+
+  const handleDosageChange = (newDosage: string) => {
+    const newQty = calculatePrescriptionQuantity(newDosage, item.duration, item.instructions)
+    if (onUpdateFields) {
+      onUpdateFields(item.id, { dosage: newDosage, quantity: newQty })
+    } else {
+      onUpdateField(item.id, 'dosage', newDosage)
+      onUpdateField(item.id, 'quantity', newQty)
+    }
+  }
+
+  const handleDurationChange = (newDuration: string) => {
+    const newQty = calculatePrescriptionQuantity(item.dosage, newDuration, item.instructions)
+    if (onUpdateFields) {
+      onUpdateFields(item.id, { duration: newDuration, quantity: newQty })
+    } else {
+      onUpdateField(item.id, 'duration', newDuration)
+      onUpdateField(item.id, 'quantity', newQty)
+    }
   }
 
   const isLowStock = item.currentStock <= (item.stockWarningLevel || 10)
@@ -172,7 +261,10 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {/* Quantity */}
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Qty</label>
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Qty</label>
+            <span className="text-[10px] text-slate-400 font-medium">auto-calc</span>
+          </div>
           <div className="flex items-center border rounded-md overflow-hidden bg-slate-50">
             <button className="px-2 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => onUpdateField(item.id, 'quantity', Math.max(1, item.quantity - 1))}><Minus className="h-3 w-3" /></button>
             <input
@@ -186,7 +278,7 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
         {/* Dosage */}
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Dosage</label>
-          <Select value={item.dosage || ''} onValueChange={v => onUpdateField(item.id, 'dosage', v)}>
+          <Select value={item.dosage || ''} onValueChange={handleDosageChange}>
             <SelectTrigger className="h-9 bg-slate-50 text-sm">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
@@ -216,7 +308,7 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
         {/* Duration */}
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Duration</label>
-          <Select value={item.duration || ''} onValueChange={v => onUpdateField(item.id, 'duration', v)}>
+          <Select value={item.duration || ''} onValueChange={handleDurationChange}>
             <SelectTrigger className="h-9 bg-slate-50 text-sm">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
@@ -227,11 +319,13 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
         </div>
       </div>
       {/* Instructions (Multi-select) */}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Instructions (Select All That Apply)</label>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+            Instructions (Select As Applicable)
+          </label>
           {selectedInstructions.length > 0 && (
-            <span className="text-[11px] text-indigo-600 font-medium">
+            <span className="text-[11px] text-indigo-700 font-semibold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
               {item.frequency || (selectedInstructions.length === 1 ? 'Once daily' : selectedInstructions.length === 2 ? 'Twice daily' : `${selectedInstructions.length} times daily`)}
             </span>
           )}
@@ -245,7 +339,7 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
                 type="button"
                 onClick={() => toggleInstruction(o)}
                 className={cn(
-                  'text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium',
+                  'text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium cursor-pointer',
                   isSelected
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                     : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
@@ -256,6 +350,16 @@ function RxRow({ item, onUpdateField, onRemove }: { item: PrescriptionLineItem; 
               </button>
             )
           })}
+        </div>
+
+        {/* Custom Instructions Input */}
+        <div className="pt-0.5">
+          <Input
+            placeholder="Custom instructions (e.g. SOS for severe pain, take with milk, rinse after use)..."
+            value={item.customInstructions || ''}
+            onChange={e => onUpdateField(item.id, 'customInstructions', e.target.value)}
+            className="h-8 text-xs bg-slate-50 border-slate-200 placeholder:text-slate-400 focus:bg-white"
+          />
         </div>
       </div>
     </div>
@@ -269,7 +373,7 @@ export function DoctorWorkspacePage() {
   const visitId = searchParams.get('visitId')
   const navigate = useNavigate()
 
-  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription, queue, staff, assignDoctor } = useClinicContext()
+  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription, recordPayment, payments, queue, staff, assignDoctor, refreshClinicOperations } = useClinicContext()
 
   // Canonical Entities
   const visit = visits.find(v => v.id === visitId)
@@ -290,6 +394,14 @@ export function DoctorWorkspacePage() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
   const [viewingHistoricalVisitId, setViewingHistoricalVisitId] = useState<string | null>(null)
 
+  // Payment Ownership & Collection State
+  const [paymentOwner, setPaymentOwner] = useState<'RECEPTION' | 'DOCTOR'>('RECEPTION')
+  const [doctorPaymentModalOpen, setDoctorPaymentModalOpen] = useState(false)
+  const [doctorPaymentMethod, setDoctorPaymentMethod] = useState<PaymentMethod>('Cash')
+  const [doctorPaymentAmount, setDoctorPaymentAmount] = useState<string>('')
+  const [doctorPaymentNotes, setDoctorPaymentNotes] = useState<string>('')
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+
   // Consultation state
   const [reason, setReason] = useState(visit?.reasonForVisit || '')
   const [notes, setNotes] = useState('')
@@ -304,12 +416,24 @@ export function DoctorWorkspacePage() {
   const [treatmentPlan, setTreatmentPlan] = useState<any>(null)
 
   useEffect(() => {
+    if (visit?.paymentOwner) {
+      setPaymentOwner(visit.paymentOwner);
+    }
+  }, [visit?.paymentOwner]);
+
+  useEffect(() => {
     if (patientId) {
       api.get<any>(`/api/patients/${patientId}/treatment-plan`)
         .then(res => setTreatmentPlan(res))
         .catch(console.error)
     }
   }, [patientId, treatmentModalOpen]) // Re-fetch when treatment modal closes
+
+  // Filter treatment procedures that were completed or added specifically for this active visit
+  const currentVisitTreatments = useMemo(() => {
+    if (!treatmentPlan?.items || !visitId) return []
+    return treatmentPlan.items.filter((item: any) => item.completedVisitId === visitId)
+  }, [treatmentPlan, visitId])
 
   useEffect(() => {
     if (consultation) {
@@ -319,14 +443,48 @@ export function DoctorWorkspacePage() {
       if ((consultation as any).treatmentFee !== undefined) setTreatmentFee((consultation as any).treatmentFee)
     } else if (visit?.reasonForVisit) {
       setReason(visit.reasonForVisit)
+      setTreatmentFee(0) // Fresh visit starts with zero treatment fee
+    } else {
+      setTreatmentFee(0)
     }
   }, [consultation, visit?.reasonForVisit])
+
+  const calculatedMedicineCost = useMemo(() => {
+    const rxItems = (prescription?.items && prescription.items.length > 0) ? prescription.items : activePrescription;
+    return rxItems.reduce((sum: number, item: any) => {
+      const medId = item.medicineId || item.id;
+      const med = medicines.find(m => m.id === medId);
+      const unitPrice = med?.unitPrice || 0;
+      return sum + (Number(item.quantity || 0) * unitPrice);
+    }, 0);
+  }, [prescription, activePrescription, medicines]);
+
+  const totalCalculatedDue = useMemo(() => {
+    return (consultationFee || 0) + (treatmentFee || 0) + calculatedMedicineCost;
+  }, [consultationFee, treatmentFee, calculatedMedicineCost]);
+
+  const visitPayments = useMemo(() => {
+    return (payments || []).filter(p => p.visitId === visitId);
+  }, [payments, visitId]);
+
+  const totalPaid = useMemo(() => {
+    return visitPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+  }, [visitPayments]);
+
+  const remainingBalance = useMemo(() => {
+    const effectiveDue = totalCalculatedDue > 0 ? totalCalculatedDue : (visit?.amountDue || 0);
+    return Math.max(0, effectiveDue - totalPaid);
+  }, [totalCalculatedDue, visit?.amountDue, totalPaid]);
 
 
   useEffect(() => {
     if (prescription) {
       const mappedItems = prescription.items.map(item => {
         const med = medicines.find(m => m.id === item.medicineId)
+        const parts = (item.instructions || '').split(' | ')
+        const standardInst = parts[0] || ''
+        const customInst = parts.length > 1 ? parts.slice(1).join(' | ') : ''
+
         return {
           id: item.medicineId,
           name: med?.name || 'Unknown',
@@ -339,7 +497,8 @@ export function DoctorWorkspacePage() {
           dosage: item.dosage,
           frequency: item.frequency,
           duration: item.duration,
-          instructions: item.instructions
+          instructions: standardInst,
+          customInstructions: customInst
         }
       })
       setActivePrescription(mappedItems as any[])
@@ -407,14 +566,21 @@ export function DoctorWorkspacePage() {
       doctorId: visit.doctorId || '',
       status: 'Finalized',
       notes: '',
-      items: activePrescription.map(item => ({
-        medicineId: item.id,
-        quantity: item.quantity,
-        dosage: item.dosage,
-        frequency: item.frequency,
-        duration: item.duration,
-        instructions: item.instructions || ''
-      }))
+      items: activePrescription.map(item => {
+        const combinedInstructions = [
+          item.instructions?.trim(),
+          item.customInstructions?.trim()
+        ].filter(Boolean).join(' | ');
+
+        return {
+          medicineId: item.id,
+          quantity: item.quantity,
+          dosage: item.dosage,
+          frequency: item.frequency || '',
+          duration: item.duration,
+          instructions: combinedInstructions || ''
+        };
+      })
     })
     if (result.success) {
       setPrescriptionModalOpen(false)
@@ -426,10 +592,26 @@ export function DoctorWorkspacePage() {
   const handleComplete = async () => {
     if (visitId) {
       try {
-        const result = await saveConsultation(visitId, { reasonForVisit: '', clinicalNotes: '' }, true)
+        const result = await saveConsultation(
+          visitId, 
+          { 
+            reasonForVisit: reason || visit?.reasonForVisit || '', 
+            clinicalNotes: notes,
+            consultationFee,
+            treatmentFee
+          }, 
+          true,
+          paymentOwner
+        )
         if (result.success) {
           setCompleteModalOpen(false)
-          navigate('/queue')
+          if (paymentOwner === 'DOCTOR') {
+            const initialAmt = remainingBalance > 0 ? remainingBalance : totalCalculatedDue;
+            setDoctorPaymentAmount(initialAmt > 0 ? String(initialAmt) : '');
+            setDoctorPaymentModalOpen(true)
+          } else {
+            navigate('/queue')
+          }
         } else {
           alert('Failed to complete consultation: ' + result.error)
         }
@@ -439,6 +621,85 @@ export function DoctorWorkspacePage() {
       }
     }
   }
+
+  const handleConfirmDoctorPayment = async () => {
+    if (!visitId) return;
+    const amt = parseFloat(doctorPaymentAmount);
+    if (!amt || amt <= 0) {
+      alert('Please enter a valid payment amount.');
+      return;
+    }
+    const balance = remainingBalance > 0 ? remainingBalance : totalCalculatedDue;
+    if (balance > 0 && amt > balance) {
+      alert(`Payment amount (₹${amt}) cannot exceed remaining balance (₹${balance}).`);
+      return;
+    }
+
+    const isPartial = balance > 0 && amt < balance;
+    if (isPartial && !doctorPaymentNotes.trim()) {
+      alert('A reason is required for partial payment.');
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    try {
+      const result = await recordPayment(
+        visitId,
+        amt,
+        doctorPaymentMethod as 'Cash' | 'GPay' | 'Credit Card' | 'Debit Card',
+        doctorPaymentNotes.trim() || undefined
+      );
+
+      if (result.success) {
+        setDoctorPaymentModalOpen(false);
+        try {
+          await refreshClinicOperations();
+        } catch (e) {
+          console.error(e);
+        }
+        await MySwal.fire({
+          title: '<span class="text-2xl font-bold text-slate-800">Payment Recorded</span>',
+          html: `
+            <div class="text-left bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2 text-sm space-y-2">
+              <div class="flex justify-between font-medium text-slate-600">
+                <span>Amount Collected:</span>
+                <span class="font-bold text-emerald-600">₹${amt}</span>
+              </div>
+              <div class="flex justify-between font-medium text-slate-600">
+                <span>Method:</span>
+                <span class="font-semibold text-slate-900">${doctorPaymentMethod}</span>
+              </div>
+              ${isPartial ? `
+                <div class="flex justify-between font-medium text-amber-600 pt-2 border-t border-slate-200">
+                  <span>Remaining Balance:</span>
+                  <span class="font-bold">₹${balance - amt}</span>
+                </div>
+              ` : `
+                <div class="text-center font-semibold text-emerald-600 pt-2 border-t border-slate-200">
+                  Fully Paid & Completed
+                </div>
+              `}
+            </div>
+          `,
+          icon: 'success',
+          confirmButtonText: 'Back to Queue',
+          confirmButtonColor: '#4f46e5',
+          customClass: {
+            popup: 'rounded-2xl',
+            confirmButton: 'rounded-lg font-semibold px-6 py-2.5'
+          }
+        });
+        navigate('/queue');
+      } else {
+        alert(result.error || 'Failed to record payment');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to record payment');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
 
   const handleTransfer = async () => {
     const queueEntry = queue.find(q => q.visitId === visitId);
@@ -465,6 +726,11 @@ export function DoctorWorkspacePage() {
   // --- Prescription Helpers ---
   const filteredMedicines = medicines.filter(med => {
     if (med.status === 'Inactive') return false
+    // Clinical rule: Only medicines can be prescribed, never clinic materials or equipment
+    const formLower = (med.form || '').toLowerCase()
+    if (formLower.includes('material') || formLower.includes('equipment') || formLower.includes('consumable') || formLower.includes('instrument') || formLower.includes('disposable')) {
+      return false
+    }
     const matchesSearch = med.name.toLowerCase().includes(medSearch.toLowerCase()) ||
       med.genericName?.toLowerCase().includes(medSearch.toLowerCase())
     return matchesSearch && med.currentStock > 0
@@ -480,6 +746,11 @@ export function DoctorWorkspacePage() {
 
   const handleAddMedicine = (med: Medicine) => {
     if (activePrescription.some(item => item.id === med.id)) return
+    const initialDosage = '1 Tablet'
+    const initialDuration = '5 days'
+    const initialInstructions = ''
+    const initialQty = calculatePrescriptionQuantity(initialDosage, initialDuration, initialInstructions)
+
     const newItem: PrescriptionLineItem = {
       id: med.id,
       name: med.name,
@@ -489,17 +760,21 @@ export function DoctorWorkspacePage() {
       stockWarningLevel: med.stockWarningLevel,
       currentStock: med.currentStock,
       unitPrice: med.unitPrice,
-      quantity: 1,
-      dosage: '1 Tablet',
-      frequency: 'Twice daily',
-      duration: '5 days',
-      instructions: 'After Breakfast, After Dinner'
+      quantity: initialQty,
+      dosage: initialDosage,
+      frequency: '',
+      duration: initialDuration,
+      instructions: initialInstructions,
+      customInstructions: ''
     }
     setActivePrescription(prev => [...prev, newItem])
   }
 
   const updateItemField = (id: string, field: keyof PrescriptionLineItem, value: any) => {
     setActivePrescription(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item))
+  }
+  const updateItemFields = (id: string, updates: Partial<PrescriptionLineItem>) => {
+    setActivePrescription(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item))
   }
   const removeItem = (id: string) => {
     setActivePrescription(prev => prev.filter(item => item.id !== id))
@@ -516,6 +791,11 @@ export function DoctorWorkspacePage() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
               <Plus className="mr-2 h-4 w-4 text-emerald-600" /> Treatment Plan
+              {treatmentPlan?.items?.filter((i: any) => i.status === 'Planned').length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                  {treatmentPlan.items.filter((i: any) => i.status === 'Planned').length} planned
+                </span>
+              )}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
               <FileText className="mr-2 h-4 w-4 text-blue-600" /> Consultation
@@ -619,7 +899,7 @@ export function DoctorWorkspacePage() {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[400px] content-start">
 
             {/* Render Saved Sections */}
-            {treatmentPlan && treatmentPlan.items.length > 0 && (
+            {currentVisitTreatments.length > 0 && (
               <div className="md:col-span-6 space-y-4 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
@@ -638,7 +918,7 @@ export function DoctorWorkspacePage() {
                   <div>
                     <strong className="block mb-1 text-slate-900">Procedures</strong>
                     <div className="space-y-2">
-                      {treatmentPlan.items.map((item: any) => {
+                      {currentVisitTreatments.map((item: any) => {
                         const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
                         const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
                         const category = item.catalogItem?.category || item.category
@@ -714,6 +994,19 @@ export function DoctorWorkspacePage() {
                     <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="h-8 px-3 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
                       <Printer className="h-4 w-4 mr-1.5" /> Print
                     </Button>
+                    <WhatsAppActionButton
+                      type="PRESCRIPTION"
+                      entityType="VISIT"
+                      entityId={visit.id}
+                      patientId={patient.id}
+                      recipientName={patient.name}
+                      recipientPhone={patient.phone}
+                      preferredCommunicationChannel={patient.preferredCommunicationChannel}
+                      whatsappAvailable={patient.whatsappAvailable}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3"
+                    />
                   </div>
                 </div>
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100">
@@ -747,7 +1040,7 @@ export function DoctorWorkspacePage() {
               </div>
             )}
 
-            {(!treatmentPlan || treatmentPlan.items.length === 0) && !consultation && (!prescription || prescription.items.length === 0) && (
+            {currentVisitTreatments.length === 0 && !consultation && (!prescription || prescription.items.length === 0) && (
               <div className="md:col-span-12 text-center text-slate-400 py-12 flex flex-col items-center bg-white rounded-2xl border border-slate-100 shadow-sm">
                 <div className="w-16 h-16 bg-slate-50 rounded-full border border-dashed border-slate-200 flex items-center justify-center mb-4">
                   <Info className="w-6 h-6 text-slate-400" />
@@ -759,7 +1052,37 @@ export function DoctorWorkspacePage() {
 
           </div>
 
-          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-4 justify-end">
+          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-4 justify-end items-center">
+            {visit?.paymentOwner === 'DOCTOR' && totalPaid > 0 && (
+              <WhatsAppActionButton
+                type="PAYMENT_RECEIPT"
+                entityType="VISIT"
+                entityId={visit.id}
+                patientId={patient.id}
+                recipientName={patient.name}
+                recipientPhone={patient.phone}
+                paymentOwner="DOCTOR"
+                preferredCommunicationChannel={patient.preferredCommunicationChannel}
+                whatsappAvailable={patient.whatsappAvailable}
+                variant="outline"
+                size="lg"
+                label="WhatsApp Receipt"
+                className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-medium"
+              />
+            )}
+            {visit?.paymentOwner === 'DOCTOR' && remainingBalance > 0 && (
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-medium"
+                onClick={() => {
+                  setDoctorPaymentAmount(String(remainingBalance));
+                  setDoctorPaymentModalOpen(true);
+                }}
+              >
+                <CreditCard className="w-4 h-4 mr-2 text-emerald-600" /> Collect Payment (₹{remainingBalance})
+              </Button>
+            )}
             <Button size="lg" variant="outline" className="text-slate-700 font-medium bg-white" onClick={() => setTransferModalOpen(true)}>
               Transfer Patient
             </Button>
@@ -896,8 +1219,8 @@ export function DoctorWorkspacePage() {
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Planned Procedures</label>
                 <div className="space-y-2.5 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  {treatmentPlan?.items && treatmentPlan.items.length > 0 ? (
-                    treatmentPlan.items.map((item: any) => {
+                  {currentVisitTreatments.length > 0 ? (
+                    currentVisitTreatments.map((item: any) => {
                       const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
                       const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
                       const category = item.catalogItem?.category || item.category
@@ -918,7 +1241,7 @@ export function DoctorWorkspacePage() {
                       )
                     })
                   ) : (
-                    <p className="text-sm text-slate-400">No procedures in treatment plan.</p>
+                    <p className="text-sm text-slate-400">No procedures recorded for this visit.</p>
                   )}
                 </div>
               </div>
@@ -1102,6 +1425,7 @@ export function DoctorWorkspacePage() {
                             key={item.id}
                             item={item}
                             onUpdateField={updateItemField}
+                            onUpdateFields={updateItemFields}
                             onRemove={removeItem}
                           />
                         ))}
@@ -1173,28 +1497,225 @@ export function DoctorWorkspacePage() {
               </div>
             </div>
             <DialogFooter className="flex sm:justify-between items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
-                <Printer className="h-4 w-4 mr-1.5" /> Print Prescription
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
+                  <Printer className="h-4 w-4 mr-1.5" /> Print Prescription
+                </Button>
+                <WhatsAppActionButton
+                  type="PRESCRIPTION"
+                  entityType="VISIT"
+                  entityId={visit.id}
+                  patientId={patient.id}
+                  recipientName={patient.name}
+                  recipientPhone={patient.phone}
+                  preferredCommunicationChannel={patient.preferredCommunicationChannel}
+                  whatsappAvailable={patient.whatsappAvailable}
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3"
+                />
+              </div>
               <Button onClick={() => setViewPrescriptionModalOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Complete Modal */}
+        {/* Complete Consultation Modal */}
         <Dialog open={completeModalOpen} onOpenChange={setCompleteModalOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Complete Consultation?</DialogTitle>
+              <DialogDescription>
+                Select who will handle payment collection for this patient visit.
+              </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              <p className="text-sm text-slate-500">
-                This will complete the doctor's consultation and send the patient back to Reception.
-              </p>
+
+            <div className="space-y-4 py-3">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Payment Collection Handled By
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setPaymentOwner('RECEPTION')}
+                    className={cn(
+                      "cursor-pointer rounded-xl border p-3 flex flex-col justify-between transition-all select-none",
+                      paymentOwner === 'RECEPTION'
+                        ? "border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-600/20"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-slate-900">Reception Desk</span>
+                      <span className={cn(
+                        "h-4 w-4 rounded-full border flex items-center justify-center",
+                        paymentOwner === 'RECEPTION' ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300"
+                      )}>
+                        {paymentOwner === 'RECEPTION' && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 mt-2">Standard reception payment collection (Default)</span>
+                  </div>
+
+                  <div
+                    onClick={() => setPaymentOwner('DOCTOR')}
+                    className={cn(
+                      "cursor-pointer rounded-xl border p-3 flex flex-col justify-between transition-all select-none",
+                      paymentOwner === 'DOCTOR'
+                        ? "border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-600/20"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-slate-900">Doctor</span>
+                      <span className={cn(
+                        "h-4 w-4 rounded-full border flex items-center justify-center",
+                        paymentOwner === 'DOCTOR' ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300"
+                      )}>
+                        {paymentOwner === 'DOCTOR' && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 mt-2">Doctor collects patient payment in workspace</span>
+                  </div>
+                </div>
+              </div>
+
+              {paymentOwner === 'DOCTOR' && (
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-1.5 text-xs">
+                  <div className="font-semibold text-slate-500 uppercase tracking-wider text-[10px] pb-1 border-b border-slate-200">
+                    Payment Calculation Preview
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Consultation Fee:</span>
+                    <span className="font-semibold text-slate-900">₹{consultationFee || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Treatment Fee:</span>
+                    <span className="font-semibold text-slate-900">₹{treatmentFee || 0}</span>
+                  </div>
+                  {calculatedMedicineCost > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Medicine Cost:</span>
+                      <span className="font-semibold text-slate-900">₹{calculatedMedicineCost}</span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-sm text-indigo-700">
+                    <span>Total Amount Due:</span>
+                    <span>₹{totalCalculatedDue}</span>
+                  </div>
+                </div>
+              )}
             </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setCompleteModalOpen(false)}>Cancel</Button>
-              <Button onClick={handleComplete} className="bg-indigo-600 hover:bg-indigo-700 text-white">Complete Consultation</Button>
+              <Button onClick={handleComplete} className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium">
+                {paymentOwner === 'DOCTOR' ? 'Complete & Collect Payment' : 'Complete Consultation'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Doctor Payment Modal */}
+        <Dialog open={doctorPaymentModalOpen} onOpenChange={setDoctorPaymentModalOpen}>
+          <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="px-5 py-4 border-b border-slate-100 bg-white shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <CreditCard className="w-4 h-4 text-indigo-600" />
+                Collect Patient Payment
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Process payment directly as the attending doctor for {patient?.name}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="p-5 space-y-3.5 overflow-y-auto flex-1">
+              {/* Fee Breakdown Summary */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Consulting: <strong className="text-slate-900">₹{consultationFee || 0}</strong></span>
+                  <span>Treatment: <strong className="text-slate-900">₹{treatmentFee || 0}</strong></span>
+                  {calculatedMedicineCost > 0 && (
+                    <span>Medicine: <strong className="text-slate-900">₹{calculatedMedicineCost}</strong></span>
+                  )}
+                </div>
+                <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-sm text-slate-900">
+                  <span>Total Due:</span>
+                  <span className="text-indigo-700">₹{totalCalculatedDue}</span>
+                </div>
+                {totalPaid > 0 && (
+                  <div className="flex justify-between text-xs text-emerald-600 font-semibold">
+                    <span>Already Paid:</span>
+                    <span>₹{totalPaid}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs text-amber-700 font-bold pt-1 border-t border-dashed border-slate-200">
+                  <span>Remaining Balance:</span>
+                  <span>₹{remainingBalance}</span>
+                </div>
+              </div>
+
+              {/* Payment Method Selector */}
+              <PaymentMethodSelector
+                value={doctorPaymentMethod}
+                onChange={setDoctorPaymentMethod}
+                compact
+              />
+
+              {/* Payment Amount */}
+              <div className="space-y-1">
+                <Label htmlFor="docPayAmount" className="text-xs font-semibold text-slate-700">
+                  Payment Amount to Collect (₹)
+                </Label>
+                <Input
+                  id="docPayAmount"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={doctorPaymentAmount}
+                  onChange={e => setDoctorPaymentAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              {/* Notes for Partial Payment */}
+              {parseFloat(doctorPaymentAmount) < remainingBalance && (
+                <div className="space-y-1">
+                  <Label htmlFor="docPayNotes" className="text-xs font-semibold text-amber-700">
+                    Partial Payment Reason (Required)
+                  </Label>
+                  <Input
+                    id="docPayNotes"
+                    value={doctorPaymentNotes}
+                    onChange={e => setDoctorPaymentNotes(e.target.value)}
+                    placeholder="e.g. Patient will pay remaining balance on next visit"
+                    className="h-9 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 shrink-0 flex sm:justify-between items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDoctorPaymentModalOpen(false);
+                  navigate('/queue');
+                }}
+                disabled={isProcessingPayment}
+              >
+                Skip / Back to Queue
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmDoctorPayment}
+                disabled={isProcessingPayment || !doctorPaymentMethod || !doctorPaymentAmount}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+              >
+                {isProcessingPayment ? 'Processing...' : 'Confirm & Record Payment'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -11,10 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components'
 import { useClinicContext } from '../context/ClinicContext'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { PaginationMeta } from '../types/domain'
+import { WhatsAppActionButton } from '../components/communication/WhatsAppActionButton'
 
 export function PaymentPage() {
+  const { currentUser } = useAuth()
+  const isReceptionist = currentUser?.role === 'Receptionist'
   const [searchParams] = useSearchParams()
   const urlPatientId = searchParams.get('patientId')
   
@@ -74,13 +78,15 @@ export function PaymentPage() {
   }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterStatus, fetchPayments])
 
   const paymentData = useMemo(() => {
-    return paymentVisits.map(v => {
+    const list = isReceptionist ? paymentVisits.filter(v => v.paymentOwner !== 'DOCTOR') : paymentVisits
+    return list.map(v => {
       const p = v.patient
       const payRecord = v.payment
       
       return {
         paymentId: payRecord?.id || '',
         visitId: v.id,
+        paymentOwner: v.paymentOwner,
         patientId: p?.id || 'Unknown',
         patientName: p?.name || 'Unknown',
         patientPhone: p?.phone || '-',
@@ -88,10 +94,12 @@ export function PaymentPage() {
         consultationFee: v.consultationFee || 0,
         medicineCost: v.medicineCost || 0,
         method: payRecord?.method || null,
-        status: payRecord ? 'Paid' : 'Pending'
+        status: payRecord ? 'Paid' : 'Pending',
+        preferredCommunicationChannel: p?.preferredCommunicationChannel,
+        whatsappAvailable: p?.whatsappAvailable
       }
     })
-  }, [paymentVisits])
+  }, [paymentVisits, isReceptionist])
 
   const handleOpenDrawer = (row: any) => {
     setSelectedRow(row)
@@ -148,14 +156,29 @@ export function PaymentPage() {
       cell: ({ row }) => (
         <div className="flex justify-end gap-2">
           {row.original.status === 'Paid' ? (
-            <Button 
-              size="icon"
-              onClick={() => handleOpenDrawer(row.original)}
-              className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg"
-              aria-label="View payment"
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
+            <>
+              <WhatsAppActionButton
+                type="PAYMENT_RECEIPT"
+                entityType="VISIT"
+                entityId={row.original.visitId}
+                patientId={row.original.patientId}
+                recipientName={row.original.patientName}
+                recipientPhone={row.original.patientPhone}
+                paymentOwner={row.original.paymentOwner}
+                preferredCommunicationChannel={row.original.preferredCommunicationChannel}
+                whatsappAvailable={row.original.whatsappAvailable}
+                variant="icon"
+                label="Send Receipt via WhatsApp"
+              />
+              <Button 
+                size="icon"
+                onClick={() => handleOpenDrawer(row.original)}
+                className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg"
+                aria-label="View payment"
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+            </>
           ) : (
             <Button 
               size="sm"

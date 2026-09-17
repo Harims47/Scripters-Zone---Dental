@@ -36,6 +36,10 @@ export function UnauthorizedPage() {
             Logout and Switch User
           </Button>
         </div>
+
+        <div className="pt-6 border-t border-slate-100 text-center text-xs text-slate-400 font-medium">
+          © {new Date().getFullYear()} Scripters Zone. All rights reserved.
+        </div>
       </div>
     </div>
   )

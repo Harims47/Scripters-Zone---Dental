@@ -9,12 +9,12 @@ import {
   ReadyForReceptionWidget, DoctorStatusWidget, type WaitingPatientItem
 } from "../components/dashboard/dashboard-components"
 import { useAuth } from "../context/AuthContext"
+import { useClinicContext } from "../context/ClinicContext"
 import { useNavigate } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { api } from "../lib/api"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { Input } from "../components/ui/input"
 import { toast } from "react-hot-toast"
 import { cn } from "../lib/utils"
 
@@ -55,6 +55,7 @@ interface DashboardPayload {
 
 export function Dashboard() {
   const { currentUser } = useAuth()
+  const { refreshClinicOperations } = useClinicContext()
   const navigate = useNavigate()
 
   const [data, setData] = useState<DashboardPayload | null>(null)
@@ -67,10 +68,6 @@ export function Dashboard() {
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('')
   const [assigning, setAssigning] = useState(false)
 
-  // Quick Register Modal state
-  const [registerModalOpen, setRegisterModalOpen] = useState(false)
-  const [newPatient, setNewPatient] = useState({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' })
-  const [registering, setRegistering] = useState(false)
 
   // Prevent duplicate requests during lifecycle (DASH-15)
   const isFetchingRef = useRef(false)
@@ -100,6 +97,7 @@ export function Dashboard() {
     try {
       await api.patch(`/api/queue/${item.id}/transition`, { action: 'CALL_PATIENT' })
       toast.success(`Patient ${item.patientName} called`)
+      refreshClinicOperations().catch(console.error)
       await fetchDashboard()
     } catch (err: any) {
       toast.error(err?.message || 'Failed to call patient')
@@ -117,9 +115,11 @@ export function Dashboard() {
           await api.patch(`/api/queue/${targetQueueId}/transition`, { action: 'START_CONSULTATION' })
         }
       }
+      refreshClinicOperations().catch(console.error)
       navigate(`/doctor/patient/${patientId}?visitId=${visitId}`)
     } catch (err: any) {
       console.error(err)
+      refreshClinicOperations().catch(console.error)
       navigate(`/doctor/patient/${patientId}?visitId=${visitId}`)
     }
   }
@@ -133,11 +133,17 @@ export function Dashboard() {
 
   const handleConfirmAssign = async () => {
     if (!selectedQueueItem || !selectedDoctorId) return
+    const targetDoc = (data?.doctorAvailability || []).find(d => d.id === selectedDoctorId)
+    if (targetDoc && targetDoc.status !== 'Available') {
+      toast.error(`${targetDoc.name} is currently occupied with a patient.`)
+      return
+    }
     try {
       setAssigning(true)
       await api.patch(`/api/queue/${selectedQueueItem.id}/assign`, { doctorId: selectedDoctorId })
       toast.success('Doctor assigned successfully')
       setAssignModalOpen(false)
+      refreshClinicOperations().catch(console.error)
       await fetchDashboard()
     } catch (err: any) {
       toast.error(err?.message || 'Failed to assign doctor')
@@ -146,39 +152,6 @@ export function Dashboard() {
     }
   }
 
-  // Handle Quick Register Patient
-  const handleRegisterPatient = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newPatient.name.trim() || !newPatient.phone.trim()) {
-      toast.error('Patient name and phone are required')
-      return
-    }
-    try {
-      setRegistering(true)
-      // 1. Create Patient
-      const createdPatient = await api.post<any>('/api/patients', {
-        name: newPatient.name.trim(),
-        phone: newPatient.phone.trim(),
-        age: parseInt(newPatient.age) || 30,
-        gender: newPatient.gender
-      })
-
-      // 2. Start Walk-in Visit
-      await api.post('/api/visits/walk-in', {
-        patientId: createdPatient.id,
-        reasonForVisit: newPatient.reasonForVisit.trim() || 'General Consultation'
-      })
-
-      toast.success(`Patient ${createdPatient.name} registered and queued`)
-      setRegisterModalOpen(false)
-      setNewPatient({ name: '', phone: '', age: '', gender: 'Male', reasonForVisit: '' })
-      await fetchDashboard()
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to register patient')
-    } finally {
-      setRegistering(false)
-    }
-  }
 
   const role = currentUser?.role || 'Receptionist'
   const isReceptionist = role === 'Receptionist'
@@ -227,7 +200,7 @@ export function Dashboard() {
       {/* Header */}
       <DashboardHeader 
         greetingOverride={currentUser ? `Good day, ${currentUser.name}` : undefined}
-        onRegisterClick={() => setRegisterModalOpen(true)}
+        onRegisterClick={() => navigate('/reception-desk', { state: { openRegister: true } })}
       />
 
       {/* Duty Doctor Next/Current Patient Banner */}
@@ -448,11 +421,43 @@ export function Dashboard() {
                   <SelectValue placeholder="Choose a doctor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(data?.doctorAvailability || []).map((doc) => (
-                    <SelectItem key={doc.id} value={doc.id}>
-                      {doc.name} ({doc.status})
-                    </SelectItem>
-                  ))}
+                  {(data?.doctorAvailability || []).map((doc) => {
+                    const isOccupied = doc.status !== 'Available';
+                    const statusText = doc.status === 'With Patient'
+                      ? 'Occupied (With Patient)'
+                      : doc.status === 'Available'
+                      ? 'Available'
+                      : doc.status;
+
+                    return (
+                      <SelectItem 
+                        key={doc.id} 
+                        value={doc.id}
+                        disabled={isOccupied}
+                        className={cn(
+                          isOccupied && "opacity-60 cursor-not-allowed text-slate-400 bg-slate-50/60"
+                        )}
+                      >
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className={cn(
+                            isOccupied ? "line-through text-slate-400" : "font-medium text-slate-900"
+                          )}>
+                            {doc.name}
+                          </span>
+                          <span className={cn(
+                            "text-[11px] font-medium px-2 py-0.5 rounded-full ml-auto",
+                            doc.status === 'Available'
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : doc.status === 'With Patient'
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200"
+                          )}>
+                            {statusText}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -470,72 +475,7 @@ export function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Quick Register Patient Dialog */}
-      <Dialog open={registerModalOpen} onOpenChange={setRegisterModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Register Walk-in Patient</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleRegisterPatient} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Patient Full Name *</label>
-              <Input 
-                placeholder="e.g. John Doe" 
-                value={newPatient.name} 
-                onChange={e => setNewPatient({ ...newPatient, name: e.target.value })}
-                required 
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Phone Number *</label>
-                <Input 
-                  placeholder="10-digit number" 
-                  value={newPatient.phone} 
-                  onChange={e => setNewPatient({ ...newPatient, phone: e.target.value })}
-                  required 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Age</label>
-                <Input 
-                  type="number" 
-                  placeholder="30" 
-                  value={newPatient.age} 
-                  onChange={e => setNewPatient({ ...newPatient, age: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Gender</label>
-              <Select value={newPatient.gender} onValueChange={(val) => setNewPatient({ ...newPatient, gender: val })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Male">Male</SelectItem>
-                  <SelectItem value="Female">Female</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Reason for Visit</label>
-              <Input 
-                placeholder="e.g. Toothache, Regular Checkup" 
-                value={newPatient.reasonForVisit} 
-                onChange={e => setNewPatient({ ...newPatient, reasonForVisit: e.target.value })}
-              />
-            </div>
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setRegisterModalOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={registering} className="bg-primary hover:bg-primary/90 text-white">
-                {registering ? 'Registering...' : 'Register & Queue'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+
     </div>
   )
 }

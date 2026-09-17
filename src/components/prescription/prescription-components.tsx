@@ -14,6 +14,7 @@ export interface PrescriptionLineItem extends Medicine {
   frequency?: string
   duration?: string
   instructions?: string
+  customInstructions?: string
 }
 
 export function MedicineCategoryBadge({ categoryId, categoryName }: { categoryId: string; categoryName?: string }) {

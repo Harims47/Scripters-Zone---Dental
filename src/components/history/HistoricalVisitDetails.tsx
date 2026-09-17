@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useClinicContext } from '../../context/ClinicContext'
+import { useAuth } from '../../context/AuthContext'
 import { Button } from '../ui/button'
 import { FileText, Loader2, Check } from 'lucide-react'
 import { Badge } from '../ui/badge'
@@ -7,9 +8,12 @@ import { API_BASE_URL, api } from '../../lib/api'
 import type { TreatmentPlan } from '../../types/domain'
 
 export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: string, onViewHistory?: () => void }) {
+  const { currentUser } = useAuth()
   const { visits, consultations, prescriptions, dispensings, payments, medicines, staff } = useClinicContext()
 
   const visit = visits.find(v => v.id === visitId)
+  const isDoctorHandled = visit?.paymentOwner === 'DOCTOR'
+  const isReceptionist = currentUser?.role === 'Receptionist'
   const consultation = consultations.find(c => c.visitId === visitId)
   const prescription = prescriptions.find(p => p.visitId === visitId)
   const dispensing = dispensings.find(d => d.visitId === visitId)
@@ -33,21 +37,24 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
     return <div className="p-4 text-slate-500">Visit not found.</div>
   }
 
-  const handlePrintDocument = async (type: 'prescription' | 'receipt') => {
+  const handlePrintDocument = async (type: 'prescription' | 'receipt' | 'invoice') => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${visitId}`, {
         method: 'GET',
         credentials: 'include'
       });
-      if (!response.ok) throw new Error(`Failed to print ${type}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to print ${type}`);
+      }
       
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert(`Failed to load ${type} document. Please ensure you are authorized.`);
+      alert(err.message || `Failed to load ${type} document. Please ensure you are authorized.`);
     }
   };
 
@@ -66,7 +73,11 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
               <span>Consultation Details</span>
-              <span className="text-emerald-600 font-semibold bg-emerald-50 px-2 py-1 rounded-md text-sm border border-emerald-100">Fee: ₹{consultation.consultationFee}</span>
+              {!(isDoctorHandled && isReceptionist) ? (
+                <span className="text-emerald-600 font-semibold bg-emerald-50 px-2 py-1 rounded-md text-sm border border-emerald-100">Fee: ₹{consultation.consultationFee}</span>
+              ) : (
+                <span className="text-indigo-600 font-medium bg-indigo-50 px-2 py-1 rounded-md text-xs border border-indigo-100">Handled by Doctor</span>
+              )}
             </div>
             <div className="p-4 space-y-4">
               <div>
@@ -195,13 +206,28 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
           </div>
         )}
 
-        {visitPayments.length > 0 && (
+        {isDoctorHandled && isReceptionist ? (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden border-l-4 border-l-indigo-500">
+            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
+              <span>Payment Details</span>
+              <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">Handled by Doctor</Badge>
+            </div>
+            <div className="p-4 text-sm text-slate-600">
+              Handled by Doctor
+            </div>
+          </div>
+        ) : visitPayments.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden border-l-4 border-l-teal-500">
             <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 font-medium text-slate-700 flex justify-between items-center">
               <span>Payment Details ({visitPayments.length})</span>
-              <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')} className="h-7 text-xs bg-white">
-                <FileText className="w-3 h-3 mr-1.5 text-teal-600" /> Print Receipt
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => handlePrintDocument('receipt')} className="h-7 text-xs bg-white">
+                  <FileText className="w-3 h-3 mr-1.5 text-teal-600" /> Print Receipt
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handlePrintDocument('invoice')} className="h-7 text-xs bg-white">
+                  <FileText className="w-3 h-3 mr-1.5 text-blue-600" /> Print Invoice
+                </Button>
+              </div>
             </div>
             <div className="divide-y divide-slate-100">
               {visitPayments.map((p, idx) => (

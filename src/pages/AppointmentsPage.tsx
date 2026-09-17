@@ -16,6 +16,7 @@ import {
   DoctorSelector,
   PatientSelector
 } from '../components/appointments/appointment-components'
+import { WhatsAppActionButton } from '../components/communication/WhatsAppActionButton'
 import { type AppointmentStatus } from '../lib/mock-data'
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
@@ -34,6 +35,8 @@ interface AppointmentRow {
   status: AppointmentStatus
   notes: string
   photoUrl?: string
+  preferredCommunicationChannel?: 'AUTO' | 'WHATSAPP' | 'SMS' | 'EMAIL'
+  whatsappAvailable?: boolean | null
 }
 
 export function AppointmentsPage() {
@@ -78,7 +81,9 @@ export function AppointmentsPage() {
           doctorId: a.providerId,
           type: a.type,
           status: a.status as AppointmentStatus,
-          notes: a.notes || ''
+          notes: a.notes || '',
+          preferredCommunicationChannel: a.patient?.preferredCommunicationChannel,
+          whatsappAvailable: a.patient?.whatsappAvailable
         }))
         setData(mappedData)
         setMeta(payload.meta)
@@ -273,6 +278,20 @@ export function AppointmentsPage() {
                   <XCircle className="w-4 h-4" />
                 </Button>
               </>
+            )}
+            {['Scheduled', 'Checked In'].includes(row.original.status) && (
+              <WhatsAppActionButton
+                type={row.original.date > new Date().toISOString().split('T')[0] ? 'APPOINTMENT_REMINDER' : 'APPOINTMENT_CONFIRMATION'}
+                entityType="APPOINTMENT"
+                entityId={row.original.id}
+                patientId={row.original.patientId}
+                recipientName={row.original.patientName}
+                recipientPhone={row.original.patientPhone}
+                preferredCommunicationChannel={row.original.preferredCommunicationChannel}
+                whatsappAvailable={row.original.whatsappAvailable}
+                variant="icon"
+                label="Send via WhatsApp"
+              />
             )}
             <Button size="icon" onClick={(e) => { e.stopPropagation(); handleOpenView(row.original); }} className="h-8 w-8 shadow-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg" aria-label="View appointment">
               <Eye className="w-4 h-4" />
@@ -594,6 +613,20 @@ export function AppointmentsPage() {
                   <Button variant="outline" className="w-full sm:w-auto border-teal-200 text-teal-700 bg-teal-50" onClick={() => navigate('/queue')}>
                     View in Queue
                   </Button>
+                )}
+                {['Scheduled', 'Checked In'].includes(activeItem.status || '') && (
+                  <WhatsAppActionButton
+                    type={activeItem.date && activeItem.date > new Date().toISOString().split('T')[0] ? 'APPOINTMENT_REMINDER' : 'APPOINTMENT_CONFIRMATION'}
+                    entityType="APPOINTMENT"
+                    entityId={activeItem.id}
+                    patientId={activeItem.patientId}
+                    recipientName={activeItem.patientName || 'Patient'}
+                    recipientPhone={activeItem.patientPhone || ''}
+                    preferredCommunicationChannel={activeItem.preferredCommunicationChannel}
+                    whatsappAvailable={activeItem.whatsappAvailable}
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                  />
                 )}
                 {['Scheduled'].includes(activeItem.status || '') && (
                   <>

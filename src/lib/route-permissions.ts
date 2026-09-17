@@ -13,6 +13,7 @@ export const ROUTE_MODULE_MAP: Record<string, ClinicModule> = {
   '/inventory': 'Inventory',
   '/reception/dispensing': 'Dispensing',
   '/billing': 'Billing',
+  '/reimbursement': 'Reimbursement',
   '/payments': 'Payments',
   '/partial-payments': 'Partial Payments',
   '/staff': 'Staff Management',
@@ -30,6 +31,16 @@ export function canAccessRoute(role: ClinicRole, path: string, userPermissions?:
   const config = ROLE_CONFIG[role]
   if (!config) return false
 
+  // Invariant: Historical Migration is strictly Head Doctor only
+  if (path.startsWith('/historical-migration')) {
+    return role === 'Head Doctor'
+  }
+
+  // Invariant: Reimbursement is strictly Head Doctor only
+  if (path.startsWith('/reimbursement')) {
+    return role === 'Head Doctor'
+  }
+
   // Find the matching module for the path
   const matchingKey = Object.keys(ROUTE_MODULE_MAP).find(prefix => path.startsWith(prefix))
   
@@ -40,6 +51,11 @@ export function canAccessRoute(role: ClinicRole, path: string, userPermissions?:
 
   // Invariant: Reports is strictly Head Doctor only
   if (requiredModule === 'Reports' && role !== 'Head Doctor') {
+    return false
+  }
+
+  // Invariant: Reimbursement is strictly Head Doctor only
+  if (requiredModule === 'Reimbursement' && role !== 'Head Doctor') {
     return false
   }
 
