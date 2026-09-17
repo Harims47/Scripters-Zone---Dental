@@ -157,11 +157,11 @@ export const HistoricalMigrationPage: React.FC = () => {
   const totalImported = batches.reduce((acc, b) => acc + b.importedRecords, 0);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center shrink-0">
             <FolderArchive className="w-6 h-6" />
           </div>
           <div>
@@ -172,13 +172,13 @@ export const HistoricalMigrationPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <Button variant="outline" size="sm" onClick={fetchBatches} className="text-xs h-9">
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh
           </Button>
           <Button
             onClick={() => setIsUploadOpen(true)}
-            className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-9 font-medium shadow-xs"
+            className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-9 font-medium shadow-xs shrink-0"
           >
             <Upload className="w-4 h-4 mr-1.5" /> Upload Legacy Batch
           </Button>

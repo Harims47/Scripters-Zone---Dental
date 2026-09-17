@@ -29,9 +29,9 @@ export function DataTableToolbar({
   ...props
 }: DataTableToolbarProps) {
   return (
-    <div className={cn("p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white", className)} {...props}>
-      <div className="flex flex-col xl:flex-row xl:items-center gap-4 flex-1">
-        <div className="relative w-full sm:w-80 shrink-0">
+    <div className={cn("p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white", className)} {...props}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-1">
+        <div className="relative w-full sm:w-72 lg:w-80 shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input 
             placeholder={searchPlaceholder}

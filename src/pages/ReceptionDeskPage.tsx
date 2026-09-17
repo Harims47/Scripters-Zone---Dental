@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { soundService } from '../lib/soundUtils';
@@ -51,7 +52,17 @@ export function ReceptionDeskPage() {
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
 
   // Registration Drawer
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.state && (location.state as any).openRegister) {
+      setIsRegisterOpen(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate, location.pathname]);
+
   const [isEditPatientOpen, setIsEditPatientOpen] = useState(false);
   const [editDrawerMode, setEditDrawerMode] = useState<'edit' | 'view'>('edit');
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
@@ -254,10 +265,10 @@ export function ReceptionDeskPage() {
           patientName: p?.name || 'Unknown',
           patientPhone: p?.phone || '',
           visitType: 'Appointment',
-          token: isPriority ? `P${idx + 1}` : `${idx + 1}`,
+          token: `${idx + 1}`,
           doctor: d?.name || 'Unassigned',
           reasonForVisit: appt.notes || appt.type || 'Consultation',
-          stage: isPriority ? 'Transferred Priority' : 'Scheduled',
+          stage: isPriority ? 'Transferred' : 'Scheduled',
           paymentStatus: '—',
           rawStatus: appt.status,
           arrivalTime: appt.time || '09:00',
@@ -339,7 +350,13 @@ export function ReceptionDeskPage() {
 
     // Also add completed and cancelled visits for today that are no longer in active queue
     const activeVisitIds = new Set(queue.map(q => q.visitId));
-    const inactiveVisits = visits.filter(v => (v.status === 'COMPLETED' || v.status === 'CANCELLED') && !activeVisitIds.has(v.id));
+    const inactiveVisits = visits.filter(v => {
+      if (v.status !== 'COMPLETED' && v.status !== 'CANCELLED') return false;
+      if (activeVisitIds.has(v.id)) return false;
+      const vIso = v.createdAt ? new Date(v.createdAt).toISOString().split('T')[0] : '';
+      const vLocal = v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-CA') : '';
+      return vIso === selectedDate || vLocal === selectedDate;
+    });
 
     inactiveVisits.forEach(v => {
       const p = patients.find(p => p.id === v.patientId);
@@ -450,8 +467,9 @@ export function ReceptionDeskPage() {
         if (selectedDate !== todayStr || !visitId) return null;
 
         return (
-          <div className="flex justify-center items-center">
+          <div className="flex justify-center items-center p-1 -m-1 min-h-[32px] min-w-[32px] cursor-pointer">
             <Checkbox
+              className="h-4 w-4 data-[state=checked]:bg-teal-600 cursor-pointer"
               checked={selectedWaitingIds.includes(visitId)}
               disabled={!isWaiting}
               onCheckedChange={(checked) => {
@@ -1062,7 +1080,7 @@ export function ReceptionDeskPage() {
 
   return (
     <div className="flex-1 bg-slate-50/50 flex flex-col h-screen overflow-hidden">
-      <div className="h-auto py-3 shrink-0 px-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 bg-white/60 backdrop-blur-xs">
+      <div className="h-auto py-3 shrink-0 px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 sm:gap-4 border-b border-slate-200/80 bg-white/60 backdrop-blur-xs">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
@@ -1079,7 +1097,7 @@ export function ReceptionDeskPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* Quick Date Switcher */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
             <button
@@ -1121,7 +1139,7 @@ export function ReceptionDeskPage() {
               resetRegistrationForm();
               setIsRegisterOpen(true);
             }}
-            className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white"
+            className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white shrink-0 font-medium"
           >
             <Users className="w-4 h-4 mr-2" />
             Register Patient
@@ -1249,7 +1267,7 @@ export function ReceptionDeskPage() {
                       {selectedWaitingIds.length} Waiting Patient{selectedWaitingIds.length > 1 ? 's' : ''} Selected
                     </h4>
                     <p className="text-xs text-purple-700">
-                      Unserved at closing? Transfer them directly to tomorrow's list with priority tokens.
+                      Unserved at closing? Transfer them directly to tomorrow's queue with allotted tokens.
                     </p>
                   </div>
                 </div>
@@ -1298,7 +1316,7 @@ export function ReceptionDeskPage() {
               Transfer Patients to Next Day Queue
             </DialogTitle>
             <DialogDescription className="text-sm text-slate-500">
-              Selected waiting patients will be transferred to scheduled priority appointments for the target date.
+              Selected waiting patients will be transferred directly into tomorrow's queue with tokens allotted (no check-in needed).
             </DialogDescription>
           </DialogHeader>
 
@@ -1315,7 +1333,7 @@ export function ReceptionDeskPage() {
                     <div key={visitId} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-200/70">
                       <div className="flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-[10px]">
-                          P{idx + 1}
+                          {idx + 1}
                         </span>
                         <span className="font-semibold text-slate-800">{item?.patientName || 'Patient'}</span>
                         <span className="text-slate-400">({item?.patientPhone})</span>

@@ -188,7 +188,7 @@ export default function Showcase() {
         {/* Drawer Patterns Demo Buttons */}
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold border-b pb-2">Drawer Patterns (Direct Triggers)</h2>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => openViewDrawer(demoPatients[0])}>Demo View Drawer</Button>
             <Button variant="outline" onClick={() => openEditDrawer(demoPatients[0])}>Demo Edit Drawer</Button>
             <Button variant="default" onClick={openCreateDrawer}>Demo Create Drawer</Button>
@@ -230,7 +230,11 @@ export default function Showcase() {
                   </div>
                 </div>
               }
-              dataTable={<DataTable columns={patientColumns} data={filteredData} selectable={true} />}
+              dataTable={
+                <div className="overflow-x-auto w-full">
+                  <DataTable columns={patientColumns} data={filteredData} selectable={true} />
+                </div>
+              }
             />
           </div>
         </section>

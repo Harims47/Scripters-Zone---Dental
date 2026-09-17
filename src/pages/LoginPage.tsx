@@ -46,14 +46,14 @@ export function LoginPage() {
 
   return (
     <div
-      className="h-screen w-full relative bg-slate-100 flex flex-col justify-between overflow-hidden bg-cover bg-center bg-no-repeat selection:bg-teal-500 selection:text-white"
+      className="min-h-screen w-full relative bg-slate-100 flex flex-col justify-between overflow-y-auto lg:h-screen lg:overflow-hidden bg-cover bg-center bg-no-repeat selection:bg-teal-500 selection:text-white"
       style={{ backgroundImage: "url('/dental-bg.png')" }}
     >
       {/* Main Content Grid */}
       <div className="relative z-10 w-full flex-1 max-w-7xl mx-auto px-6 sm:px-10 lg:px-14 py-3 sm:py-5 flex flex-col lg:flex-row items-center justify-between gap-8 min-h-0">
 
         {/* Left Hero & Branding Section - Shifted to the left side */}
-        <div className="w-full lg:max-w-[450px] xl:max-w-[480px] flex flex-col items-start text-left space-y-4 sm:space-y-5 h-full justify-start pt-1 sm:pt-3 pb-2 z-10">
+        <div className="w-full lg:max-w-[450px] xl:max-w-[480px] flex flex-col items-start text-left space-y-4 sm:space-y-5 lg:h-full justify-start pt-1 sm:pt-3 pb-2 z-10">
 
           {/* Top: Broad Logo - Exactly -55px left shift */}
           <div className="w-72 sm:w-80 md:w-[350px] max-w-full transition-transform hover:scale-[1.01] duration-300" style={{ marginLeft: '-55px' }}>

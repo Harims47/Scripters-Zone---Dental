@@ -5,10 +5,12 @@ export const getQueue = async (req: Request, res: Response, next: NextFunction) 
   try {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
 
     const queue = await prisma.queueEntry.findMany({
       where: {
-        createdAt: { gte: startOfDay }
+        createdAt: { gte: startOfDay, lte: endOfDay }
       },
       orderBy: { position: 'asc' },
       include: { visit: { include: { patient: true } } }

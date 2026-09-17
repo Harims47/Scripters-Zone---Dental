@@ -48,7 +48,7 @@ export function InventoryPage() {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [filterCategory, setFilterCategory] = useState('all')
+  const [filterCategory] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all-status')
   const [filterType, setFilterType] = useState<'all' | 'medicine' | 'material'>('all')
 
@@ -861,7 +861,7 @@ export function InventoryPage() {
           onOpenChange={setAdjustmentDialogOpen}
           medicine={selectedItem}
           onSuccess={() => {
-            fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus);
+            fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType);
             setDrawerOpen(false);
           }}
         />

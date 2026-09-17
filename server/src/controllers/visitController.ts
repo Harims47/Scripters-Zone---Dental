@@ -36,8 +36,10 @@ export const startWalkInVisit = async (req: Request, res: Response, next: NextFu
     const result = await prisma.$transaction(async (tx) => {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
       const position = await tx.queueEntry.count({
-        where: { createdAt: { gte: startOfDay } }
+        where: { createdAt: { gte: startOfDay, lte: endOfDay } }
       }) + 1;
       const arrivalTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -104,8 +106,10 @@ export const checkInAppointment = async (req: Request, res: Response, next: Next
     const result = await prisma.$transaction(async (tx) => {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
       const position = await tx.queueEntry.count({
-        where: { createdAt: { gte: startOfDay } }
+        where: { createdAt: { gte: startOfDay, lte: endOfDay } }
       }) + 1;
       const arrivalTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -315,6 +319,12 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
     const result = await prisma.$transaction(async (tx) => {
       const transferredAppointments: any[] = [];
 
+      const targetStart = new Date(`${targetDate}T00:00:00.000Z`);
+      const targetEnd = new Date(`${targetDate}T23:59:59.999Z`);
+      const existingTargetCount = await tx.queueEntry.count({
+        where: { createdAt: { gte: targetStart, lte: targetEnd } }
+      });
+
       for (let i = 0; i < visitIds.length; i++) {
         const visitId = visitIds[i];
         const visit = await tx.visit.findUnique({
@@ -326,6 +336,7 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
 
         const transferReason = reason || 'Transferred from previous day queue due to clinic wait time';
         const priorityTime = `09:${String(i * 10).padStart(2, '0')}`; // Priority morning time slot
+        const nextPosition = existingTargetCount + i + 1; // 1, 2, ...
 
         // 1. Create priority appointment for target date
         const newAppt = await tx.appointment.create({
@@ -336,7 +347,7 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
             time: priorityTime,
             type: visit.reasonForVisit || 'Consultation',
             status: 'Scheduled',
-            notes: `[Transferred - Token #${i + 1}] ${transferReason}`
+            notes: `[Transferred - Token #${nextPosition}] ${transferReason}`
           }
         });
 
@@ -349,13 +360,38 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
           }
         });
 
-        // 3. Mark queueEntry as Cancelled
+        // 3. Mark current queueEntry as Cancelled
         if (visit.queueEntry) {
           await tx.queueEntry.update({
             where: { visitId: visit.id },
             data: { status: 'Cancelled' }
           });
         }
+
+        // 4. Pre-allot queue token for target date (Token 1, 2...) so no check-in is required
+        const targetDateTime = new Date(`${targetDate}T09:${String(i * 10).padStart(2, '0')}:00.000Z`);
+        await tx.visit.create({
+          data: {
+            patientId: visit.patientId,
+            doctorId: visit.doctorId || null,
+            appointmentId: newAppt.id,
+            status: 'WAITING',
+            amountDue: 0,
+            reasonForVisit: visit.reasonForVisit?.replace(/^\[Transferred[^\]]*\]\s*/, '') || 'Consultation',
+            createdAt: targetDateTime,
+            queueEntry: {
+              create: {
+                patientId: visit.patientId,
+                assignedDoctorId: visit.doctorId || null,
+                position: nextPosition,
+                status: 'Waiting',
+                priority: false,
+                arrivalTime: priorityTime,
+                createdAt: targetDateTime
+              }
+            }
+          }
+        });
 
         transferredAppointments.push(newAppt);
       }
