@@ -43,9 +43,14 @@ export const resolveLogoPath = (): string | null => {
  */
 export const getClinicBranding = (overrides?: Partial<ClinicBranding>): ClinicBranding => {
   const base = getCanonicalClinicConfig();
+  const rawAddress = overrides?.address !== undefined ? (overrides.address?.trim() || undefined) : base.address;
+  const sanitizedAddress = rawAddress
+    ? rawAddress.replace(/,?\s*near\s+Government\s+Hospital,?\s*/gi, ', ').trim().replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ',')
+    : undefined;
+
   return {
     name: overrides?.name?.trim() || base.name,
-    address: overrides?.address !== undefined ? (overrides.address?.trim() || undefined) : base.address,
+    address: sanitizedAddress,
     phone: overrides?.phone !== undefined ? (overrides.phone?.trim() || undefined) : base.phone,
     email: overrides?.email !== undefined ? (overrides.email?.trim() || undefined) : base.email,
     logoPath: overrides?.logoPath !== undefined ? overrides.logoPath : resolveLogoPath()
@@ -104,8 +109,11 @@ export const formatHumanDate = (date: string | Date | null | undefined): string 
  */
 export const formatAddressLines = (address?: string): string[] => {
   if (!address) return [];
+  // Strip "near Government Hospital," or similar landmark phrasing if present
+  let cleaned = address.replace(/,?\s*near\s+Government\s+Hospital,?\s*/gi, ', ').trim();
   // Clean duplicate town names if present in legacy strings
-  const cleaned = address.replace(/Gopichettipalayam,\s*Gobichettipalayam/gi, 'Gobichettipalayam').trim();
+  cleaned = cleaned.replace(/Gopichettipalayam,\s*Gobichettipalayam/gi, 'Gobichettipalayam').trim();
+  cleaned = cleaned.replace(/^,\s*|,\s*$/g, '').replace(/,\s*,/g, ',');
   const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
   
   if (parts.length <= 2) return [cleaned];

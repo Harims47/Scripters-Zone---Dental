@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
+// Authoritative server entry point
 dotenv.config();
 
 import cookieParser from 'cookie-parser';

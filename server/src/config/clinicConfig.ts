@@ -18,7 +18,7 @@ export interface ClinicConfig {
 export const getCanonicalClinicConfig = (): ClinicConfig => {
   return {
     name: process.env.CLINIC_NAME || 'Rafi Dental Clinic',
-    address: process.env.CLINIC_ADDRESS || '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Tamil Nadu 638452',
+    address: process.env.CLINIC_ADDRESS || '37, Dr.Venkatraman St, Gopichettipalayam, Tamil Nadu 638452',
     city: process.env.CLINIC_CITY || 'Gobichettipalayam',
     pin: process.env.CLINIC_PIN || '638452',
     phone: process.env.CLINIC_PHONE || '094430 23648',
