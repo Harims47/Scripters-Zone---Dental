@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
-import { Stethoscope, Users, CheckCircle, AlertCircle } from 'lucide-react'
+import { Stethoscope, CheckCircle, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { ReportChartCard, SvgBarChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'
@@ -8,7 +8,7 @@ import { DataTableToolbar } from '../data-table/data-table-toolbar'
 import { Badge } from '../ui/badge'
 import type { ColumnDef } from '@tanstack/react-table'
 import toast from 'react-hot-toast'
-import type { DoctorActivityResponse, DoctorActivityItem } from '../../types/reports'
+import type { DoctorActivityItem } from '../../types/reports'
 import type { DateRangeState } from './ReportDateRange'
 
 interface DoctorsReportProps {
@@ -29,12 +29,12 @@ export function DoctorsReport({ dateRange }: DoctorsReportProps) {
       if (dateRange.startDate) params.set('startDate', dateRange.startDate)
       if (dateRange.endDate) params.set('endDate', dateRange.endDate)
 
-      const res = await api.get<DoctorActivityResponse>(`/api/reports/doctors?${params.toString()}`)
+      const res = await api.get<{ data: DoctorActivityItem[] }>(`/api/reports/doctors?${params.toString()}`)
       setData(res.data || [])
     } catch (err: any) {
       console.error('Failed to load doctor activity report:', err)
       setError(err.message || 'Failed to load doctor activity')
-      toast.error('Failed to load doctor activity report')
+      toast.error('Failed to load doctor report')
     } finally {
       setLoading(false)
     }
@@ -55,19 +55,19 @@ export function DoctorsReport({ dateRange }: DoctorsReportProps) {
       await api.download(`/api/reports/doctors/export?${params.toString()}`, `doctor_activity_report_${new Date().toISOString().split('T')[0]}.${ext}`)
       toast.success(`Exported ${format.toUpperCase()} successfully`)
     } catch (err: any) {
-      toast.error(err.message || 'Failed to export doctor activity report')
+      toast.error(err.message || 'Failed to export doctor report')
     }
   }
 
   const filteredData = data.filter(d => {
     if (!search.trim()) return true
-    return d.doctorName.toLowerCase().includes(search.toLowerCase()) || d.role.toLowerCase().includes(search.toLowerCase())
+    const q = search.toLowerCase()
+    return d.doctorName.toLowerCase().includes(q) || d.role.toLowerCase().includes(q)
   })
 
   // Total clinical workload across doctors
   const totalVisits = data.reduce((sum, d) => sum + d.totalAssignedVisits, 0)
   const totalCompleted = data.reduce((sum, d) => sum + d.completedVisits, 0)
-  const totalNewSeen = data.reduce((sum, d) => sum + d.newPatientsSeen, 0)
 
   // Visits by Doctor bar chart
   const barChartData = data.map(d => ({
@@ -98,28 +98,9 @@ export function DoctorsReport({ dateRange }: DoctorsReportProps) {
       cell: ({ row }) => <div className="text-center font-bold text-slate-900 text-xs">{row.original.totalAssignedVisits}</div>
     },
     {
-      header: () => <div className="text-center font-semibold text-slate-600">New Patients Seen</div>,
-      accessorKey: 'newPatientsSeen',
-      cell: ({ row }) => <div className="text-center text-blue-600 font-semibold text-xs">{row.original.newPatientsSeen}</div>
-    },
-    {
-      header: () => <div className="text-center font-semibold text-slate-600">Returning Patients Seen</div>,
-      accessorKey: 'returningPatientsSeen',
-      cell: ({ row }) => <div className="text-center text-slate-600 text-xs">{row.original.returningPatientsSeen}</div>
-    },
-    {
       header: () => <div className="text-center font-semibold text-slate-600">Completed Visits</div>,
       accessorKey: 'completedVisits',
       cell: ({ row }) => <div className="text-center font-semibold text-emerald-700 text-xs">{row.original.completedVisits}</div>
-    },
-    {
-      header: () => <div className="text-center font-semibold text-slate-600">Cancelled Visits</div>,
-      accessorKey: 'cancelledVisits',
-      cell: ({ row }) => (
-        <div className={`text-center text-xs ${row.original.cancelledVisits > 0 ? 'text-rose-600 font-medium' : 'text-slate-400'}`}>
-          {row.original.cancelledVisits}
-        </div>
-      )
     }
   ]
 
@@ -139,7 +120,7 @@ export function DoctorsReport({ dateRange }: DoctorsReportProps) {
   return (
     <div className="space-y-6">
       {/* Workload Summary KPIs */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <KpiCard
           title="Clinical Workload (Visits)"
           value={loading ? '...' : totalVisits}
@@ -156,14 +137,6 @@ export function DoctorsReport({ dateRange }: DoctorsReportProps) {
           bgClass="bg-emerald-100"
           trendLabel="Finished clinical visits"
         />
-        <KpiCard
-          title="New Patients Consulted"
-          value={loading ? '...' : totalNewSeen}
-          icon={Users}
-          colorClass="text-blue-600"
-          bgClass="bg-blue-100"
-          trendLabel="First-time clinic patients"
-        />
       </div>
 
       {/* Chart: Visits by Doctor */}
@@ -175,7 +148,6 @@ export function DoctorsReport({ dateRange }: DoctorsReportProps) {
       >
         <SvgBarChart
           data={barChartData}
-          horizontal={true}
         />
       </ReportChartCard>
 

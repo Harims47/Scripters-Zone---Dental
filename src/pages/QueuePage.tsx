@@ -94,7 +94,8 @@ export function QueuePage() {
   const exportQueue = (format: 'pdf' | 'xlsx' | 'csv') => {
     const query = new URLSearchParams({
       format,
-      ...(search ? { search } : {})
+      ...(search ? { search } : {}),
+      ...(visitTypeFilter !== 'all' ? { visitType: visitTypeFilter } : {})
     }).toString();
     api.download(`/api/queue/export?${query}`, `queue_export.${format}`);
   }

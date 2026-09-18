@@ -1,4 +1,4 @@
-import { Menu, ChevronDown, Globe, Search } from "lucide-react"
+import { Menu, ChevronDown, Globe } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "../ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet"
@@ -51,16 +51,6 @@ export function Topbar() {
             <Sidebar />
           </SheetContent>
         </Sheet>
-        
-        {/* Search */}
-        <div className="relative group hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-slate-400 group-focus-within:text-teal-600 transition-colors" />
-          <input 
-            type="text"
-            placeholder="Search patients, doctors..."
-            className="w-[320px] h-10 pl-10 pr-4 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-transparent focus:border-teal-200 focus:ring-4 focus:ring-teal-50 rounded-full text-[14px] text-slate-700 transition-all outline-none"
-          />
-        </div>
       </div>
 
       <div className="flex items-center gap-3">

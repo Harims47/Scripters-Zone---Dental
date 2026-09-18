@@ -78,10 +78,11 @@ export const exportStaff = async (req: Request, res: Response, next: NextFunctio
     }));
 
     const columns: ExportColumn[] = [
-      { label: 'Name', key: 'name' },
+      { label: 'Staff Member', key: 'name' },
       { label: 'Role', key: 'role' },
       { label: 'Phone', key: 'phone' },
-      { label: 'Status', key: 'status' }
+      { label: 'Status', key: 'status' },
+      { label: 'Attendance', key: 'attendance' }
     ];
 
     if (format === 'csv') {
@@ -89,13 +90,13 @@ export const exportStaff = async (req: Request, res: Response, next: NextFunctio
       res.header('Content-Type', 'text/csv');
       res.attachment('staff_export.csv');
       return res.send(csv);
-    } else if (format === 'excel') {
+    } else if (format === 'xlsx' || format === 'excel') {
       const xlsx = await generateXLSX(columns, exportData, 'Staff');
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.attachment('staff_export.xlsx');
       return res.send(xlsx);
     } else if (format === 'pdf') {
-      const pdf = await generatePDF(columns, exportData, 'Staff Export');
+      const pdf = await generatePDF(columns, exportData, 'Staff & Roles Report', `Total Staff Members: ${exportData.length}`);
       res.header('Content-Type', 'application/pdf');
       res.attachment('staff_export.pdf');
       return res.send(pdf);

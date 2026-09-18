@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
 import { IndianRupee, Banknote, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'
-import { ReportChartCard, SvgLineChart, SvgDonutChart } from './ReportChartCard'
+import { ReportChartCard, SvgDailyBarChart, SvgDonutChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'
 import { DataTableToolbar } from '../data-table/data-table-toolbar'
 import { Badge } from '../ui/badge'
@@ -89,13 +89,6 @@ export function RevenueReport({ dateRange }: RevenueReportProps) {
 
   const columns: ColumnDef<RevenueReportItem>[] = [
     {
-      header: () => <div className="text-left font-semibold text-slate-600">Payment ID</div>,
-      accessorKey: 'paymentId',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-500">{row.original.paymentId.slice(0, 8)}...</span>
-      )
-    },
-    {
       header: () => <div className="text-left font-semibold text-slate-600">Payment Date & Time</div>,
       accessorKey: 'paymentDate',
       cell: ({ row }) => (
@@ -108,16 +101,8 @@ export function RevenueReport({ dateRange }: RevenueReportProps) {
       header: () => <div className="text-left font-semibold text-slate-600">Patient</div>,
       accessorKey: 'patientName',
       cell: ({ row }) => (
-        <div>
-          <span className="font-semibold text-slate-900 block">{row.original.patientName}</span>
-          <span className="font-mono text-[10px] text-slate-400">{row.original.patientId.slice(0, 8)}...</span>
-        </div>
+        <span className="font-semibold text-slate-900 block">{row.original.patientName}</span>
       )
-    },
-    {
-      header: () => <div className="text-center font-semibold text-slate-600">Visit ID</div>,
-      accessorKey: 'visitId',
-      cell: ({ row }) => <span className="font-mono text-xs text-slate-500">{row.original.visitId.slice(0, 8)}...</span>
     },
     {
       header: () => <div className="text-center font-semibold text-slate-600">Doctor</div>,
@@ -240,16 +225,16 @@ export function RevenueReport({ dateRange }: RevenueReportProps) {
       {/* Revenue Charts */}
       <div className="grid gap-6 md:grid-cols-2">
         <ReportChartCard
-          title="Revenue Collection Trend"
-          subtitle="Daily collected payment volume"
+          title="Daily Revenue Collections"
+          subtitle="Daily collected payments breakdown"
           loading={loading}
           empty={!loading && linePoints.length === 0}
         >
-          <SvgLineChart
+          <SvgDailyBarChart
             data={linePoints}
-            primaryLabel="Collected"
+            primaryLabel="Daily Collection"
             valuePrefix="₹"
-            lineColor="#10b981"
+            primaryColor="#10b981"
           />
         </ReportChartCard>
 
@@ -277,7 +262,7 @@ export function RevenueReport({ dateRange }: RevenueReportProps) {
         <DataTableToolbar
           searchQuery={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search patient, payment ID, notes..."
+          searchPlaceholder="Search patient, notes..."
           exportOptions={{
             pdf: true,
             excel: true,

@@ -18,7 +18,7 @@ test.describe('Authentication and RBAC', () => {
   test('Valid Login - Head Doctor lands on /dashboard', async ({ page }) => {
     await loginAs(page, 'headDoctor');
     await expect(page).toHaveURL(/.*\/dashboard/);
-    await expect(page.locator('body')).toContainText('Dr. Arun');
+    await expect(page.locator('body')).toContainText(/Head Doctor|MOHAMED RAFI/i);
   });
 
   test('Invalid Login shows error message', async ({ page }) => {

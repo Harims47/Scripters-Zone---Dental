@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
 import { reimbursementBodySchema } from '../schemas/reimbursementSchema';
 import { generateReimbursementPDF } from '../services/documentService';
+import { getClinicBranding } from '../services/pdf/clinicBranding';
 
 /**
  * Concurrency-safe helper to generate sequential document number: RMB-YYYY-XXXXXX
@@ -158,13 +159,14 @@ export const createReimbursement = async (req: Request, res: Response, next: Nex
     if (!doctorName.startsWith('Dr.')) {
       doctorName = `Dr. ${doctorName}`;
     }
-    const doctorRegNo = req.user?.staff?.permissions?.regNo || '1305';
+    const doctorRegNo = req.user?.staff?.permissions?.regNo || null;
     const doctorId = req.user?.staffId || req.user?.id || null;
 
-    // 4. Resolve Clinic metadata (prefer client passed or existing defaults)
-    const clinicNameSnapshot = customClinicName?.trim() || 'Rafi Dental Clinic';
-    const clinicAddressSnapshot = customClinicAddress?.trim() || '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452';
-    const clinicPhoneSnapshot = customClinicPhone?.trim() || '094430 23648';
+    // 4. Resolve Clinic metadata (prefer client passed or authoritative configuration)
+    const defaultBranding = getClinicBranding();
+    const clinicNameSnapshot = customClinicName?.trim() || defaultBranding.name;
+    const clinicAddressSnapshot = customClinicAddress?.trim() || defaultBranding.address || '';
+    const clinicPhoneSnapshot = customClinicPhone?.trim() || defaultBranding.phone || '';
 
     // 5. Atomic creation with retry protection against sequence race condition
     let createdDoc: any = null;
@@ -254,7 +256,7 @@ export const downloadReimbursementPDF = async (req: Request, res: Response, next
       patientGender: doc.patientGenderSnapshot,
       patientPhone: doc.patientPhoneSnapshot,
       doctorName: doc.doctorNameSnapshot,
-      doctorRegNo: doc.doctorRegNoSnapshot || '1305',
+      doctorRegNo: doc.doctorRegNoSnapshot || undefined,
       clinicName: doc.clinicNameSnapshot,
       clinicAddress: doc.clinicAddressSnapshot,
       clinicPhone: doc.clinicPhoneSnapshot
