@@ -1042,9 +1042,12 @@ export function ReceptionDeskPage() {
     }
   };
 
-  const handlePrintDocument = async (type: 'prescription' | 'receipt' | 'invoice') => {
+  const handlePrintDocument = async (type: 'prescription' | 'receipt' | 'invoice', paymentId?: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/documents/${type}/${processVisitId}`, {
+      const docUrl = paymentId
+        ? `${API_BASE_URL}/api/documents/${type}/${processVisitId}?paymentId=${encodeURIComponent(paymentId)}`
+        : `${API_BASE_URL}/api/documents/${type}/${processVisitId}`;
+      const response = await fetch(docUrl, {
         method: 'GET',
         credentials: 'include'
       });
@@ -1243,11 +1246,12 @@ export function ReceptionDeskPage() {
                   try {
                     const query = new URLSearchParams();
                     query.set('format', format);
+                    if (selectedDate) query.set('date', selectedDate);
                     if (search) query.set('search', search);
                     if (stageFilter && stageFilter !== 'all') query.set('stage', stageFilter);
                     if (visitTypeFilter && visitTypeFilter !== 'all') query.set('visitType', visitTypeFilter);
                     const ext = format === 'pdf' ? 'pdf' : format === 'xlsx' ? 'xlsx' : 'csv';
-                    await api.download(`/api/visits/export?${query.toString()}`, `reception_desk_export.${ext}`);
+                    await api.download(`/api/visits/export?${query.toString()}`, `reception_desk_export_${selectedDate}.${ext}`);
                     toast.success(`Exported ${format.toUpperCase()} successfully`);
                   } catch (err: any) {
                     toast.error(err.message || 'Failed to export data');
@@ -2358,7 +2362,7 @@ export function ReceptionDeskPage() {
                                       type="button"
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => handlePrintDocument('receipt')}
+                                      onClick={() => handlePrintDocument('receipt', p.id)}
                                       title="Print Receipt for this payment"
                                       className="h-7 px-2 text-teal-600 hover:bg-teal-50 text-xs flex items-center gap-1"
                                     >

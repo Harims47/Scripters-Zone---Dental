@@ -11,6 +11,7 @@ import {
   exportPatientsReport,
   getTreatmentsReport,
   exportTreatmentsReport,
+  getTreatmentCategories,
   getDoctorActivityReport,
   exportDoctorActivityReport,
   getMedicinesReport,
@@ -55,6 +56,7 @@ router.get('/patients', requireRole('Head Doctor'), getPatientsReport);
 router.get('/patients/export', requireRole('Head Doctor'), exportPatientsReport);
 
 // 5. Treatments
+router.get('/treatments/categories', requireRole('Head Doctor'), getTreatmentCategories);
 router.get('/treatments', requireRole('Head Doctor'), getTreatmentsReport);
 router.get('/treatments/export', requireRole('Head Doctor'), exportTreatmentsReport);
 

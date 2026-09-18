@@ -152,7 +152,6 @@ export const exportVisitsReport = async (req: Request, res: Response, next: Next
     const columns: ExportColumn[] = [
       { key: 'visitDateTime', label: 'Visit Date & Time' },
       { key: 'patientName', label: 'Patient Name' },
-      { key: 'patientId', label: 'Patient ID' },
       { key: 'visitType', label: 'Visit Type' },
       { key: 'doctorName', label: 'Doctor' },
       { key: 'reasonForVisit', label: 'Reason for Visit' },
@@ -205,11 +204,8 @@ export const exportRevenueReport = async (req: Request, res: Response, next: Nex
     const rows = await getRevenueExportData(req.query as any);
 
     const columns: ExportColumn[] = [
-      { key: 'paymentId', label: 'Payment ID' },
       { key: 'paymentDate', label: 'Payment Date & Time' },
       { key: 'patientName', label: 'Patient Name' },
-      { key: 'patientId', label: 'Patient ID' },
-      { key: 'visitId', label: 'Visit ID' },
       { key: 'doctorName', label: 'Doctor' },
       { key: 'paymentMethod', label: 'Payment Method' },
       { key: 'amount', label: 'Amount' },
@@ -260,7 +256,6 @@ export const exportPatientsReport = async (req: Request, res: Response, next: Ne
     const rows = await getPatientsExportData(req.query as any);
 
     const columns: ExportColumn[] = [
-      { key: 'patientId', label: 'Patient ID' },
       { key: 'patientName', label: 'Patient Name' },
       { key: 'phone', label: 'Phone' },
       { key: 'age', label: 'Age' },
@@ -316,10 +311,7 @@ export const exportTreatmentsReport = async (req: Request, res: Response, next: 
     const columns: ExportColumn[] = [
       { key: 'category', label: 'Category' },
       { key: 'treatmentName', label: 'Treatment Name' },
-      { key: 'variant', label: 'Variant' },
-      { key: 'plannedCount', label: 'Planned' },
-      { key: 'completedCount', label: 'Completed' },
-      { key: 'uniquePatients', label: 'Unique Patients' }
+      { key: 'completedCount', label: 'Completed' }
     ];
 
     const subtitle = `Total Treatments: ${rows.length}`;
@@ -347,6 +339,20 @@ export const exportTreatmentsReport = async (req: Request, res: Response, next: 
   }
 };
 
+export const getTreatmentCategories = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cats = await prisma.treatmentCatalog.findMany({
+      where: { isActive: true },
+      select: { category: true },
+      distinct: ['category'],
+      orderBy: { category: 'asc' }
+    });
+    return res.json(cats.map(c => c.category).filter(Boolean));
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * 6. DOCTORS ACTIVITY REPORT
  */
@@ -369,10 +375,7 @@ export const exportDoctorActivityReport = async (req: Request, res: Response, ne
       { key: 'doctorName', label: 'Doctor Name' },
       { key: 'role', label: 'Role' },
       { key: 'totalAssignedVisits', label: 'Assigned Visits' },
-      { key: 'newPatientsSeen', label: 'New Patients' },
-      { key: 'returningPatientsSeen', label: 'Returning Patients' },
-      { key: 'completedVisits', label: 'Completed Visits' },
-      { key: 'cancelledVisits', label: 'Cancelled Visits' }
+      { key: 'completedVisits', label: 'Completed Visits' }
     ];
 
     const subtitle = `Doctor Workload Report | Total Staff: ${rows.length}`;
@@ -423,7 +426,6 @@ export const exportMedicinesReport = async (req: Request, res: Response, next: N
       { key: 'category', label: 'Category' },
       { key: 'totalPrescribedQuantity', label: 'Prescribed Qty' },
       { key: 'totalDispensedQuantity', label: 'Dispensed Qty' },
-      { key: 'dispensingTransactions', label: 'Transactions' },
       { key: 'currentStock', label: 'Current Stock' }
     ];
 
@@ -475,8 +477,6 @@ export const exportInventoryMovementsReport = async (req: Request, res: Response
       { key: 'movementType', label: 'Movement Type' },
       { key: 'quantity', label: 'Quantity' },
       { key: 'balanceAfter', label: 'Balance After' },
-      { key: 'referenceType', label: 'Reference' },
-      { key: 'referenceId', label: 'Reference ID' },
       { key: 'performedBy', label: 'Performed By' },
       { key: 'reason', label: 'Reason / Notes' }
     ];

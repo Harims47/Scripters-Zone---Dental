@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
-import { Pill, Package, Activity, AlertCircle } from 'lucide-react'
+import { Pill, Package, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { ReportChartCard, SvgBarChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'
@@ -83,7 +83,6 @@ export function MedicinesReport({ dateRange }: MedicinesReportProps) {
 
   const rows = data?.data || []
   const totalDispensed = data?.summary.totalDispensedUnits || 0
-  const totalTransactions = rows.reduce((sum, r) => sum + r.dispensingTransactions, 0)
 
   // Chart data: Top 10 dispensed medicines based on actual dispensed quantity
   const barChartData = [...rows]
@@ -138,11 +137,6 @@ export function MedicinesReport({ dateRange }: MedicinesReportProps) {
       )
     },
     {
-      header: () => <div className="text-center font-semibold text-slate-600">Dispensing Tx</div>,
-      accessorKey: 'dispensingTransactions',
-      cell: ({ row }) => <div className="text-center font-bold text-slate-800 text-xs">{row.original.dispensingTransactions}</div>
-    },
-    {
       header: () => <div className="text-center font-semibold text-slate-600">Current Stock*</div>,
       accessorKey: 'currentStock',
       cell: ({ row }) => {
@@ -174,7 +168,7 @@ export function MedicinesReport({ dateRange }: MedicinesReportProps) {
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <KpiCard
           title="Total Units Dispensed"
           value={loading ? '...' : `${totalDispensed} units`}
@@ -191,14 +185,6 @@ export function MedicinesReport({ dateRange }: MedicinesReportProps) {
           bgClass="bg-indigo-100"
           trendLabel="Medicines in clinic catalog"
         />
-        <KpiCard
-          title="Dispensing Transactions"
-          value={loading ? '...' : totalTransactions}
-          icon={Activity}
-          colorClass="text-emerald-600"
-          bgClass="bg-emerald-100"
-          trendLabel="Completed pharmacy handovers"
-        />
       </div>
 
       {/* Top 10 Dispensed Medicines Chart */}
@@ -210,7 +196,6 @@ export function MedicinesReport({ dateRange }: MedicinesReportProps) {
       >
         <SvgBarChart
           data={barChartData}
-          horizontal={true}
           maxItems={10}
         />
       </ReportChartCard>

@@ -95,10 +95,7 @@ export function PatientsReport({ dateRange }: PatientsReportProps) {
       header: () => <div className="text-left font-semibold text-slate-600">Patient Name</div>,
       accessorKey: 'patientName',
       cell: ({ row }) => (
-        <div>
-          <span className="font-semibold text-slate-900 block">{row.original.patientName}</span>
-          <span className="font-mono text-[10px] text-slate-400">{row.original.patientId.slice(0, 8)}...</span>
-        </div>
+        <span className="font-semibold text-slate-900 block">{row.original.patientName}</span>
       )
     },
     {

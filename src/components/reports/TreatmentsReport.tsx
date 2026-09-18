@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
-import { CheckCircle, Clock, AlertCircle } from 'lucide-react'
+import { CheckCircle, Layers, AlertCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { ReportChartCard, SvgBarChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'
@@ -41,12 +41,6 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
 
       const res = await api.get<TreatmentsReportResponse>(`/api/reports/treatments?${params.toString()}`)
       setData(res)
-
-      // Extract unique categories
-      if (res.data && categories.length === 0) {
-        const uniqueCats = Array.from(new Set(res.data.map(d => d.category))).filter(Boolean)
-        setCategories(uniqueCats)
-      }
     } catch (err: any) {
       console.error('Failed to load treatments report:', err)
       setError(err.message || 'Failed to load treatments report')
@@ -54,7 +48,7 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
     } finally {
       setLoading(false)
     }
-  }, [dateRange.startDate, dateRange.endDate, pagination.pageIndex, pagination.pageSize, search, categoryFilter, categories.length])
+  }, [dateRange.startDate, dateRange.endDate, pagination.pageIndex, pagination.pageSize, search, categoryFilter])
 
   useEffect(() => {
     fetchData()
@@ -63,6 +57,13 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
   useEffect(() => {
     setPagination(prev => ({ ...prev, pageIndex: 0 }))
   }, [search, categoryFilter, dateRange.startDate, dateRange.endDate])
+
+  // Fetch unique categories once for filter
+  useEffect(() => {
+    api.get<string[]>('/api/reports/treatments/categories')
+      .then(res => setCategories(res || []))
+      .catch(() => setCategories([]))
+  }, [])
 
   const handleExport = async (format: 'pdf' | 'xlsx' | 'csv') => {
     try {
@@ -90,7 +91,7 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
     .filter(t => t.completedCount > 0)
     .slice(0, 7)
     .map(t => ({
-      label: t.treatmentName + (t.variant !== '—' ? ` (${t.variant})` : ''),
+      label: t.treatmentName,
       value: t.completedCount,
       displayValue: `${t.completedCount} completed`,
       color: '#0d9488'
@@ -112,36 +113,15 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
       cell: ({ row }) => <span className="font-semibold text-slate-900 text-xs">{row.original.treatmentName}</span>
     },
     {
-      header: () => <div className="text-left font-semibold text-slate-600">Variant</div>,
-      accessorKey: 'variant',
-      cell: ({ row }) => <span className="text-slate-500 text-xs">{row.original.variant}</span>
-    },
-    {
-      header: () => <div className="text-center font-semibold text-slate-600">Planned</div>,
-      accessorKey: 'plannedCount',
-      cell: ({ row }) => (
-        <div className="text-center">
-          <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 font-mono text-xs">
-            {row.original.plannedCount}
-          </Badge>
-        </div>
-      )
-    },
-    {
       header: () => <div className="text-center font-semibold text-slate-600">Completed</div>,
       accessorKey: 'completedCount',
       cell: ({ row }) => (
         <div className="text-center">
-          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 font-mono text-xs">
+          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 font-mono text-xs font-semibold">
             {row.original.completedCount}
           </Badge>
         </div>
       )
-    },
-    {
-      header: () => <div className="text-center font-semibold text-slate-600">Unique Patients</div>,
-      accessorKey: 'uniquePatients',
-      cell: ({ row }) => <div className="text-center font-bold text-slate-800 text-xs">{row.original.uniquePatients}</div>
     }
   ]
 
@@ -163,20 +143,20 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2">
         <KpiCard
-          title="Planned Treatments"
-          value={loading ? '...' : (s?.totalPlanned ?? 0)}
-          icon={Clock}
-          colorClass="text-amber-600"
-          bgClass="bg-amber-100"
-          trendLabel="Created in period (Pending execution)"
-        />
-        <KpiCard
           title="Completed Treatments"
           value={loading ? '...' : (s?.totalCompleted ?? 0)}
           icon={CheckCircle}
           colorClass="text-emerald-600"
           bgClass="bg-emerald-100"
-          trendLabel="Physically performed in period"
+          trendLabel="Total procedures performed in period"
+        />
+        <KpiCard
+          title="Active Categories"
+          value={loading ? '...' : categories.length}
+          icon={Layers}
+          colorClass="text-teal-600"
+          bgClass="bg-teal-100"
+          trendLabel="Treatment categories in clinic catalog"
         />
       </div>
 
@@ -189,7 +169,6 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
       >
         <SvgBarChart
           data={barChartData}
-          horizontal={true}
           maxItems={7}
         />
       </ReportChartCard>
@@ -198,13 +177,13 @@ export function TreatmentsReport({ dateRange }: TreatmentsReportProps) {
       <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-slate-50/50">
           <h3 className="text-base font-bold text-slate-900">Treatment Procedures Breakdown</h3>
-          <p className="text-xs text-slate-500 mt-0.5">Planned vs executed clinical volume by catalog item.</p>
+          <p className="text-xs text-slate-500 mt-0.5">Clinical procedures and completed treatment counts by catalog item.</p>
         </div>
 
         <DataTableToolbar
           searchQuery={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search treatment name, variant..."
+          searchPlaceholder="Search treatment name..."
           exportOptions={{
             pdf: true,
             excel: true,

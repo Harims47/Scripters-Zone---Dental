@@ -338,11 +338,11 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
         const priorityTime = `09:${String(i * 10).padStart(2, '0')}`; // Priority morning time slot
         const nextPosition = existingTargetCount + i + 1; // 1, 2, ...
 
-        // 1. Create priority appointment for target date
+        // 1. Create priority appointment for target date (unassigned doctor so reception assigns for the day)
         const newAppt = await tx.appointment.create({
           data: {
             patientId: visit.patientId,
-            providerId: visit.doctorId,
+            providerId: null,
             date: targetDate,
             time: priorityTime,
             type: visit.reasonForVisit || 'Consultation',
@@ -369,11 +369,12 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
         }
 
         // 4. Pre-allot queue token for target date (Token 1, 2...) so no check-in is required
+        // Doctor is left unassigned (null) so receptionist can send to duty doctor on arrival
         const targetDateTime = new Date(`${targetDate}T09:${String(i * 10).padStart(2, '0')}:00.000Z`);
         await tx.visit.create({
           data: {
             patientId: visit.patientId,
-            doctorId: visit.doctorId || null,
+            doctorId: null,
             appointmentId: newAppt.id,
             status: 'WAITING',
             amountDue: 0,
@@ -382,7 +383,7 @@ export const transferVisits = async (req: Request, res: Response, next: NextFunc
             queueEntry: {
               create: {
                 patientId: visit.patientId,
-                assignedDoctorId: visit.doctorId || null,
+                assignedDoctorId: null,
                 position: nextPosition,
                 status: 'Waiting',
                 priority: false,
@@ -417,20 +418,45 @@ export const exportVisits = async (req: Request, res: Response, next: NextFuncti
     const stage = req.query.stage as string;
     const visitType = req.query.visitType as string;
     const format = req.query.format as string;
-
-    const visits = await prisma.visit.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        patient: true,
-        queueEntry: true,
-        payments: true
-      }
-    });
+    const date = req.query.date as string;
 
     const staffMembers = await prisma.staff.findMany();
     const staffMap = new Map(staffMembers.map(s => [s.id, s.name]));
 
-    const flatData = visits.map(v => {
+    let visitWhere: any = {};
+    if (date) {
+      const startOfDay = new Date(new Date(`${date}T00:00:00Z`).getTime() - 14 * 3600 * 1000);
+      const endOfDay = new Date(new Date(`${date}T23:59:59Z`).getTime() + 14 * 3600 * 1000);
+      visitWhere = {
+        OR: [
+          { createdAt: { gte: startOfDay, lte: endOfDay } },
+          { visitDate: { gte: startOfDay, lte: endOfDay } },
+          { appointment: { date } }
+        ]
+      };
+    }
+
+    const rawVisits = await prisma.visit.findMany({
+      where: visitWhere,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        patient: true,
+        queueEntry: true,
+        payments: true,
+        appointment: true
+      }
+    });
+
+    const visits = date
+      ? rawVisits.filter(v => {
+          const vIso = v.createdAt ? new Date(v.createdAt).toISOString().split('T')[0] : '';
+          const vLocal = v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-CA') : '';
+          const apptDate = v.appointment?.date;
+          return vIso === date || vLocal === date || apptDate === date;
+        })
+      : rawVisits;
+
+    const flatData: any[] = visits.map(v => {
       let calcStage = 'Waiting';
       const isTransferred = v.reasonForVisit?.startsWith('[Transferred') || v.queueEntry?.status === 'Transferred';
       if (isTransferred) calcStage = 'Next Day';
@@ -473,6 +499,37 @@ export const exportVisits = async (req: Request, res: Response, next: NextFuncti
       };
     });
 
+    if (date) {
+      const existingApptIds = new Set(visits.map(v => v.appointmentId).filter(Boolean));
+      const futureAppointments = await prisma.appointment.findMany({
+        where: {
+          date,
+          id: { notIn: Array.from(existingApptIds) as string[] },
+          status: { not: 'Cancelled' }
+        }
+      });
+
+      const patientIds = futureAppointments.map(a => a.patientId);
+      const apptPatients = await prisma.patient.findMany({
+        where: { id: { in: patientIds } }
+      });
+      const patientMap = new Map(apptPatients.map(p => [p.id, p.name]));
+
+      futureAppointments.forEach((appt, idx) => {
+        const docName = appt.providerId ? (staffMap.get(appt.providerId) || '—') : '—';
+        const isPriority = appt.notes?.includes('[Transferred');
+        flatData.push({
+          id: appt.id,
+          token: `${idx + 1}`,
+          patientName: patientMap.get(appt.patientId) || 'Unknown',
+          visitType: 'Appointment',
+          doctor: docName,
+          stage: isPriority ? 'Transferred' : 'Scheduled',
+          paymentStatus: '—'
+        });
+      });
+    }
+
     let filteredData = flatData;
     if (stage && stage !== 'all') {
       filteredData = filteredData.filter(d => d.stage.toLowerCase() === stage.toLowerCase());
@@ -509,7 +566,8 @@ export const exportVisits = async (req: Request, res: Response, next: NextFuncti
       res.attachment('reception_desk_export.xlsx');
       return res.send(xlsx);
     } else if (format === 'pdf') {
-      const pdf = await generatePDF(columns, filteredData, 'Reception Desk Operations Report', `Total Records: ${filteredData.length}`);
+      const subtitle = date ? `Date: ${date} | Total Records: ${filteredData.length}` : `Total Records: ${filteredData.length}`;
+      const pdf = await generatePDF(columns, filteredData, 'Reception Desk Operations Report', subtitle);
       res.header('Content-Type', 'application/pdf');
       res.attachment('reception_desk_export.pdf');
       return res.send(pdf);

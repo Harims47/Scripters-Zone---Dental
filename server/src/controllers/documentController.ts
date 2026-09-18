@@ -1,6 +1,12 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
-import { generatePrescriptionPDF, generateReceiptPDF } from '../services/documentService';
+import {
+  generatePrescriptionPDF,
+  generateReceiptPDF,
+  generateInvoicePDF,
+  generatePurchaseOrderPDF
+} from '../services/documentService';
+import { getClinicBranding } from '../services/pdf/clinicBranding';
 
 export const getPrescriptionPDF = async (req: Request, res: Response) => {
   try {
@@ -29,18 +35,18 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
       where: { id: visit.doctorId }
     }) : null;
 
+    const branding = getClinicBranding();
+
     const prescriptionData = {
-      clinicName: 'Rafi Dental Clinic',
-      clinicAddress: '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452',
-      clinicPhone: '094430 23648',
+      clinicName: branding.name,
+      clinicAddress: branding.address,
+      clinicPhone: branding.phone,
       patientName: visit.patient.name,
       patientAge: visit.patient.age || '',
       patientGender: visit.patient.gender || '',
-      patientId: visit.patient.id,
       patientPhone: visit.patient.phone,
       diagnosis: visit.consultation?.reasonForVisit || visit.reasonForVisit || undefined,
-      visitDate: visit.createdAt.toLocaleDateString('en-IN'),
-      visitId: visit.id,
+      visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
       doctorName: staff ? staff.name : 'Doctor',
       items: visit.prescription.items.map((item: any) => ({
         medicineName: item.medicine?.name || 'Medicine',
@@ -54,8 +60,11 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
 
     const pdfBuffer = await generatePrescriptionPDF(prescriptionData);
 
+    const safePatientName = (visit.patient.name || 'Patient').replace(/[^a-zA-Z0-9]/g, '_');
+    const docCode = visit.id.substring(0, 8).toUpperCase();
+
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`prescription_${visit.patient.id}.pdf`);
+    res.attachment(`prescription_${safePatientName}_${docCode}.pdf`);
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating prescription PDF:', error);
@@ -66,13 +75,19 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
 export const getReceiptPDF = async (req: Request, res: Response) => {
   try {
     const visitId = req.params.visitId as string;
+    const requestedPaymentId = (req.query.paymentId as string) || undefined;
 
     const visit = await prisma.visit.findUnique({
       where: { id: visitId },
       include: {
         patient: true,
-        payments: true,
+        payments: {
+          orderBy: { createdAt: 'asc' }
+        },
         consultation: true,
+        completedTreatmentItems: {
+          include: { catalogItem: true }
+        },
         dispensing: {
           include: {
             items: {
@@ -103,48 +118,83 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       if (doctorStaff) doctorName = doctorStaff.name;
     }
 
-    const payment = visit.payments && visit.payments.length > 0 ? visit.payments[visit.payments.length - 1] : null;
+    const validPayments = (visit.payments || []).filter(
+      (p: any) => p.status === 'Paid' || p.status === 'Completed'
+    );
 
-    if (!payment || (payment.status !== 'Paid' && payment.status !== 'Completed')) {
+    let payment = null;
+    let paymentIndex = -1;
+    if (requestedPaymentId) {
+      paymentIndex = validPayments.findIndex((p: any) => p.id === requestedPaymentId);
+      if (paymentIndex !== -1) {
+        payment = validPayments[paymentIndex];
+      }
+    }
+    if (!payment) {
+      payment = validPayments.length > 0 ? validPayments[validPayments.length - 1] : null;
+      paymentIndex = validPayments.length - 1;
+    }
+
+    if (!payment) {
       return res.status(400).json({ error: 'Payment is not completed. Cannot generate receipt.' });
     }
 
-    // Calculate medicine cost (using authoritative database data)
-    let medicineCost = 0;
+    // Authoritative visit charges
+    const consultationFee = visit.consultationFee || 0;
+    const treatmentFee = visit.treatmentFee || 0;
+
+    let calculatedMedicineCost = 0;
     if (visit.dispensing && visit.dispensing.items) {
-      medicineCost = visit.dispensing.items.reduce(
-        (sum: number, item: any) => sum + (item.dispensedQuantity * item.medicine.unitPrice),
+      calculatedMedicineCost = visit.dispensing.items.reduce(
+        (sum: number, item: any) => sum + ((item.dispensedQuantity || item.prescribedQuantity || 0) * (item.medicine?.unitPrice || 0)),
         0
       );
     }
+    const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
+    const grossTotal = consultationFee + treatmentFee + medicineCost;
 
-    const consultationFee = Math.max(0, payment.amount - medicineCost);
+    // Prior payments made before this installment
+    const priorPaid = validPayments.slice(0, paymentIndex).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+    const cumulativePaid = priorPaid + payment.amount;
+    const balanceDue = Math.max(0, grossTotal - cumulativePaid);
+    const isPartial = balanceDue > 0;
+
+    const branding = getClinicBranding();
+    const receiptNo = payment.id ? `RCPT-${payment.id.substring(0, 8).toUpperCase()}` : 'RCPT-001';
 
     const receiptData = {
-      clinicName: 'Rafi Dental Clinic',
-      clinicAddress: '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452',
-      clinicPhone: '094430 23648',
+      clinicName: branding.name,
+      clinicAddress: branding.address,
+      clinicPhone: branding.phone,
       patientName: visit.patient.name,
-      patientId: visit.patient.id,
+      patientAge: visit.patient?.age ?? undefined,
+      patientGender: visit.patient?.gender || undefined,
       patientPhone: visit.patient.phone,
-      visitId: visit.id,
-      visitDate: visit.createdAt.toLocaleDateString(),
-      doctorName: doctorName,
+      visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
+      doctorName,
       consultationFee,
+      treatmentFee,
       medicineCost,
-      totalAmount: payment.amount,
+      totalAmount: grossTotal > 0 ? grossTotal : payment.amount,
       amountPaid: payment.amount,
-      paymentMethod: payment.method,
-      paymentDate: new Date(payment.date).toLocaleDateString(),
-      paymentStatus: payment.status,
-      receiptNo: payment.id ? `RCPT-${payment.id.substring(0, 8).toUpperCase()}` : 'RCPT-001',
+      priorPaid,
+      cumulativePaid,
+      balanceDue,
+      isPartial,
+      paymentNumber: paymentIndex >= 0 ? paymentIndex + 1 : 1,
+      totalPaymentsCount: validPayments.length,
+      paymentMethod: payment.method || 'Cash',
+      paymentDate: payment.date ? new Date(payment.date).toISOString() : (payment.createdAt ? new Date(payment.createdAt).toISOString() : new Date().toISOString()),
+      paymentStatus: isPartial ? 'Partially Paid' : 'Paid',
+      paymentNotes: payment.notes || undefined,
+      receiptNo,
       receivedBy: req.user?.username || 'Staff',
     };
 
-    const pdfBuffer = await generateReceiptPDF(receiptData as any);
+    const pdfBuffer = await generateReceiptPDF(receiptData);
 
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`receipt_${visit.patient.id}.pdf`);
+    res.attachment(`receipt_${receiptNo}.pdf`);
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating receipt PDF:', error);
@@ -230,7 +280,7 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
 
     const payments = validPayments.map((p: any) => ({
       receiptNo: p.id ? `RCPT-${p.id.substring(0, 8).toUpperCase()}` : 'RCPT',
-      date: p.date ? new Date(p.date).toLocaleDateString('en-IN') : new Date(p.createdAt).toLocaleDateString('en-IN'),
+      date: p.date ? new Date(p.date).toISOString() : new Date(p.createdAt).toISOString(),
       method: p.method || 'Cash',
       amount: p.amount || 0
     }));
@@ -238,16 +288,17 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
     const status = amountDue === 0 ? 'Fully Paid' : paidTotal > 0 ? 'Partially Paid' : 'Unpaid';
     const invoiceNumber = `INV-${visit.id.substring(0, 8).toUpperCase()}`;
 
-    const { generateInvoicePDF } = await import('../services/documentService');
+    const branding = getClinicBranding();
+
     const pdfBuffer = await generateInvoicePDF({
-      clinicName: 'Rafi Dental Clinic',
-      clinicAddress: '37, Dr.Venkatraman St, near Government Hospital, Gopichettipalayam, Gobichettipalayam, Tamil Nadu 638452',
-      clinicPhone: '094430 23648',
+      clinicName: branding.name,
+      clinicAddress: branding.address,
+      clinicPhone: branding.phone,
       invoiceNumber,
-      visitId: visit.id,
-      visitDate: visit.createdAt.toLocaleDateString('en-IN'),
+      visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
       patientName: visit.patient.name,
-      patientId: visit.patient.id,
+      patientAge: visit.patient?.age ?? undefined,
+      patientGender: visit.patient?.gender || undefined,
       patientPhone: visit.patient.phone,
       doctorName,
       consultationFee,
@@ -289,11 +340,12 @@ export const getPurchaseOrderPDF = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Purchase Order not found.' });
     }
 
-    const { generatePurchaseOrderPDF } = await import('../services/documentService');
+    const branding = getClinicBranding();
+
     const pdfBuffer = await generatePurchaseOrderPDF({
-      clinicName: 'DentalCore Dental Clinic',
+      clinicName: branding.name,
       orderNumber: po.orderNumber,
-      orderDate: po.orderDate ? new Date(po.orderDate).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN'),
+      orderDate: po.orderDate ? new Date(po.orderDate).toISOString() : new Date().toISOString(),
       supplierName: po.supplier?.name || 'Supplier',
       supplierEmail: po.supplier?.email || undefined,
       supplierPhone: po.supplier?.phone || undefined,
@@ -304,7 +356,7 @@ export const getPurchaseOrderPDF = async (req: Request, res: Response) => {
         total: item.totalAmount || (item.quantity * item.unitPrice),
       })),
       totalAmount: po.totalAmount,
-      expectedDate: po.expectedDate ? new Date(po.expectedDate).toLocaleDateString('en-IN') : undefined,
+      expectedDate: po.expectedDate ? new Date(po.expectedDate).toISOString() : undefined,
       notes: po.notes || undefined,
     });
 
@@ -316,4 +368,3 @@ export const getPurchaseOrderPDF = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to generate purchase order PDF' });
   }
 };
-

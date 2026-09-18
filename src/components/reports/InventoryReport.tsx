@@ -154,16 +154,6 @@ export function InventoryReport({ dateRange }: InventoryReportProps) {
       cell: ({ row }) => <div className="text-center font-mono font-semibold text-slate-800 text-xs">{row.original.balanceAfter}</div>
     },
     {
-      header: () => <div className="text-center font-semibold text-slate-600">Reference</div>,
-      accessorKey: 'referenceType',
-      cell: ({ row }) => (
-        <div className="text-center text-xs text-slate-500">
-          <span className="font-medium text-slate-700">{row.original.referenceType}</span>
-          {row.original.referenceId !== '—' && <span className="block font-mono text-[10px] text-slate-400">{row.original.referenceId.slice(0, 10)}</span>}
-        </div>
-      )
-    },
-    {
       header: () => <div className="text-center font-semibold text-slate-600">Performed By</div>,
       accessorKey: 'performedBy',
       cell: ({ row }) => <div className="text-center text-slate-600 text-xs">{row.original.performedBy}</div>
@@ -235,7 +225,6 @@ export function InventoryReport({ dateRange }: InventoryReportProps) {
       >
         <SvgBarChart
           data={comparisonData}
-          horizontal={true}
         />
       </ReportChartCard>
 

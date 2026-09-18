@@ -146,37 +146,90 @@ export const exportQueue = async (req: Request, res: Response, next: NextFunctio
   try {
     const search = req.query.search as string;
     const format = req.query.format as string;
+    const visitType = req.query.visitType as string;
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const whereClause: any = {
+      createdAt: { gte: startOfDay, lte: endOfDay }
+    };
+
+    // If logged in as Doctor, only export patients assigned to this doctor (matching Queue UI)
+    if (req.user && ['Head Doctor', 'Duty Doctor'].includes(req.user.role) && req.user.staffId) {
+      whereClause.assignedDoctorId = req.user.staffId;
+    }
 
     const queue = await prisma.queueEntry.findMany({
+      where: whereClause,
       orderBy: { position: 'asc' },
-      include: { visit: { include: { patient: true } } }
+      include: {
+        visit: {
+          include: {
+            patient: true,
+            appointment: true
+          }
+        }
+      }
     });
 
-    const flatData = queue.map(q => ({
-      queueId: q.id,
-      patientName: q.visit?.patient?.name || 'Unknown',
-      position: q.position,
-      status: q.status,
-      priority: q.priority ? 'Yes' : 'No',
-      arrivalTime: q.arrivalTime
-    }));
+    // Check past completed visits to determine Patient Type
+    const patientIds = Array.from(new Set(queue.map(q => q.patientId).filter(Boolean)));
+    const pastCompletedVisits = await prisma.visit.findMany({
+      where: {
+        patientId: { in: patientIds },
+        status: 'COMPLETED'
+      },
+      select: { id: true, patientId: true }
+    });
+
+    const flatData = queue.map(q => {
+      const v = q.visit;
+      const isAppointment = Boolean(v?.appointmentId);
+      const rowVisitType = isAppointment ? 'Appointment' : 'Walk-in';
+
+      const hasOtherCompleted = pastCompletedVisits.some(pv => pv.patientId === q.patientId && pv.id !== q.visitId);
+      const patientType = hasOtherCompleted ? 'Existing Patient' : 'New Patient';
+
+      let displayStatus = q.status;
+      if (q.status === 'Waiting') displayStatus = 'Waiting';
+      else if (q.status === 'In Progress' || q.status === 'With Doctor') displayStatus = 'In Progress';
+      else if (q.status === 'Called') displayStatus = 'Called';
+      else if (q.status === 'Completed') displayStatus = 'Completed';
+      else if (q.status === 'Transferred') displayStatus = 'Transferred';
+
+      return {
+        token: `#${q.position}`,
+        patientName: v?.patient?.name || 'Unknown',
+        reasonForVisit: v?.reasonForVisit || 'Not Specified',
+        visitType: rowVisitType,
+        patientType,
+        status: displayStatus
+      };
+    });
 
     let filteredData = flatData;
+    if (visitType && visitType !== 'all') {
+      filteredData = filteredData.filter(d => d.visitType.toLowerCase() === visitType.toLowerCase());
+    }
     if (search) {
       const searchLower = search.toLowerCase();
-      filteredData = flatData.filter(d => 
+      filteredData = filteredData.filter(d =>
         d.patientName.toLowerCase().includes(searchLower) ||
-        d.queueId.toLowerCase().includes(searchLower)
+        d.reasonForVisit.toLowerCase().includes(searchLower) ||
+        d.token.toLowerCase().includes(searchLower)
       );
     }
 
     const columns: ExportColumn[] = [
-      { key: 'queueId', label: 'Queue ID' },
+      { key: 'token', label: 'Token' },
       { key: 'patientName', label: 'Patient Name' },
-      { key: 'position', label: 'Position' },
-      { key: 'status', label: 'Status' },
-      { key: 'priority', label: 'Priority' },
-      { key: 'arrivalTime', label: 'Arrival Time' }
+      { key: 'reasonForVisit', label: 'Reason for Visit' },
+      { key: 'visitType', label: 'Visit Type' },
+      { key: 'patientType', label: 'Patient Type' },
+      { key: 'status', label: 'Status' }
     ];
 
     if (format === 'csv') {
@@ -190,7 +243,8 @@ export const exportQueue = async (req: Request, res: Response, next: NextFunctio
       res.attachment('queue_export.xlsx');
       return res.send(xlsx);
     } else if (format === 'pdf') {
-      const pdf = await generatePDF(columns, filteredData, 'Queue Report', `Total Patients in Queue: ${filteredData.length}`);
+      const todayStr = new Date().toISOString().split('T')[0];
+      const pdf = await generatePDF(columns, filteredData, 'Queue Report', `Date: ${todayStr} | Total Patients in Queue: ${filteredData.length}`);
       res.header('Content-Type', 'application/pdf');
       res.attachment('queue_export.pdf');
       return res.send(pdf);

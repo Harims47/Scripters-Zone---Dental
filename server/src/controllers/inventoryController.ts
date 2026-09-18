@@ -335,32 +335,58 @@ export const exportInventory = async (req: Request, res: Response, next: NextFun
 
     const medicines = await prisma.medicine.findMany({
       where,
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
+      include: { category: true }
+    });
+
+    const flatData = medicines.map(m => {
+      const isMaterial = MATERIAL_FORMS.includes(m.form);
+      const typeLabel = isMaterial ? 'Material' : 'Medicine';
+
+      let stockStatus = 'In Stock';
+      if (m.status === 'Inactive') {
+        stockStatus = 'Inactive';
+      } else if (m.currentStock === 0) {
+        stockStatus = 'Out of Stock';
+      } else if (m.currentStock < m.stockWarningLevel) {
+        stockStatus = 'Low Stock';
+      }
+
+      return {
+        name: m.genericName ? `${m.name} (${m.genericName})` : m.name,
+        type: typeLabel,
+        category: m.category?.name || '—',
+        unit: m.unit || '—',
+        price: m.unitPrice,
+        currentStock: m.currentStock,
+        warningLevel: m.stockWarningLevel,
+        status: stockStatus
+      };
     });
 
     const columns: ExportColumn[] = [
-      { key: 'id', label: 'Medicine ID' },
-      { key: 'name', label: 'Name' },
-      { key: 'manufacturer', label: 'Manufacturer' },
-      { key: 'categoryId', label: 'Category ID' },
-      { key: 'batchNumber', label: 'Batch Number' },
+      { key: 'name', label: 'Item / Material' },
+      { key: 'type', label: 'Type' },
+      { key: 'category', label: 'Category' },
+      { key: 'unit', label: 'Unit' },
+      { key: 'price', label: 'Price' },
       { key: 'currentStock', label: 'Current Stock' },
-      { key: 'stockWarningLevel', label: 'Warning Level' },
-      { key: 'price', label: 'Price' }
+      { key: 'warningLevel', label: 'Min Level' },
+      { key: 'status', label: 'Status' }
     ];
 
     if (format === 'csv') {
-      const csv = generateCSV(columns, medicines);
+      const csv = generateCSV(columns, flatData);
       res.header('Content-Type', 'text/csv');
       res.attachment('inventory_export.csv');
       return res.send(csv);
     } else if (format === 'xlsx') {
-      const xlsx = await generateXLSX(columns, medicines, 'Inventory');
+      const xlsx = await generateXLSX(columns, flatData, 'Inventory');
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.attachment('inventory_export.xlsx');
       return res.send(xlsx);
     } else if (format === 'pdf') {
-      const pdf = await generatePDF(columns, medicines, 'Inventory Report', `Total Items: ${medicines.length}`);
+      const pdf = await generatePDF(columns, flatData, 'Inventory Report', `Total Items: ${flatData.length}`);
       res.header('Content-Type', 'application/pdf');
       res.attachment('inventory_export.pdf');
       return res.send(pdf);

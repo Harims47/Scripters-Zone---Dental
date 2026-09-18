@@ -508,7 +508,33 @@ export function PartialPaymentAlertsPage() {
                           <p className="text-[11px] text-slate-600 italic break-words">{p.notes}</p>
                         )}
                       </div>
-                      <span className="font-bold text-slate-900 shrink-0">₹{p.amount}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-bold text-slate-900">₹{p.amount}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-teal-600 hover:bg-teal-50 text-[11px] flex items-center gap-1"
+                          title="Print receipt for this payment"
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`${API_BASE_URL}/api/documents/receipt/${viewDetailsAlert.visitId}?paymentId=${encodeURIComponent(p.id)}`, {
+                                method: 'GET',
+                                credentials: 'include'
+                              });
+                              if (!response.ok) throw new Error('Failed to generate receipt');
+                              const blob = await response.blob();
+                              const url = window.URL.createObjectURL(blob);
+                              window.open(url, '_blank');
+                              setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                            } catch (err) {
+                              toast.error('Could not generate receipt PDF');
+                            }
+                          }}
+                        >
+                          <Receipt className="w-3 h-3" />
+                          <span>Receipt</span>
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

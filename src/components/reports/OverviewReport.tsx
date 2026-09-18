@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { KpiCard } from '../dashboard/dashboard-components'
 import { Users, CheckCircle, Clock, IndianRupee, AlertCircle, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
-import { ReportChartCard, SvgLineChart } from './ReportChartCard'
+import { ReportChartCard, SvgDailyBarChart } from './ReportChartCard'
 import { DataTable, DataTableEmpty } from '../data-table/data-table'
 import { DataTableToolbar } from '../data-table/data-table-toolbar'
 import type { ColumnDef, PaginationState } from '@tanstack/react-table'
@@ -47,7 +47,12 @@ export function OverviewReport({ dateRange }: OverviewReportProps) {
   }, [fetchData])
 
   const trend = data?.trend || []
-  const filteredTrend = trend.filter(row => {
+  // Sort table rows descending so the latest date appears first
+  const sortedTrend = useMemo(() => {
+    return [...trend].sort((a, b) => b.date.localeCompare(a.date))
+  }, [trend])
+
+  const filteredTrend = sortedTrend.filter(row => {
     if (!search) return true
     return row.date.includes(search)
   })
@@ -195,16 +200,16 @@ export function OverviewReport({ dateRange }: OverviewReportProps) {
 
       {/* Chart Card */}
       <ReportChartCard
-        title="Daily Clinic Visits Trend"
-        subtitle="Patient visit volume vs completed consultations"
+        title="Daily Clinic Visits Volume"
+        subtitle="Daily consultation volume & completed consultations"
         loading={loading}
         empty={!loading && trend.length === 0}
       >
-        <SvgLineChart
+        <SvgDailyBarChart
           data={chartPoints}
           primaryLabel="Total Visits"
           secondaryLabel="Completed"
-          lineColor="#0d9488"
+          primaryColor="#0d9488"
           secondaryColor="#10b981"
         />
       </ReportChartCard>
