@@ -383,6 +383,8 @@ export function DoctorWorkspacePage() {
   const visitDoctor = staff.find(s => s.id === visit?.doctorId)
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false)
+  const [treatmentZeroReason, setTreatmentZeroReason] = useState<string>('')
+  const [treatmentModalInitialEdit, setTreatmentModalInitialEdit] = useState(false)
   const [viewTreatmentModalOpen, setViewTreatmentModalOpen] = useState(false)
   const [consultationModalOpen, setConsultationModalOpen] = useState(false)
   const [viewConsultationModalOpen, setViewConsultationModalOpen] = useState(false)
@@ -789,8 +791,8 @@ export function DoctorWorkspacePage() {
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Queue
           </Button>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
-              <Plus className="mr-2 h-4 w-4 text-emerald-600" /> Treatment Plan
+            <Button variant="outline" size="sm" aria-label="Treatment" onClick={() => { setTreatmentModalInitialEdit(false); setTreatmentModalOpen(true); }} className="h-9 shadow-sm bg-white border-slate-200">
+              <Plus className="mr-2 h-4 w-4 text-emerald-600" /> Treatment
               {treatmentPlan?.items?.filter((i: any) => i.status === 'Planned').length > 0 && (
                 <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                   {treatmentPlan.items.filter((i: any) => i.status === 'Planned').length} planned
@@ -909,7 +911,7 @@ export function DoctorWorkspacePage() {
                     <Button variant="outline" size="sm" onClick={() => setViewTreatmentModalOpen(true)} className="h-8 px-3 text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800">
                       <Eye className="h-4 w-4 mr-1.5" /> View
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={() => setTreatmentModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                    <Button variant="secondary" size="sm" onClick={() => { setTreatmentModalInitialEdit(true); setTreatmentModalOpen(true); }} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
                       <Edit className="h-4 w-4 mr-1.5" /> Edit
                     </Button>
                   </div>
@@ -926,13 +928,18 @@ export function DoctorWorkspacePage() {
 
                         return (
                           <div key={item.id} className="text-slate-800">
-                            <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {item.toothNumber && (
+                                <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
+                                  Tooth {item.toothNumber}
+                                </span>
+                              )}
                               <span className="font-medium text-slate-900">{procedure} {variant}</span>
-                              {category && <span className="text-xs text-slate-500 ml-2">({category})</span>}
+                              {category && <span className="text-xs text-slate-500 ml-1">({category})</span>}
                             </div>
                             {notes && (
                               <div className="text-xs text-slate-600 mt-0.5 ml-1">
-                                Tooth / Notes: {notes}
+                                Notes: {notes}
                               </div>
                             )}
                           </div>
@@ -1178,31 +1185,43 @@ export function DoctorWorkspacePage() {
 
         {/* Treatment Plan Modal */}
         <Dialog open={treatmentModalOpen} onOpenChange={setTreatmentModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-slate-50 p-0 gap-0">
-            <DialogHeader className="p-6 pb-4 bg-white border-b border-slate-100">
-              <DialogTitle>Treatment Plan</DialogTitle>
+          <DialogContent className="max-w-7xl w-[96vw] max-h-[96vh] flex flex-col p-0 gap-0 bg-slate-50 overflow-hidden">
+            <DialogHeader className="px-5 py-2.5 bg-white border-b border-slate-100 shrink-0">
+              <DialogTitle className="text-base font-bold text-slate-800">Treatment Plan</DialogTitle>
             </DialogHeader>
-            <div className="p-6 pb-20">
-              <TreatmentPlanUI
-                patientId={patient.id}
-                currentVisitId={visitId!}
-                treatmentFee={treatmentFee}
-                onSaveTreatmentFee={async (newFee) => {
-                  setTreatmentFee(newFee)
-                  if (visitId) {
-                    await saveConsultation(visitId, {
-                      reasonForVisit: reason || visit?.reasonForVisit || '',
-                      clinicalNotes: notes,
-                      consultationFee,
-                      treatmentFee: newFee
-                    })
-                  }
-                }}
-              />
+            <div className="p-3 sm:p-3.5 overflow-y-auto flex-1">
+              {treatmentModalOpen && (
+                <TreatmentPlanUI
+                  key={`${patient.id}-${visitId || 'no-visit'}`}
+                  patientId={patient.id}
+                  currentVisitId={visitId!}
+                  treatmentFee={treatmentFee}
+                  initialTreatmentZeroReason={treatmentZeroReason}
+                  initialEdit={treatmentModalInitialEdit}
+                  onSaveTreatmentFee={async (newFee, zeroReason) => {
+                    setTreatmentFee(newFee);
+                    if (zeroReason !== undefined) setTreatmentZeroReason(zeroReason);
+                    if (visitId) {
+                      let updatedNotes = notes;
+                      updatedNotes = updatedNotes.replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '').trim();
+                      if (newFee === 0 && zeroReason) {
+                        updatedNotes = `${updatedNotes}\n[Treatment Fee Waiver Reason: ${zeroReason.trim()}]`.trim();
+                        setNotes(updatedNotes);
+                      }
+                      await saveConsultation(visitId, {
+                        reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
+                        clinicalNotes: updatedNotes,
+                        consultationFee,
+                        treatmentFee: newFee
+                      });
+                    }
+                  }}
+                  onDone={() => {
+                    setTreatmentModalOpen(false);
+                  }}
+                />
+              )}
             </div>
-            <DialogFooter className="p-4 bg-white border-t border-slate-100 absolute bottom-0 left-0 right-0">
-              <Button onClick={() => setTreatmentModalOpen(false)}>Done</Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -1228,13 +1247,18 @@ export function DoctorWorkspacePage() {
 
                       return (
                         <div key={item.id} className="text-sm">
-                          <div className="font-semibold text-slate-900">
-                            {procedure} {variant}
-                            {category && <span className="text-xs font-medium text-slate-500 ml-2">({category})</span>}
+                          <div className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                            {item.toothNumber && (
+                              <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
+                                Tooth {item.toothNumber}
+                              </span>
+                            )}
+                            <span>{procedure} {variant}</span>
+                            {category && <span className="text-xs font-medium text-slate-500 ml-1">({category})</span>}
                           </div>
                           {notes && (
                             <div className="text-xs text-slate-600 mt-0.5">
-                              Tooth / Notes: <span className="font-medium text-slate-800">{notes}</span>
+                              Notes: <span className="font-medium text-slate-800">{notes}</span>
                             </div>
                           )}
                         </div>
