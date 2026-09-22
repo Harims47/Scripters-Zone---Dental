@@ -791,6 +791,9 @@ export function DoctorWorkspacePage() {
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Queue
           </Button>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
+              <FileText className="mr-2 h-4 w-4 text-blue-600" /> Consultation
+            </Button>
             <Button variant="outline" size="sm" aria-label="Treatment" onClick={() => { setTreatmentModalInitialEdit(false); setTreatmentModalOpen(true); }} className="h-9 shadow-sm bg-white border-slate-200">
               <Plus className="mr-2 h-4 w-4 text-emerald-600" /> Treatment
               {treatmentPlan?.items?.filter((i: any) => i.status === 'Planned').length > 0 && (
@@ -798,9 +801,6 @@ export function DoctorWorkspacePage() {
                   {treatmentPlan.items.filter((i: any) => i.status === 'Planned').length} planned
                 </span>
               )}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
-              <FileText className="mr-2 h-4 w-4 text-blue-600" /> Consultation
             </Button>
             <Button variant="outline" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
               <Pill className="mr-2 h-4 w-4 text-indigo-600" /> Prescription

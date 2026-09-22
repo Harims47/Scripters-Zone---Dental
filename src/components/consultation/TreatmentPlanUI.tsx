@@ -762,8 +762,8 @@ export function TreatmentPlanUI({
             </div>
           )}
 
-          {/* Past Completed History (Collapsed) */}
-          {pastCompletedItems.length > 0 && (
+          {/* Past Completed History (Hidden as of now) */}
+          {false as boolean && pastCompletedItems.length > 0 && (
             <div className="pt-2 border-t border-slate-100">
               <button
                 type="button"
