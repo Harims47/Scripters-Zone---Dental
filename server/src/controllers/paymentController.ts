@@ -104,17 +104,17 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
       }
       // Note: Head Doctor has authority across all visits
 
-      let expectedAmount = visit.amountDue || 0;
+      let expectedAmount = Math.round(visit.amountDue || 0);
       // If medicineCost is not yet computed, but prescription has items, compute and persist
       if ((!visit.medicineCost || visit.medicineCost === 0) && visit.prescription?.items?.length) {
         const medIds = visit.prescription.items.map((i: any) => i.medicineId);
         const meds = await tx.medicine.findMany({ where: { id: { in: medIds } } });
-        const medCost = visit.prescription.items.reduce((sum: number, item: any) => {
+        const medCost = Math.round(visit.prescription.items.reduce((sum: number, item: any) => {
           const m = meds.find(med => med.id === item.medicineId);
           return sum + (item.quantity * (m?.unitPrice || 0));
-        }, 0);
+        }, 0) * 100) / 100;
         if (medCost > 0) {
-          expectedAmount = (visit.consultationFee || 0) + (visit.treatmentFee || 0) + medCost;
+          expectedAmount = Math.round((visit.consultationFee || 0) + (visit.treatmentFee || 0) + medCost);
           await tx.visit.update({
             where: { id: visit.id },
             data: { medicineCost: medCost, amountDue: expectedAmount }
@@ -123,7 +123,7 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
       }
 
       const totalPaid = visit.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
-      const balance = expectedAmount - totalPaid;
+      const balance = Math.max(0, expectedAmount - totalPaid);
 
       if (visit.status === 'COMPLETED' || balance <= 0) {
         throw { status: 409, message: 'Payment already completed for this visit.' };
@@ -353,8 +353,9 @@ export const exportPartialPayments = async (req: Request, res: Response, next: N
       const vPayments = v.payments || [];
       if (vPayments.length > 0) {
         const totalPaid = vPayments.reduce((sum, p) => sum + p.amount, 0);
-        const amountDue = v.amountDue || 0;
-        const balance = amountDue - totalPaid;
+        const rawDue = (v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0);
+        const amountDue = Math.round(rawDue > 0 ? rawDue : (v.amountDue || 0));
+        const balance = Math.max(0, amountDue - totalPaid);
 
         if (balance > 0) {
           const earliestPayment = vPayments.reduce((prev, curr) =>
@@ -370,7 +371,7 @@ export const exportPartialPayments = async (req: Request, res: Response, next: N
             patientName: v.patient?.name || 'Unknown',
             doctorName: docName,
             totalAmount: `₹${amountDue}`,
-            paidAmount: `₹${totalPaid}`,
+            paidAmount: `₹${Math.round(totalPaid * 100) / 100}`,
             balance: `₹${balance}`,
             partialPaymentDate: earliestDate.toLocaleDateString(),
             daysOutstanding: `${daysOutstanding} days`,

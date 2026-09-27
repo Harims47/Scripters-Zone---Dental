@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1, // Ensure single worker for DB state consistency
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://localhost:5174',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off', // 'retain-on-failure' if useful later

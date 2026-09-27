@@ -6,7 +6,9 @@ export const createConsultationSchema = z.object({
     reasonForVisit: z.string().min(1, 'Reason for visit is required'),
     clinicalNotes: z.string().optional().default(''),
     consultationFee: z.number().min(0, 'Fee cannot be negative').optional(),
-    treatmentFee: z.number().min(0, 'Treatment fee cannot be negative').optional()
+    treatmentFee: z.number().min(0, 'Treatment fee cannot be negative').optional(),
+    consultationWaiverReason: z.string().nullable().optional(),
+    treatmentWaiverReason: z.string().nullable().optional()
   })
 });
 
@@ -15,7 +17,9 @@ export const updateConsultationSchema = z.object({
     reasonForVisit: z.string().min(1).optional(),
     clinicalNotes: z.string().optional(),
     consultationFee: z.number().min(0).optional(),
-    treatmentFee: z.number().min(0, 'Treatment fee cannot be negative').optional()
+    treatmentFee: z.number().min(0, 'Treatment fee cannot be negative').optional(),
+    consultationWaiverReason: z.string().nullable().optional(),
+    treatmentWaiverReason: z.string().nullable().optional()
   })
 });
 

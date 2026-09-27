@@ -33,16 +33,16 @@ const sheetVariants = cva(
         top: "inset-x-0 top-0 border-b border-slate-100/60 data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
         bottom:
           "inset-x-0 bottom-0 border-t border-slate-100/60 data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-        left: "inset-y-0 left-0 h-full w-full border-r border-slate-100/60 data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-md",
+        left: "inset-y-0 left-0 h-full w-[85vw] max-w-xs sm:max-w-md border-r border-slate-100/60 data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
         right:
-          "inset-y-0 right-0 h-full w-full border-l border-slate-100/60 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-md",
+          "inset-y-0 right-0 h-full w-[90vw] sm:w-full border-l border-slate-100/60 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-md",
       },
       size: {
         default: "sm:max-w-md",
         sm: "sm:max-w-sm",
         lg: "sm:max-w-lg",
         xl: "sm:max-w-xl",
-        full: "sm:max-w-[90vw]",
+        full: "max-w-[95vw] sm:max-w-[90vw]",
       },
     },
     defaultVariants: {
@@ -85,7 +85,7 @@ const SheetHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left px-8 py-6 bg-white border-b border-slate-100/60 flex-shrink-0 z-10",
+      "flex flex-col space-y-2 text-center sm:text-left px-4 sm:px-8 py-6 bg-white border-b border-slate-100/60 flex-shrink-0 z-10",
       className
     )}
     {...props}
@@ -98,7 +98,7 @@ const SheetScrollArea = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex-1 overflow-y-auto px-8 py-8 space-y-8 bg-slate-50/50", className)}
+    className={cn("flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 bg-slate-50/50", className)}
     {...props}
   />
 )
@@ -110,7 +110,7 @@ const SheetFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-3 px-8 py-5 bg-white border-t border-slate-100/60 mt-auto flex-shrink-0 z-10",
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-3 px-4 sm:px-8 py-4 sm:py-5 bg-white border-t border-slate-100/60 mt-auto flex-shrink-0 z-10",
       className
     )}
     {...props}

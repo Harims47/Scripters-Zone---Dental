@@ -27,8 +27,8 @@ export function DataTablePagination<TData>({
   totalRecords,
 }: DataTablePaginationProps<TData>) {
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between px-2 py-4 gap-4">
-      <div className="flex-1 text-sm text-muted-foreground w-full sm:w-auto text-center sm:text-left">
+    <div className="flex flex-col sm:flex-row items-center justify-between px-2 py-4 gap-4 w-full min-w-0">
+      <div className="text-sm text-muted-foreground w-full sm:w-auto text-center sm:text-left">
         {showSelection ? (
           <>
             {table.getFilteredSelectedRowModel().rows.length} of{" "}
@@ -38,7 +38,7 @@ export function DataTablePagination<TData>({
           <>Total {totalRecords ?? table.getFilteredRowModel().rows.length} record(s)</>
         )}
       </div>
-      <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 space-x-0 sm:space-x-6 lg:space-x-8 w-full sm:w-auto justify-center">
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 lg:gap-8 w-full sm:w-auto">
         <div className="flex items-center space-x-2">
           <p className="text-sm font-medium whitespace-nowrap">Rows per page</p>
           <Select

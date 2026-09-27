@@ -38,17 +38,21 @@ async function cleanDataExceptHeadDoctor() {
   await prisma.visit.deleteMany({});
   await prisma.appointment.deleteMany({});
 
+  console.log('Deleting Notifications, Reimbursements, Migration Records...');
+  await prisma.notification.deleteMany({});
+  await prisma.reimbursementDocument.deleteMany({});
+  await prisma.historicalMigrationRecord.deleteMany({});
+  await prisma.historicalMigrationBatch.deleteMany({});
+
   console.log('Deleting Patients...');
   await prisma.patient.deleteMany({});
 
-  // 2. Inventory & Supplier Catalogs
-  console.log('Deleting Supplier-Category Links & Suppliers...');
-  await prisma.supplierMedicineCategory.deleteMany({});
-  await prisma.supplier.deleteMany({});
-
-  console.log('Deleting Medicines & Medicine Categories...');
-  await prisma.medicine.deleteMany({});
-  await prisma.medicineCategory.deleteMany({});
+  // 2. Inventory & Supplier Catalogs (Preserved as requested)
+  console.log('Preserving Inventory: Medicines, Categories, Suppliers intact...');
+  // await prisma.supplierMedicineCategory.deleteMany({});
+  // await prisma.supplier.deleteMany({});
+  // await prisma.medicine.deleteMany({});
+  // await prisma.medicineCategory.deleteMany({});
 
   // 3. Delete Non-Head-Doctor Users & Staff
   console.log('Deleting Non-Head-Doctor Users...');

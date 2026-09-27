@@ -70,6 +70,9 @@ export interface Consultation {
   reasonForVisit: string
   clinicalNotes: string
   consultationFee: number
+  treatmentFee?: number
+  consultationWaiverReason?: string | null
+  treatmentWaiverReason?: string | null
   status: 'In Progress' | 'Completed'
 }
 
@@ -159,6 +162,25 @@ export interface TreatmentPlan {
   id: string
   patientId: string
   items: TreatmentPlanItem[]
+}
+
+export type DentalImageType = 'OPG' | 'RVG';
+
+export interface DentalImage {
+  id: string;
+  patientId: string;
+  visitId?: string | null;
+  toothNumber?: number | null;
+  type: DentalImageType;
+  title?: string | null;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  imageUrl: string;
+  notes?: string | null;
+  uploadedById?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MedicineCategory {

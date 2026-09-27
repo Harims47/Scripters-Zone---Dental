@@ -113,11 +113,11 @@ export const createPurchaseOrder = async (req: Request, res: Response, next: Nex
     }
 
     // 2. Validate all medicines exist and are Active
-    const medicineIds = items.map((i: any) => i.medicineId);
+    const uniqueMedicineIds = Array.from(new Set(items.map((i: any) => String(i.medicineId)))) as string[];
     const foundMedicines = await prisma.medicine.findMany({
-      where: { id: { in: medicineIds } }
+      where: { id: { in: uniqueMedicineIds } }
     });
-    if (foundMedicines.length !== medicineIds.length) {
+    if (foundMedicines.length !== uniqueMedicineIds.length) {
       return res.status(400).json({ error: 'One or more specified medicines do not exist' });
     }
     const inactiveMedicine = foundMedicines.find(m => m.status === 'Inactive');
@@ -188,11 +188,11 @@ export const updatePurchaseOrder = async (req: Request, res: Response, next: Nex
     }
 
     if (items) {
-      const medicineIds = items.map((i: any) => i.medicineId);
+      const uniqueMedicineIds = Array.from(new Set(items.map((i: any) => String(i.medicineId)))) as string[];
       const foundMedicines = await prisma.medicine.findMany({
-        where: { id: { in: medicineIds } }
+        where: { id: { in: uniqueMedicineIds } }
       });
-      if (foundMedicines.length !== medicineIds.length) {
+      if (foundMedicines.length !== uniqueMedicineIds.length) {
         return res.status(400).json({ error: 'One or more specified medicines do not exist' });
       }
       const inactiveMedicine = foundMedicines.find(m => m.status === 'Inactive');

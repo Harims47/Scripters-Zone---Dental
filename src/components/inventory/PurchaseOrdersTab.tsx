@@ -28,9 +28,10 @@ interface CreatePOItemRow {
 
 interface PurchaseOrdersTabProps {
   initialMedicineId?: string;
+  onGoodsReceived?: () => void;
 }
 
-export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps = {}) {
+export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: PurchaseOrdersTabProps = {}) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -204,6 +205,21 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
     setPoItems((prev) => [...prev, { medicineId: '', orderedQuantity: 50, unitCost: 0 }]);
   };
 
+  const handleAddAllActiveMedicines = () => {
+    const activeMeds = medicines.filter(m => m.status !== 'Inactive');
+    if (activeMeds.length === 0) {
+      toast.error('No active medicines found');
+      return;
+    }
+    const newItems: CreatePOItemRow[] = activeMeds.map((m) => ({
+      medicineId: m.id,
+      orderedQuantity: 50,
+      unitCost: m.unitPrice || 0
+    }));
+    setPoItems(newItems);
+    toast.success(`Loaded all ${newItems.length} active medicines into PO`);
+  };
+
   const handleRemoveItemRow = (idx: number) => {
     setPoItems((prev) => prev.filter((_, i) => i !== idx));
   };
@@ -264,7 +280,7 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
       setDrawerOpen(false);
       fetchOrders();
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to save purchase order');
+      toast.error(err.message || err.response?.data?.error || 'Failed to save purchase order');
     } finally {
       setIsSaving(false);
     }
@@ -577,6 +593,8 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
         purchaseOrder={receiveTargetOrder}
         onSuccess={() => {
           fetchOrders();
+          loadDependencies();
+          onGoodsReceived?.();
         }}
       />
 
@@ -799,15 +817,27 @@ export function PurchaseOrdersTab({ initialMedicineId }: PurchaseOrdersTabProps 
                       <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                         Ordered Medicines ({poItems.length})
                       </Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddItemRow}
-                        className="h-8 px-2.5 text-xs text-teal-700 hover:text-teal-800 hover:bg-teal-50"
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1" /> Add Row
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddAllActiveMedicines}
+                          className="h-8 px-2.5 text-xs text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 border-indigo-200"
+                          title="Auto-fill all active catalog medicines"
+                        >
+                          + Add All Medicines
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddItemRow}
+                          className="h-8 px-2.5 text-xs text-teal-700 hover:text-teal-800 hover:bg-teal-50"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Add Row
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">

@@ -24,45 +24,45 @@ interface ToothLayout {
 // Compact, zero-scroll coordinates for Upper Jaw (Maxillary Arch)
 // Teeth occupy the primary visual space. Left = Patient Right (18..11), Right = Patient Left (21..28)
 const UPPER_TEETH_LAYOUT: ToothLayout[] = [
-  { fdi: 18, x: 74,  y: 198, rot: -88, lx: 40,  ly: 198 },
-  { fdi: 17, x: 78,  y: 168, rot: -85, lx: 44,  ly: 168 },
-  { fdi: 16, x: 84,  y: 138, rot: -78, lx: 50,  ly: 138 },
-  { fdi: 15, x: 96,  y: 108, rot: -64, lx: 64,  ly: 100 },
-  { fdi: 14, x: 114, y: 82,  rot: -46, lx: 86,  ly: 68  },
-  { fdi: 13, x: 140, y: 64,  rot: -28, lx: 118, ly: 44  },
-  { fdi: 12, x: 168, y: 52,  rot: -16, lx: 156, ly: 28  },
-  { fdi: 11, x: 196, y: 46,  rot: -6,  lx: 192, ly: 20  },
+  { fdi: 18, x: 74, y: 198, rot: -88, lx: 40, ly: 198 },
+  { fdi: 17, x: 78, y: 168, rot: -85, lx: 44, ly: 168 },
+  { fdi: 16, x: 84, y: 138, rot: -78, lx: 50, ly: 138 },
+  { fdi: 15, x: 96, y: 108, rot: -64, lx: 64, ly: 100 },
+  { fdi: 14, x: 114, y: 82, rot: -46, lx: 86, ly: 68 },
+  { fdi: 13, x: 140, y: 64, rot: -28, lx: 118, ly: 44 },
+  { fdi: 12, x: 168, y: 52, rot: -16, lx: 156, ly: 28 },
+  { fdi: 11, x: 196, y: 46, rot: -6, lx: 192, ly: 20 },
 
-  { fdi: 21, x: 224, y: 46,  rot: 6,   lx: 228, ly: 20  },
-  { fdi: 22, x: 252, y: 52,  rot: 16,  lx: 264, ly: 28  },
-  { fdi: 23, x: 280, y: 64,  rot: 28,  lx: 302, ly: 44  },
-  { fdi: 24, x: 306, y: 82,  rot: 46,  lx: 334, ly: 68  },
-  { fdi: 25, x: 324, y: 108, rot: 64,  lx: 356, ly: 100 },
-  { fdi: 26, x: 336, y: 138, rot: 78,  lx: 370, ly: 138 },
-  { fdi: 27, x: 342, y: 168, rot: 85,  lx: 376, ly: 168 },
-  { fdi: 28, x: 346, y: 198, rot: 88,  lx: 380, ly: 198 },
+  { fdi: 21, x: 224, y: 46, rot: 6, lx: 228, ly: 20 },
+  { fdi: 22, x: 252, y: 52, rot: 16, lx: 264, ly: 28 },
+  { fdi: 23, x: 280, y: 64, rot: 28, lx: 302, ly: 44 },
+  { fdi: 24, x: 306, y: 82, rot: 46, lx: 334, ly: 68 },
+  { fdi: 25, x: 324, y: 108, rot: 64, lx: 356, ly: 100 },
+  { fdi: 26, x: 336, y: 138, rot: 78, lx: 370, ly: 138 },
+  { fdi: 27, x: 342, y: 168, rot: 85, lx: 376, ly: 168 },
+  { fdi: 28, x: 346, y: 198, rot: 88, lx: 380, ly: 198 },
 ];
 
 // Compact, zero-scroll coordinates for Lower Jaw (Mandibular Arch)
 // Left = Patient Right (48..41), Right = Patient Left (31..38)
 const LOWER_TEETH_LAYOUT: ToothLayout[] = [
-  { fdi: 48, x: 76,  y: 226, rot: -92,  lx: 42,  ly: 226 },
-  { fdi: 47, x: 80,  y: 256, rot: -96,  lx: 46,  ly: 256 },
-  { fdi: 46, x: 86,  y: 286, rot: -102, lx: 52,  ly: 286 },
-  { fdi: 45, x: 98,  y: 316, rot: -116, lx: 66,  ly: 324 },
-  { fdi: 44, x: 116, y: 342, rot: -134, lx: 88,  ly: 358 },
+  { fdi: 48, x: 76, y: 226, rot: -92, lx: 42, ly: 226 },
+  { fdi: 47, x: 80, y: 256, rot: -96, lx: 46, ly: 256 },
+  { fdi: 46, x: 86, y: 286, rot: -102, lx: 52, ly: 286 },
+  { fdi: 45, x: 98, y: 316, rot: -116, lx: 66, ly: 324 },
+  { fdi: 44, x: 116, y: 342, rot: -134, lx: 88, ly: 358 },
   { fdi: 43, x: 142, y: 360, rot: -152, lx: 120, ly: 382 },
   { fdi: 42, x: 170, y: 372, rot: -166, lx: 158, ly: 396 },
   { fdi: 41, x: 196, y: 378, rot: -176, lx: 192, ly: 404 },
 
-  { fdi: 31, x: 224, y: 378, rot: 176,  lx: 228, ly: 404 },
-  { fdi: 32, x: 250, y: 372, rot: 166,  lx: 262, ly: 396 },
-  { fdi: 33, x: 278, y: 360, rot: 152,  lx: 300, ly: 382 },
-  { fdi: 34, x: 304, y: 342, rot: 134,  lx: 332, ly: 358 },
-  { fdi: 35, x: 322, y: 316, rot: 116,  lx: 354, ly: 324 },
-  { fdi: 36, x: 334, y: 286, rot: 102,  lx: 368, ly: 286 },
-  { fdi: 37, x: 340, y: 256, rot: 96,   lx: 374, ly: 256 },
-  { fdi: 38, x: 344, y: 226, rot: 92,   lx: 378, ly: 226 },
+  { fdi: 31, x: 224, y: 378, rot: 176, lx: 228, ly: 404 },
+  { fdi: 32, x: 250, y: 372, rot: 166, lx: 262, ly: 396 },
+  { fdi: 33, x: 278, y: 360, rot: 152, lx: 300, ly: 382 },
+  { fdi: 34, x: 304, y: 342, rot: 134, lx: 332, ly: 358 },
+  { fdi: 35, x: 322, y: 316, rot: 116, lx: 354, ly: 324 },
+  { fdi: 36, x: 334, y: 286, rot: 102, lx: 368, ly: 286 },
+  { fdi: 37, x: 340, y: 256, rot: 96, lx: 374, ly: 256 },
+  { fdi: 38, x: 344, y: 226, rot: 92, lx: 378, ly: 226 },
 ];
 
 /**
@@ -216,7 +216,8 @@ export function FdiToothChart({
   readOnly = false
 }: FdiToothChartProps) {
   const [hoveredTooth, setHoveredTooth] = useState<number | null>(null);
-  const hoveredInfo = hoveredTooth ? getToothInfo(hoveredTooth) : null;
+  const activeTooth = hoveredTooth || (selectedTeeth.length > 0 ? selectedTeeth[selectedTeeth.length - 1] : null);
+  const hoveredInfo = activeTooth ? getToothInfo(activeTooth) : null;
 
   return (
     <div className="bg-gradient-to-b from-slate-50/60 to-white rounded-2xl border border-slate-200/80 p-2.5 sm:p-3 shadow-xs flex flex-col space-y-1.5 select-none w-full">
@@ -429,10 +430,10 @@ export function FdiToothChart({
                       isSelected
                         ? '#0284c7'
                         : isHovered
-                        ? '#0ea5e9'
-                        : hasCompleted
-                        ? '#047857'
-                        : '#334155'
+                          ? '#0ea5e9'
+                          : hasCompleted
+                            ? '#047857'
+                            : '#334155'
                     }
                     fontSize="10.5"
                     fontWeight={isSelected ? '800' : hasCompleted ? '700' : '600'}
@@ -448,33 +449,24 @@ export function FdiToothChart({
       </div>
 
       {/* Tooltip & Status Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 text-xs min-h-[22px]">
+      <div className="flex items-center h-6 min-h-[24px] max-h-[24px] pt-1 border-t border-slate-100 text-[10px] overflow-hidden w-full whitespace-nowrap">
         {hoveredInfo ? (
-          <div className="flex items-center gap-1.5 text-slate-700 animate-fadeIn">
-            <span className="font-bold text-teal-800 bg-teal-100 px-1.5 py-0.2 rounded text-[10px]">
+          <div className="flex items-center gap-1.5 text-slate-700 animate-fadeIn whitespace-nowrap min-w-0 leading-none">
+            <span className="font-bold text-teal-800 bg-teal-100 px-1.5 py-0.5 rounded text-[9.5px] shrink-0 whitespace-nowrap leading-none">
               FDI {hoveredInfo.fdi}
             </span>
-            <span className="font-semibold text-slate-900 text-[11px]">{hoveredInfo.name}</span>
-            <span className="text-slate-400">•</span>
-            <span className="text-slate-500 text-[10px]">{hoveredInfo.jaw} Jaw ({hoveredInfo.type})</span>
+            <span className="font-semibold text-slate-800 text-[10px] whitespace-nowrap leading-none">{hoveredInfo.name}</span>
+            <span className="text-slate-400 shrink-0 text-[10px] leading-none">•</span>
+            <span className="text-slate-500 text-[10px] shrink-0 whitespace-nowrap leading-none">{hoveredInfo.jaw} Jaw ({hoveredInfo.type})</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1 text-slate-500 text-[10px]">
-            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-teal-100 text-teal-700 font-bold text-[9px]">
+          <div className="flex items-center gap-1 text-slate-500 text-[10px] whitespace-nowrap leading-none">
+            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-teal-100 text-teal-700 font-bold text-[9px] shrink-0">
               i
             </span>
-            <span>Click tooth to select • FDI standard (11–48)</span>
+            <span className="whitespace-nowrap">Click tooth to select • FDI standard (11–48)</span>
           </div>
         )}
-
-        <div className="flex items-center gap-2.5 text-[9.5px] text-slate-500 shrink-0">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-teal-600"></span> Selected
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Completed
-          </span>
-        </div>
       </div>
     </div>
   );

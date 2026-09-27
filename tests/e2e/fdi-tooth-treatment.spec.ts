@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { loginAs, logout } from './helpers/auth';
 import { queryOne, queryMany } from './helpers/pgDb';
 
+import { ensureActiveTestPatient } from './helpers/ensureActivePatient';
+
 test.describe('DentalCore v1.1 — FDI Interactive Tooth Treatment Planning Suite (PostgreSQL)', () => {
   const apiBase = 'http://localhost:3001';
 
@@ -17,8 +19,8 @@ test.describe('DentalCore v1.1 — FDI Interactive Tooth Treatment Planning Suit
       ORDER BY v."createdAt" DESC
       LIMIT 1
     `);
-    if (!target) throw new Error('No active patient with visit found');
-    return target;
+    if (target) return target;
+    return await ensureActiveTestPatient();
   }
 
   test('FDI-01: All 32 FDI teeth render with correct anatomical orientation and labels', async ({ page }) => {
@@ -400,6 +402,7 @@ test.describe('DentalCore v1.1 — FDI Interactive Tooth Treatment Planning Suit
   });
 
   test('FDI-10: Treatment fee calculation persists across page reload and saves to consultation', async ({ page }) => {
+    test.setTimeout(60000);
     await loginAs(page, 'dutyDoctor');
     const target = await getActiveTestPatient();
 

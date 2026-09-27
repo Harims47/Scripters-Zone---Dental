@@ -262,7 +262,7 @@ export const cancelVisit = async (req: Request, res: Response, next: NextFunctio
 export const updateVisit = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { reasonForVisit, doctorId, isUrgent, amountDue, paymentOwner } = req.body;
+    const { reasonForVisit, doctorId, isUrgent, amountDue, paymentOwner, treatmentFee, consultationFee } = req.body;
 
     const existingVisit = await prisma.visit.findUnique({
       where: { id },
@@ -284,6 +284,14 @@ export const updateVisit = async (req: Request, res: Response, next: NextFunctio
       if (doctorId !== undefined) visitData.doctorId = doctorId;
       if (amountDue !== undefined) visitData.amountDue = amountDue;
       if (paymentOwner !== undefined) visitData.paymentOwner = paymentOwner;
+      if (treatmentFee !== undefined) visitData.treatmentFee = treatmentFee;
+      if (consultationFee !== undefined) visitData.consultationFee = consultationFee;
+      if (amountDue === undefined && (treatmentFee !== undefined || consultationFee !== undefined)) {
+        const cFee = consultationFee !== undefined ? consultationFee : (existingVisit.consultationFee || 0);
+        const tFee = treatmentFee !== undefined ? treatmentFee : (existingVisit.treatmentFee || 0);
+        const mCost = existingVisit.medicineCost || 0;
+        visitData.amountDue = Math.round(cFee + tFee + mCost);
+      }
 
       const v = await tx.visit.update({
         where: { id },

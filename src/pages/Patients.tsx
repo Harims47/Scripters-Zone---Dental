@@ -293,7 +293,7 @@ export function PatientsPage() {
   ];
 
   return (
-    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
+    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8 w-full min-w-0">
       
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -313,7 +313,7 @@ export function PatientsPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col">
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 flex flex-col w-full min-w-0">
         <DataTableToolbar
           searchQuery={search}
           onSearchChange={setSearch}
@@ -345,7 +345,7 @@ export function PatientsPage() {
           }}
         />
 
-        <div className="p-4 flex-1 flex flex-col">
+        <div className="p-2 sm:p-4 flex-1 flex flex-col w-full min-w-0 overflow-hidden">
           <DataTable 
             columns={columns} 
             data={patients} 
@@ -382,7 +382,7 @@ export function PatientsPage() {
         <SheetContent 
           side="right" 
           size="lg" 
-          className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300"
+          className="w-full max-w-[100vw] sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300"
           onInteractOutside={(e) => {
             if (isCameraOpen) e.preventDefault();
           }}

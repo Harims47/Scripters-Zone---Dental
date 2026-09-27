@@ -7,6 +7,7 @@ import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { useAuth } from '../context/AuthContext'
+import { useClinicContext } from '../context/ClinicContext'
 
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
@@ -33,6 +34,7 @@ type InventoryItem = Medicine
 
 export function InventoryPage() {
   const { currentUser } = useAuth()
+  const { refreshClinicOperations } = useClinicContext()
   const [searchParams] = useSearchParams()
   const initialTab = (searchParams.get('tab') as 'items' | 'orders' | 'suppliers' | 'categories') || 'items'
   const preselectedMedicineId = searchParams.get('createForMedicine') || undefined
@@ -239,8 +241,25 @@ export function InventoryPage() {
   }, [])
 
   useEffect(() => {
-    fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType)
-  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType, fetchInventory])
+    if (activeTab === 'items') {
+      fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType)
+    }
+  }, [activeTab, pagination.pageIndex, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType, fetchInventory])
+
+  // Automatically refresh latest stock levels when switching back to tab/window
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!document.hidden && activeTab === 'items') {
+        fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType)
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
+  }, [activeTab, pagination.pageIndex, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType, fetchInventory])
 
   const getStockStatus = (current: number, min: number) => {
     if (current === 0) return 'Out of Stock'
@@ -463,7 +482,7 @@ export function InventoryPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full min-w-0">
 
       {/* Header & KPI Summary */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -474,9 +493,12 @@ export function InventoryPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-6 border-b border-slate-200">
+      <div className="flex items-center gap-4 sm:gap-6 border-b border-slate-200 overflow-x-auto w-full min-w-0">
         <button
-          onClick={() => setActiveTab('items')}
+          onClick={() => {
+            setActiveTab('items')
+            fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType)
+          }}
           className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'items' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Items & Stock
@@ -501,7 +523,15 @@ export function InventoryPage() {
         </button>
       </div>
 
-      {activeTab === 'orders' && <PurchaseOrdersTab initialMedicineId={preselectedMedicineId} />}
+      {activeTab === 'orders' && (
+        <PurchaseOrdersTab
+          initialMedicineId={preselectedMedicineId}
+          onGoodsReceived={() => {
+            fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType)
+            refreshClinicOperations()
+          }}
+        />
+      )}
       {activeTab === 'suppliers' && <SuppliersTab />}
 
       {activeTab === 'items' && (
@@ -565,7 +595,7 @@ export function InventoryPage() {
           />
 
           {/* List Surface */}
-          <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col w-full min-w-0">
 
             <DataTable
               columns={columns}
@@ -616,7 +646,7 @@ export function InventoryPage() {
 
       {/* DRAWER */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
+        <SheetContent side="right" size="lg" className="w-full max-w-[100vw] sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
 
           <div className="px-6 sm:px-8 py-6 border-b bg-slate-50/50 flex flex-col gap-2">
             <h2 className="text-xl font-semibold text-slate-900">

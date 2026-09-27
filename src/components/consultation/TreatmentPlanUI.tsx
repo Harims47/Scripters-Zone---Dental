@@ -13,7 +13,8 @@ import {
   X,
   Edit2,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Camera
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
@@ -25,9 +26,10 @@ import {
   DialogFooter
 } from '../ui/dialog';
 import { api } from '../../lib/api';
-import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem } from '../../types/domain';
+import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem, DentalImage } from '../../types/domain';
 import { FdiToothChart } from './FdiToothChart';
 import { getToothInfo } from '../../lib/toothMetadata';
+import { DentalImagingSection } from './DentalImagingSection';
 
 export function TreatmentPlanUI({
   patientId,
@@ -36,6 +38,8 @@ export function TreatmentPlanUI({
   initialTreatmentZeroReason,
   onSaveTreatmentFee,
   onDone,
+  onCancel,
+  onRegisterRollback,
   initialEdit = false
 }: {
   patientId: string;
@@ -44,6 +48,8 @@ export function TreatmentPlanUI({
   initialTreatmentZeroReason?: string;
   onSaveTreatmentFee?: (fee: number, zeroReason?: string) => void;
   onDone?: () => void;
+  onCancel?: () => void;
+  onRegisterRollback?: (rollbackFn: () => Promise<void>) => void;
   initialEdit?: boolean;
 }) {
   const [plan, setPlan] = useState<TreatmentPlan | null>(null);
@@ -57,6 +63,37 @@ export function TreatmentPlanUI({
   const [treatmentZeroReason, setTreatmentZeroReason] = useState<string>(initialTreatmentZeroReason || '');
   const [treatmentZeroError, setTreatmentZeroError] = useState<string>('');
   const [isZeroFeeModalOpen, setIsZeroFeeModalOpen] = useState<boolean>(false);
+
+  // Session tracking to ensure closing without "Done" does NOT keep saved items
+  const sessionCreatedItemIds = useRef<string[]>([]);
+  const isConfirmed = useRef<boolean>(false);
+  const imagingRollbackRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const imagingCommitRef = useRef<() => void>(() => {});
+
+  const rollback = async () => {
+    if (sessionCreatedItemIds.current.length > 0) {
+      const idsToDelete = [...sessionCreatedItemIds.current];
+      sessionCreatedItemIds.current = [];
+      await Promise.all(
+        idsToDelete.map(id =>
+          api.delete(`/api/patients/${patientId}/treatment-plan/items/${id}`).catch(console.error)
+        )
+      );
+    }
+    await imagingRollbackRef.current();
+  };
+
+  useEffect(() => {
+    onRegisterRollback?.(rollback);
+  }, [onRegisterRollback]);
+
+  useEffect(() => {
+    return () => {
+      if (!isConfirmed.current) {
+        rollback();
+      }
+    };
+  }, []);
 
   const ZERO_FEE_REASONS = [
     'Follow-up / Review',
@@ -77,6 +114,10 @@ export function TreatmentPlanUI({
 
   // Editing state for an existing planned item
   const [editingItem, setEditingItem] = useState<TreatmentPlanItem | null>(null);
+
+  // Workspace View Switcher (Treatment Planning vs Dental Imaging)
+  const [workspaceView, setWorkspaceView] = useState<'planning' | 'imaging'>('planning');
+  const [dentalImages, setDentalImages] = useState<DentalImage[]>([]);
 
   // Past visits history toggle
   const [showPastHistory, setShowPastHistory] = useState(false);
@@ -105,9 +146,10 @@ export function TreatmentPlanUI({
       setEditingItem(null);
       setErrorMsg(null);
       try {
-        const [catRes, planRes] = await Promise.all([
+        const [catRes, planRes, imgRes] = await Promise.all([
           api.get<any>('/api/treatments/catalog'),
-          api.get<any>(`/api/patients/${patientId}/treatment-plan`)
+          api.get<any>(`/api/patients/${patientId}/treatment-plan`),
+          api.get<any>(`/api/patients/${patientId}/dental-images`).catch(() => [])
         ]);
 
         const catList = Array.isArray(catRes) ? catRes : catRes?.data || [];
@@ -115,6 +157,9 @@ export function TreatmentPlanUI({
 
         const planData = planRes?.data || planRes;
         setPlan(planData);
+
+        const imgList = Array.isArray(imgRes) ? imgRes : [];
+        setDentalImages(imgList);
 
         // Pre-fill form when opened in edit mode
         if (initialEdit && planData?.items?.length) {
@@ -220,6 +265,7 @@ export function TreatmentPlanUI({
           );
 
           const newItems = Array.isArray(res) ? res : [res];
+          newItems.forEach((i: any) => sessionCreatedItemIds.current.push(i.id));
           setPlan((prev) =>
             prev ? { ...prev, items: [...newItems, ...prev.items] } : null
           );
@@ -235,6 +281,7 @@ export function TreatmentPlanUI({
               completedVisitId: currentVisitId
             }
           );
+          sessionCreatedItemIds.current.push(res.id);
 
           setPlan((prev) =>
             prev ? { ...prev, items: [res, ...prev.items] } : null
@@ -305,6 +352,7 @@ export function TreatmentPlanUI({
     setSaving(true);
     try {
       await api.delete(`/api/patients/${patientId}/treatment-plan/items/${itemId}`);
+      sessionCreatedItemIds.current = sessionCreatedItemIds.current.filter((id) => id !== itemId);
       setPlan((prev) =>
         prev
           ? {
@@ -351,12 +399,57 @@ export function TreatmentPlanUI({
 
   return (
     <div className="space-y-2.5">
-      {/* Top 3-Column Treatment Planning Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+      {/* Top Workspace View Switcher */}
+      <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+        <div className="flex items-center gap-1.5 bg-slate-100 p-0.5 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setWorkspaceView('planning')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              workspaceView === 'planning'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>Treatment Planning & FDI Chart</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceView('imaging')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              workspaceView === 'imaging'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Camera className="w-3.5 h-3.5 text-teal-600" />
+            <span>Dental Imaging</span>
+            {dentalImages.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-100 text-teal-800 font-bold">
+                {dentalImages.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className={workspaceView === 'imaging' ? 'bg-slate-50/50 p-2 rounded-2xl' : 'hidden'}>
+        <DentalImagingSection
+          patientId={patientId}
+          currentVisitId={currentVisitId}
+          activeToothNumber={selectedTeeth.length === 1 ? selectedTeeth[0] : null}
+          initialImages={dentalImages}
+          onImagesChange={setDentalImages}
+          onRegisterRollback={(fn) => { imagingRollbackRef.current = fn; }}
+          onRegisterCommit={(fn) => { imagingCommitRef.current = fn; }}
+        />
+      </div>
+
+      <div className={workspaceView === 'planning' ? 'grid grid-cols-1 min-[1440px]:grid-cols-12 gap-3 items-start w-full min-w-0' : 'hidden'}>
         {/* =================================================================== */}
-        {/* LEFT COLUMN (lg:col-span-5): Interactive FDI Tooth Chart            */}
+        {/* LEFT COLUMN (min-[1440px]:col-span-5): Interactive FDI Tooth Chart   */}
         {/* =================================================================== */}
-        <div className="lg:col-span-5 space-y-2">
+        <div className="w-full min-[1440px]:col-span-5 space-y-2">
           <FdiToothChart
             selectedTeeth={selectedTeeth}
             onToggleTooth={handleToggleTooth}
@@ -366,9 +459,9 @@ export function TreatmentPlanUI({
         </div>
 
         {/* =================================================================== */}
-        {/* MIDDLE COLUMN (lg:col-span-3): Selected Tooth Details & Entry Form  */}
+        {/* MIDDLE COLUMN (min-[1440px]:col-span-3): Selected Tooth Details & Form */}
         {/* =================================================================== */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5">
+        <div className="w-full min-[1440px]:col-span-3 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <h4 className="text-sm font-bold text-slate-900">
               {editingItem ? 'Edit Procedure' : 'Add Procedure'}
@@ -432,13 +525,15 @@ export function TreatmentPlanUI({
 
             {/* Structured Tooth Anatomical Metadata (Strictly Independent from Notes) */}
             {primaryToothInfo && (
-              <div className="p-3 bg-gradient-to-r from-sky-50/70 to-blue-50/50 rounded-xl border border-sky-100/80 space-y-1 text-xs">
-                <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                  Tooth {primaryToothInfo.fdi}
+              <div className="p-2 bg-gradient-to-r from-sky-50/70 to-blue-50/50 rounded-xl border border-sky-100/80 space-y-0.5 text-xs">
+                <div className="font-bold text-slate-900 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                    <span>Tooth {primaryToothInfo.fdi}</span>
+                  </div>
+                  <span className="font-medium text-slate-600 text-[11px] truncate max-w-[150px]">{primaryToothInfo.name}</span>
                 </div>
-                <div className="font-medium text-slate-700">{primaryToothInfo.name}</div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-0.5">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pt-0.5">
                   <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
                     {primaryToothInfo.jaw} Jaw
                   </span>
@@ -449,6 +544,21 @@ export function TreatmentPlanUI({
                     {primaryToothInfo.type}
                   </span>
                 </div>
+
+                {/* Subtle indicator if this tooth has an RVG radiograph */}
+                {dentalImages.some(img => img.type === 'RVG' && img.toothNumber === primaryToothInfo.fdi) && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200 mt-1">
+                    <Camera className="w-3 h-3 shrink-0" />
+                    <span>Tooth {primaryToothInfo.fdi} has RVG radiograph</span>
+                    <button
+                      type="button"
+                      onClick={() => setWorkspaceView('imaging')}
+                      className="ml-auto underline font-bold hover:text-teal-900"
+                    >
+                      View
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -536,9 +646,9 @@ export function TreatmentPlanUI({
         </div>
 
         {/* =================================================================== */}
-        {/* RIGHT COLUMN (lg:col-span-4): Planned & Active Treatments List      */}
+        {/* RIGHT COLUMN (min-[1440px]:col-span-4): Planned & Active Treatments */}
         {/* =================================================================== */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5 max-h-[410px] overflow-y-auto">
+        <div className="w-full min-[1440px]:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5 max-h-[410px] overflow-y-auto">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <h4 className="text-sm font-bold text-slate-900">Planned Treatments</h4>
             <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
@@ -817,7 +927,7 @@ export function TreatmentPlanUI({
       {/* BOTTOM BAR: Total Treatment Fee & Done Action                       */}
       {/* =================================================================== */}
       {(currentVisitId || treatmentFee !== undefined) && (
-        <div className="py-2.5 px-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col gap-2.5">
+        <div className="py-2 px-3 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col gap-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="space-y-0.5">
               <label className="text-xs font-bold text-slate-800">Total Treatment Fee (₹)</label>
@@ -858,13 +968,31 @@ export function TreatmentPlanUI({
                   }}
                 />
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-4 text-xs font-semibold bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                onClick={async () => {
+                  await rollback();
+                  if (onCancel) onCancel();
+                }}
+              >
+                Cancel
+              </Button>
               {onDone && (
                 <Button
                   className="h-8 px-5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
                   onClick={async () => {
                     const feeNum = Number(localTreatmentFee) || 0;
-                    if (onSaveTreatmentFee) await onSaveTreatmentFee(feeNum, treatmentZeroReason);
+                    if (feeNum === 0 && !treatmentZeroReason.trim() && currentVisitItems.length > 0) {
+                      setIsZeroFeeModalOpen(true);
+                      return;
+                    }
+                    isConfirmed.current = true;
+                    sessionCreatedItemIds.current = [];
+                    imagingCommitRef.current();
                     if (onDone) onDone();
+                    if (onSaveTreatmentFee) await onSaveTreatmentFee(feeNum, treatmentZeroReason);
                   }}
                 >
                   Done
@@ -872,6 +1000,27 @@ export function TreatmentPlanUI({
               )}
             </div>
           </div>
+
+          {Number(localTreatmentFee) === 0 && currentVisitItems.length > 0 && (
+            <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
+              {treatmentZeroReason ? (
+                <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                  Waiver: {treatmentZeroReason}
+                  <button
+                    type="button"
+                    onClick={() => setIsZeroFeeModalOpen(true)}
+                    className="underline text-amber-800 ml-1 hover:text-amber-900"
+                  >
+                    Edit
+                  </button>
+                </span>
+              ) : (
+                <span className="text-amber-600 font-medium">
+                  ₹0 treatment fee requires a waiver reason upon clicking Done.
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -960,12 +1109,14 @@ export function TreatmentPlanUI({
                   setTreatmentZeroError('Please select or provide a reason for ₹0 treatment fee.');
                   return;
                 }
+                // Close ONLY this waiver reason modal
                 setIsZeroFeeModalOpen(false);
-                if (onSaveTreatmentFee) await onSaveTreatmentFee(0, treatmentZeroReason.trim());
-                if (onDone) onDone();
+                if (onSaveTreatmentFee) {
+                  await onSaveTreatmentFee(0, treatmentZeroReason.trim());
+                }
               }}
             >
-              Confirm & Done
+              Confirm Reason
             </Button>
           </DialogFooter>
         </DialogContent>

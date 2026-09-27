@@ -196,7 +196,7 @@ export function Dashboard() {
   const dutyDoctorSlice = data?.dutyDoctor
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 w-full min-w-0">
       {/* Header */}
       <DashboardHeader 
         greetingOverride={currentUser ? `Good day, ${currentUser.name}` : undefined}
@@ -316,7 +316,7 @@ export function Dashboard() {
       )}
 
       {isHeadDoctor && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 w-full min-w-0">
           <KpiCard 
             title="Today's Visits" 
             value={kpis.totalVisitsToday} 
@@ -365,10 +365,10 @@ export function Dashboard() {
       )}
 
       {/* Main Operational Tables Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full min-w-0">
         {/* Left Column: Waiting Queue (Dominant operational element) */}
-        <div className={cn("flex flex-col gap-6", isHeadDoctor ? "lg:col-span-8" : "lg:col-span-7")}>
-          <div className="min-h-[420px]">
+        <div className={cn("flex flex-col gap-6 w-full min-w-0", isHeadDoctor ? "lg:col-span-8" : "lg:col-span-7")}>
+          <div className="min-h-[420px] w-full min-w-0">
             <WaitingPatientsTable 
               items={isDutyDoctor ? (dutyDoctorSlice?.myWaitingPatients || []) : (data?.waitingPatients || [])}
               isDoctor={isDutyDoctor}
@@ -380,16 +380,16 @@ export function Dashboard() {
 
           {/* If Receptionist: Show Ready for Reception widget */}
           {isReceptionist && (
-            <div>
+            <div className="w-full min-w-0">
               <ReadyForReceptionWidget items={data?.readyForReception || []} />
             </div>
           )}
         </div>
 
         {/* Right Column: Appointments & Doctor Status */}
-        <div className={cn("flex flex-col gap-6", isHeadDoctor ? "lg:col-span-4" : "lg:col-span-5")}>
+        <div className={cn("flex flex-col gap-6 w-full min-w-0", isHeadDoctor ? "lg:col-span-4" : "lg:col-span-5")}>
           {/* Today's Appointments */}
-          <div className="min-h-[360px]">
+          <div className="min-h-[360px] w-full min-w-0">
             <AppointmentSummary items={data?.todayAppointments || []} />
           </div>
 

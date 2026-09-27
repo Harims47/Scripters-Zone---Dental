@@ -188,6 +188,15 @@ export const updateStaffStatus = async (req: Request, res: Response, next: NextF
     const id = req.params.id as string;
     const { status } = req.body;
 
+    const existingStaff = await prisma.staff.findUnique({ where: { id } });
+    if (!existingStaff) {
+      return res.status(404).json({ error: 'Staff member not found' });
+    }
+
+    if (existingStaff.status === 'Inactive' && status === 'Active') {
+      return res.status(400).json({ error: 'Inactive staff members cannot be reactivated.' });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const updatedStaff = await tx.staff.update({
         where: { id },

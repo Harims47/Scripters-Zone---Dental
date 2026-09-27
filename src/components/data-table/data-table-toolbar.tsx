@@ -29,25 +29,25 @@ export function DataTableToolbar({
   ...props
 }: DataTableToolbarProps) {
   return (
-    <div className={cn("p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white", className)} {...props}>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-1">
-        <div className="relative w-full sm:w-72 lg:w-80 shrink-0">
+    <div className={cn("p-3 sm:p-4 lg:p-5 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4 bg-white min-w-0 w-full", className)} {...props}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-1 min-w-0 flex-wrap">
+        <div className="relative w-full sm:w-64 md:w-72 shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input 
             placeholder={searchPlaceholder}
-            className="pl-9 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-colors"
+            className="pl-9 bg-slate-50/50 hover:bg-slate-50 focus:bg-white transition-colors h-9 text-xs sm:text-sm"
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
           />
         </div>
         {filterSlot && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap min-w-0 w-full sm:w-auto">
             {filterSlot}
           </div>
         )}
       </div>
       {(actionSlot || exportOptions) && (
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
+        <div className="flex items-center gap-2 flex-wrap shrink-0 justify-between sm:justify-end w-full xl:w-auto pt-1 xl:pt-0 border-t xl:border-t-0 border-slate-100">
           {actionSlot}
           {exportOptions && (
             <div className="flex items-center gap-1.5 bg-slate-50/80 p-1 rounded-xl border border-slate-200/80">

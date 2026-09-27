@@ -16,7 +16,7 @@ export const getConsultationByVisitId = async (req: Request, res: Response, next
 
 export const createConsultation = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { visitId, reasonForVisit, clinicalNotes, consultationFee, treatmentFee } = req.body;
+    const { visitId, reasonForVisit, clinicalNotes, consultationFee, treatmentFee, consultationWaiverReason, treatmentWaiverReason } = req.body;
     const doctorId = (req as any).user.staffId;
 
     if (!doctorId) {
@@ -27,7 +27,18 @@ export const createConsultation = async (req: Request, res: Response, next: Next
     if (!visit) return res.status(404).json({ error: 'Visit not found' });
 
     if (visit.status !== 'WITH_DOCTOR') {
-      return res.status(409).json({ error: 'Visit is not in WITH_DOCTOR state' });
+      if (['WAITING', 'CALLED', 'ARRIVED'].includes(visit.status)) {
+        await prisma.visit.update({
+          where: { id: visitId },
+          data: { status: 'WITH_DOCTOR', doctorId: doctorId || visit.doctorId }
+        });
+        await prisma.queueEntry.updateMany({
+          where: { visitId },
+          data: { status: 'In Progress', assignedDoctorId: doctorId || visit.doctorId }
+        });
+      } else {
+        return res.status(409).json({ error: 'Visit is not in WITH_DOCTOR state' });
+      }
     }
 
     if (consultationFee !== undefined && consultationFee < 0) {
@@ -52,6 +63,8 @@ export const createConsultation = async (req: Request, res: Response, next: Next
           clinicalNotes,
           consultationFee: consultationFee || 0,
           treatmentFee: treatmentFee || 0,
+          consultationWaiverReason: consultationWaiverReason || null,
+          treatmentWaiverReason: treatmentWaiverReason || null,
           status: 'In Progress'
         }
       });
@@ -62,7 +75,7 @@ export const createConsultation = async (req: Request, res: Response, next: Next
         data: { 
           consultationFee: consultationFee || 0,
           treatmentFee: treatmentFee || 0,
-          amountDue: (consultationFee || 0) + (treatmentFee || 0) + (visit.medicineCost || 0)
+          amountDue: Math.round((consultationFee || 0) + (treatmentFee || 0) + (visit.medicineCost || 0))
         }
       });
 
@@ -78,13 +91,18 @@ export const createConsultation = async (req: Request, res: Response, next: Next
 export const updateConsultation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { reasonForVisit, clinicalNotes, consultationFee, treatmentFee } = req.body;
+    const { reasonForVisit, clinicalNotes, consultationFee, treatmentFee, consultationWaiverReason, treatmentWaiverReason } = req.body;
     const doctorId = (req as any).user.staffId;
+    const userRole = (req as any).user?.role;
 
     const existing = await prisma.consultation.findUnique({ where: { id }, include: { visit: true } });
     if (!existing) return res.status(404).json({ error: 'Consultation not found' });
 
-    if (existing.doctorId !== doctorId) {
+    const isHeadDoctor = userRole === 'Head Doctor';
+    const isAssignedDoctor = existing.visit?.doctorId === doctorId;
+    const isOwner = existing.doctorId === doctorId;
+
+    if (!isOwner && !isHeadDoctor && !isAssignedDoctor) {
       return res.status(403).json({ error: 'You are not the owner of this consultation' });
     }
 
@@ -102,7 +120,14 @@ export const updateConsultation = async (req: Request, res: Response, next: Next
     const result = await prisma.$transaction(async (tx) => {
       const consultation = await tx.consultation.update({
         where: { id },
-        data: { reasonForVisit, clinicalNotes, consultationFee, treatmentFee }
+        data: { 
+          reasonForVisit, 
+          clinicalNotes, 
+          consultationFee, 
+          treatmentFee,
+          ...(consultationWaiverReason !== undefined && { consultationWaiverReason }),
+          ...(treatmentWaiverReason !== undefined && { treatmentWaiverReason })
+        }
       });
 
       if (consultationFee !== undefined || treatmentFee !== undefined) {
@@ -114,7 +139,7 @@ export const updateConsultation = async (req: Request, res: Response, next: Next
           data: {
             consultationFee: finalConsultationFee,
             treatmentFee: finalTreatmentFee,
-            amountDue: finalConsultationFee + (finalTreatmentFee || 0) + (existing.visit.medicineCost || 0)
+            amountDue: Math.round(finalConsultationFee + (finalTreatmentFee || 0) + (existing.visit.medicineCost || 0))
           }
         });
       }

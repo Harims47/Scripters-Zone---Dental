@@ -53,6 +53,7 @@ model Patient {
   matchedHistoricalRecords  HistoricalMigrationRecord[] @relation("MatchedHistoricalPatient")
   importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalPatient")
   reimbursementDocuments    ReimbursementDocument[]
+  dentalImages              DentalImage[]
 }
 
 model Appointment {
@@ -94,6 +95,7 @@ model Visit {
   patient                 Patient             @relation(fields: [patientId], references: [id])
   completedTreatmentItems TreatmentPlanItem[]
   importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalVisit")
+  dentalImages              DentalImage[]
 
   @@index([visitDate])
 }
@@ -120,6 +122,8 @@ model Consultation {
   clinicalNotes   String
   consultationFee Float
   treatmentFee    Float?
+  consultationWaiverReason String?
+  treatmentWaiverReason    String?
   status          String   @default("In Progress")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -560,6 +564,36 @@ model ReimbursementDocument {
   @@index([patientId])
   @@index([documentDate])
   @@index([documentNumber])
+}
+
+enum DentalImageType {
+  OPG
+  RVG
+}
+
+model DentalImage {
+  id           String          @id @default(uuid())
+  patientId    String
+  visitId      String?
+  toothNumber  Int?
+  type         DentalImageType
+  title        String?
+  fileName     String
+  mimeType     String
+  fileSize     Int
+  imageUrl     String          @db.Text
+  notes        String?         @db.Text
+  uploadedById String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  patient      Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visit        Visit?          @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([visitId])
+  @@index([type])
+  @@index([toothNumber])
 }
 
 

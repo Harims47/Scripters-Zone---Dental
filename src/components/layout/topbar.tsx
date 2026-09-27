@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Menu, ChevronDown, Globe } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "../ui/button"
@@ -17,6 +18,7 @@ import {
 export function Topbar() {
   const { currentUser, logout } = useAuth()
   const navigate = useNavigate()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   const userName = currentUser?.name || "Unknown"
   const userRole = currentUser?.role || "Unknown Role"
@@ -38,19 +40,25 @@ export function Topbar() {
   };
 
   return (
-    <header className="h-[72px] bg-white/80 backdrop-blur-md border-b border-slate-100 px-8 flex items-center justify-between shrink-0 z-10 sticky top-0">
-      <div className="flex items-center gap-4">
-        {/* Mobile Navigation Toggle */}
-        <Sheet>
+    <header className="h-16 sm:h-[72px] bg-white/80 backdrop-blur-md border-b border-slate-100 px-3 sm:px-6 lg:px-8 flex items-center justify-between shrink-0 z-30 sticky top-0 min-w-0">
+      <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+        {/* Mobile & Tablet Navigation Toggle (visible on < 1280px) */}
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden text-slate-500">
+            <Button variant="ghost" size="icon" className="xl:hidden text-slate-600 hover:bg-slate-100 rounded-xl h-10 w-10 shrink-0" aria-label="Open Navigation Menu">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[260px] bg-white border-r-slate-100">
-            <Sidebar />
+          <SheetContent side="left" className="p-0 w-[280px] max-w-[85vw] bg-white border-r-slate-100">
+            <Sidebar onNavigate={() => setMobileMenuOpen(false)} />
           </SheetContent>
         </Sheet>
+
+        {/* Small screen clinic brand indicator */}
+        <div className="xl:hidden flex items-center gap-2 min-w-0">
+          <img src="/dental-icon.png" alt="Rafi Dental Clinic" className="h-8 w-8 object-contain shrink-0" />
+          <span className="font-bold text-slate-800 text-sm hidden xs:inline truncate">Rafi Dental Clinic</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

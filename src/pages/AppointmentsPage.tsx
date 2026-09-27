@@ -312,7 +312,7 @@ export function AppointmentsPage() {
   const relatedVisit = activeItem.id ? visits.find(v => v.appointmentId === activeItem.id) : undefined
 
   return (
-    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
+    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8 w-full min-w-0">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -374,7 +374,7 @@ export function AppointmentsPage() {
               className="flex h-9 w-[150px] items-center justify-between rounded-md border border-input bg-slate-50/50 hover:bg-slate-50 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="all-doctors">All Doctors</option>
-              {(staff || []).filter((s: any) => s.role && s.role.includes('Doctor')).map((doc: any) => (
+              {(staff || []).filter((s: any) => s.role && s.role.includes('Doctor') && s.status !== 'Inactive').map((doc: any) => (
                 <option key={doc.id} value={doc.id}>{doc.name}</option>
               ))}
             </select>
@@ -383,7 +383,7 @@ export function AppointmentsPage() {
       />
 
       {/* Data Table */}
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 w-full min-w-0">
         <DataTable
           columns={columns}
           data={data}

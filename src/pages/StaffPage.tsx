@@ -258,7 +258,7 @@ export function StaffPage() {
   const isCreating = drawerMode === 'create'
   
   return (
-    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
+    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8 w-full min-w-0">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -304,7 +304,7 @@ export function StaffPage() {
       />
 
       {/* Data Table */}
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 w-full min-w-0">
         <DataTable 
           columns={columns} 
           data={data}
@@ -356,7 +356,7 @@ export function StaffPage() {
 
       {/* Staff Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
+        <SheetContent side="right" size="lg" className="w-full max-w-[100vw] sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
           
           {/* Drawer Header */}
           <div className="px-6 py-6 bg-white border-b border-slate-100">
@@ -489,17 +489,17 @@ export function StaffPage() {
                   </div>
                 )}
 
-                {!isCreating && drawerMode === 'edit' && (
+                {!isCreating && (
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Account Status</label>
-                    <select 
-                      className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
-                      value={activeItem.status || 'Active'}
-                      onChange={e => setActiveItem(prev => ({ ...prev, status: e.target.value as StaffStatus }))}
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
+                    <div className="flex items-center gap-3 py-1">
+                      <StaffStatusBadge status={activeItem.status as StaffStatus || 'Active'} />
+                      {activeItem.status === 'Inactive' && (
+                        <span className="text-xs text-slate-500 font-medium italic">
+                          Inactive accounts cannot be reactivated
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
 

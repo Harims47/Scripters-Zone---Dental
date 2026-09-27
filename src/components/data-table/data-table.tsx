@@ -160,14 +160,14 @@ export function DataTable<TData, TValue>({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-100/60 bg-white shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden relative">
+    <div className="space-y-4 w-full min-w-0 max-w-full">
+      <div className="rounded-2xl border border-slate-100/60 bg-white shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden relative w-full min-w-0">
         {loading && (
           <div className="absolute inset-0 z-10 bg-background/50 flex items-center justify-center backdrop-blur-sm">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         )}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto w-full min-w-0">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (

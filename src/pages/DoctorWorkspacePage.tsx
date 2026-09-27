@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 
@@ -261,10 +261,7 @@ function RxRow({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {/* Quantity */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Qty</label>
-            <span className="text-[10px] text-slate-400 font-medium">auto-calc</span>
-          </div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Qty</label>
           <div className="flex items-center border rounded-md overflow-hidden bg-slate-50">
             <button className="px-2 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors" onClick={() => onUpdateField(item.id, 'quantity', Math.max(1, item.quantity - 1))}><Minus className="h-3 w-3" /></button>
             <input
@@ -383,6 +380,7 @@ export function DoctorWorkspacePage() {
   const visitDoctor = staff.find(s => s.id === visit?.doctorId)
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false)
+  const rollbackTreatmentPlan = useRef<() => Promise<void>>(() => Promise.resolve())
   const [treatmentZeroReason, setTreatmentZeroReason] = useState<string>('')
   const [treatmentModalInitialEdit, setTreatmentModalInitialEdit] = useState(false)
   const [viewTreatmentModalOpen, setViewTreatmentModalOpen] = useState(false)
@@ -409,6 +407,9 @@ export function DoctorWorkspacePage() {
   const [notes, setNotes] = useState('')
   const [consultationFee, setConsultationFee] = useState<number>(500)
   const [treatmentFee, setTreatmentFee] = useState<number>(0)
+  const [consultationZeroReason, setConsultationZeroReason] = useState<string>('')
+  const [consultationZeroError, setConsultationZeroError] = useState<string>('')
+  const [isConsultationZeroFeeModalOpen, setIsConsultationZeroFeeModalOpen] = useState(false)
 
   // Prescription State
   const [activePrescription, setActivePrescription] = useState<PrescriptionLineItem[]>([])
@@ -439,30 +440,60 @@ export function DoctorWorkspacePage() {
 
   useEffect(() => {
     if (consultation) {
-      setReason(consultation.reasonForVisit)
-      setNotes(consultation.clinicalNotes)
-      if (consultation.consultationFee !== undefined) setConsultationFee(consultation.consultationFee)
-      if ((consultation as any).treatmentFee !== undefined) setTreatmentFee((consultation as any).treatmentFee)
-    } else if (visit?.reasonForVisit) {
-      setReason(visit.reasonForVisit)
-      setTreatmentFee(0) // Fresh visit starts with zero treatment fee
+      setReason(consultation.reasonForVisit || visit?.reasonForVisit || '')
+      
+      // Clinical notes strictly contains only clinical notes - strip legacy waiver strings if present
+      const rawNotes = consultation.clinicalNotes || '';
+      const cleanedNotes = rawNotes
+        .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
+        .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
+        .trim();
+      setNotes(cleanedNotes);
+
+      setConsultationFee(consultation.consultationFee !== undefined ? consultation.consultationFee : 500)
+      const effectiveTreatmentFee = (consultation as any).treatmentFee ?? visit?.treatmentFee ?? 0;
+      setTreatmentFee(Number(effectiveTreatmentFee) || 0)
+
+      // Waiver reasons strictly as separate fields
+      const legacyConsultZeroMatch = rawNotes.match(/\[Consultation Fee Waiver Reason:\s*([^\]]+)\]/i);
+      const initialConsultReason = consultation.consultationWaiverReason || (legacyConsultZeroMatch ? legacyConsultZeroMatch[1].trim() : '');
+      setConsultationZeroReason(initialConsultReason);
+
+      const legacyTreatZeroMatch = rawNotes.match(/\[Treatment Fee Waiver Reason:\s*([^\]]+)\]/i);
+      const initialTreatReason = (consultation as any).treatmentWaiverReason || (legacyTreatZeroMatch ? legacyTreatZeroMatch[1].trim() : '');
+      setTreatmentZeroReason(initialTreatReason);
+    } else if (visit) {
+      // FRESH VISIT FOR THIS PATIENT: NEVER CARRY OVER PREVIOUS CONSULTATION DETAILS!
+      setReason(visit.reasonForVisit || '')
+      setNotes('')
+      setConsultationFee(visit.consultationFee !== undefined && visit.consultationFee !== null ? visit.consultationFee : 500)
+      setTreatmentFee(Number(visit.treatmentFee) || 0)
+      setConsultationZeroReason('')
+      setTreatmentZeroReason('')
     } else {
+      setReason('')
+      setNotes('')
+      setConsultationFee(500)
       setTreatmentFee(0)
+      setConsultationZeroReason('')
+      setTreatmentZeroReason('')
     }
-  }, [consultation, visit?.reasonForVisit])
+  }, [visitId, consultation, visit])
 
   const calculatedMedicineCost = useMemo(() => {
     const rxItems = (prescription?.items && prescription.items.length > 0) ? prescription.items : activePrescription;
-    return rxItems.reduce((sum: number, item: any) => {
+    const raw = rxItems.reduce((sum: number, item: any) => {
       const medId = item.medicineId || item.id;
       const med = medicines.find(m => m.id === medId);
       const unitPrice = med?.unitPrice || 0;
       return sum + (Number(item.quantity || 0) * unitPrice);
     }, 0);
+    return Math.round(raw * 100) / 100;
   }, [prescription, activePrescription, medicines]);
 
   const totalCalculatedDue = useMemo(() => {
-    return (consultationFee || 0) + (treatmentFee || 0) + calculatedMedicineCost;
+    const raw = (consultationFee || 0) + (treatmentFee || 0) + calculatedMedicineCost;
+    return Math.round(raw);
   }, [consultationFee, treatmentFee, calculatedMedicineCost]);
 
   const visitPayments = useMemo(() => {
@@ -474,7 +505,7 @@ export function DoctorWorkspacePage() {
   }, [visitPayments]);
 
   const remainingBalance = useMemo(() => {
-    const effectiveDue = totalCalculatedDue > 0 ? totalCalculatedDue : (visit?.amountDue || 0);
+    const effectiveDue = totalCalculatedDue > 0 ? totalCalculatedDue : Math.round(visit?.amountDue || 0);
     return Math.max(0, effectiveDue - totalPaid);
   }, [totalCalculatedDue, visit?.amountDue, totalPaid]);
 
@@ -548,15 +579,30 @@ export function DoctorWorkspacePage() {
   // --- Handlers ---
   const handleSaveConsultation = async () => {
     if (visitId) {
-      await saveConsultation(visitId, {
+      if (consultationFee === 0 && !consultationZeroReason.trim()) {
+        setIsConsultationZeroFeeModalOpen(true);
+        return;
+      }
+      const res = await saveConsultation(visitId, {
         reasonForVisit: reason,
-        clinicalNotes: notes,
+        clinicalNotes: notes.trim(),
         consultationFee,
-        treatmentFee: treatmentFee as any
-      })
-      setConsultationModalOpen(false)
+        treatmentFee: treatmentFee as any,
+        consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+        treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null
+      });
+      if (res && !res.success) {
+        alert(res.error || 'Failed to save consultation');
+        return;
+      }
+      try {
+        await refreshClinicOperations();
+      } catch (e) {
+        console.error('Failed to refresh clinic operations after consultation save:', e);
+      }
+      setConsultationModalOpen(false);
     }
-  }
+  };
 
   const handleSavePrescription = async () => {
     if (!visitId || activePrescription.length === 0) {
@@ -593,14 +639,20 @@ export function DoctorWorkspacePage() {
 
   const handleComplete = async () => {
     if (visitId) {
+      if (consultationFee === 0 && !consultationZeroReason.trim()) {
+        setIsConsultationZeroFeeModalOpen(true);
+        return;
+      }
       try {
         const result = await saveConsultation(
           visitId, 
           { 
             reasonForVisit: reason || visit?.reasonForVisit || '', 
-            clinicalNotes: notes,
+            clinicalNotes: notes.trim(),
             consultationFee,
-            treatmentFee
+            treatmentFee,
+            consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+            treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null
           }, 
           true,
           paymentOwner
@@ -809,10 +861,10 @@ export function DoctorWorkspacePage() {
         </div>
 
         {/* Patient Summary Header */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xs font-bold  uppercase tracking-wider">Patient Summary</h3>
-            <div className="flex items-center gap-6 text-sm">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-6 lg:p-8">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-6">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Patient Summary</h3>
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-sm">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-900 whitespace-nowrap">Reason for Visit:</span>
                 <span className="bg-slate-50 px-3 py-1 rounded border border-slate-100 text-slate-800 truncate max-w-xs">
@@ -830,9 +882,9 @@ export function DoctorWorkspacePage() {
             </div>
           </div>
 
-          <div className="flex gap-8 items-start">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 items-start">
             {/* Left: Photo */}
-            <div className="w-24 h-24 shrink-0 bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 overflow-hidden rounded-md">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 overflow-hidden rounded-md">
               {patient.photoUrl ? (
                 <img src={patient.photoUrl} alt={patient.name} className="w-full h-full object-cover" />
               ) : (
@@ -919,7 +971,7 @@ export function DoctorWorkspacePage() {
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 text-sm text-slate-700 space-y-4">
                   <div>
                     <strong className="block mb-1 text-slate-900">Procedures</strong>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
                       {currentVisitTreatments.map((item: any) => {
                         const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
                         const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
@@ -950,6 +1002,16 @@ export function DoctorWorkspacePage() {
                   <div className="pt-2 border-t border-slate-200/60">
                     <div><strong className="text-slate-900">Treatment Fee:</strong> ₹{treatmentFee}</div>
                   </div>
+
+                  {/* Separate Treatment Fee Waiver Reason strictly on Treatment Plan card */}
+                  {treatmentFee === 0 && (treatmentZeroReason || (consultation as any)?.treatmentWaiverReason || consultation?.clinicalNotes?.match(/\[Treatment Fee Waiver Reason:\s*([^\]]+)\]/i)) && (
+                    <div className="pt-2 border-t border-slate-200/60">
+                      <strong className="block mb-1 text-slate-900">Treatment Fee Waiver Reason</strong>
+                      <div className="inline-flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 font-medium">
+                        {treatmentZeroReason || (consultation as any)?.treatmentWaiverReason || consultation?.clinicalNotes?.match(/\[Treatment Fee Waiver Reason:\s*([^\]]+)\]/i)?.[1]}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -976,11 +1038,28 @@ export function DoctorWorkspacePage() {
                   </div>
                   <div>
                     <strong className="block mb-1 text-slate-900">Clinical Notes</strong>
-                    <div className="whitespace-pre-wrap">{consultation.clinicalNotes}</div>
+                    <div className="whitespace-pre-wrap">
+                      {consultation.clinicalNotes
+                        ? consultation.clinicalNotes
+                            .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
+                            .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
+                            .trim() || '—'
+                        : '—'}
+                    </div>
                   </div>
                   <div className="pt-2 border-t border-slate-200/60">
                     <div><strong className="text-slate-900">Consultation Fee:</strong> ₹{consultation.consultationFee}</div>
                   </div>
+
+                  {/* Separate Fee Waiver Reason Notes */}
+                  {(consultation.consultationWaiverReason || consultation.clinicalNotes?.match(/\[Consultation Fee Waiver Reason:\s*([^\]]+)\]/i)) && (
+                    <div className="pt-2 border-t border-slate-200/60">
+                      <strong className="block mb-1 text-slate-900">Consultation Fee Waiver Reason</strong>
+                      <div className="inline-flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 font-medium">
+                        {consultation.consultationWaiverReason || consultation.clinicalNotes?.match(/\[Consultation Fee Waiver Reason:\s*([^\]]+)\]/i)?.[1]}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1184,12 +1263,27 @@ export function DoctorWorkspacePage() {
         {/* Modals */}
 
         {/* Treatment Plan Modal */}
-        <Dialog open={treatmentModalOpen} onOpenChange={setTreatmentModalOpen}>
+        <Dialog open={treatmentModalOpen} onOpenChange={async (open) => {
+          if (!open) {
+            await rollbackTreatmentPlan.current();
+            setTreatmentModalOpen(false);
+            if (patientId) {
+              try {
+                const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+                setTreatmentPlan(res);
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          } else {
+            setTreatmentModalOpen(true);
+          }
+        }}>
           <DialogContent className="max-w-7xl w-[96vw] max-h-[96vh] flex flex-col p-0 gap-0 bg-slate-50 overflow-hidden">
             <DialogHeader className="px-5 py-2.5 bg-white border-b border-slate-100 shrink-0">
               <DialogTitle className="text-base font-bold text-slate-800">Treatment Plan</DialogTitle>
             </DialogHeader>
-            <div className="p-3 sm:p-3.5 overflow-y-auto flex-1">
+            <div className="p-2.5 sm:p-3 overflow-y-auto flex-1 [scrollbar-gutter:stable]">
               {treatmentModalOpen && (
                 <TreatmentPlanUI
                   key={`${patient.id}-${visitId || 'no-visit'}`}
@@ -1198,26 +1292,46 @@ export function DoctorWorkspacePage() {
                   treatmentFee={treatmentFee}
                   initialTreatmentZeroReason={treatmentZeroReason}
                   initialEdit={treatmentModalInitialEdit}
+                  onRegisterRollback={(fn) => { rollbackTreatmentPlan.current = fn; }}
                   onSaveTreatmentFee={async (newFee, zeroReason) => {
                     setTreatmentFee(newFee);
                     if (zeroReason !== undefined) setTreatmentZeroReason(zeroReason);
-                    if (visitId) {
-                      let updatedNotes = notes;
-                      updatedNotes = updatedNotes.replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '').trim();
-                      if (newFee === 0 && zeroReason) {
-                        updatedNotes = `${updatedNotes}\n[Treatment Fee Waiver Reason: ${zeroReason.trim()}]`.trim();
-                        setNotes(updatedNotes);
-                      }
+                    if (visitId && consultation) {
                       await saveConsultation(visitId, {
                         reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
-                        clinicalNotes: updatedNotes,
+                        clinicalNotes: notes.trim(),
                         consultationFee,
-                        treatmentFee: newFee
+                        treatmentFee: newFee,
+                        consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+                        treatmentWaiverReason: newFee === 0 ? (zeroReason || treatmentZeroReason).trim() : null
                       });
+                    } else if (visitId) {
+                      await api.put(`/api/visits/${visitId}`, { treatmentFee: newFee });
+                      await refreshClinicOperations();
                     }
                   }}
-                  onDone={() => {
+                  onDone={async () => {
                     setTreatmentModalOpen(false);
+                    if (patientId) {
+                      try {
+                        const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+                        setTreatmentPlan(res);
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                  }}
+                  onCancel={async () => {
+                    await rollbackTreatmentPlan.current();
+                    setTreatmentModalOpen(false);
+                    if (patientId) {
+                      try {
+                        const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+                        setTreatmentPlan(res);
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
                   }}
                 />
               )}
@@ -1227,17 +1341,22 @@ export function DoctorWorkspacePage() {
 
         {/* View Treatment Plan Modal (Read-only) */}
         <Dialog open={viewTreatmentModalOpen} onOpenChange={setViewTreatmentModalOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-6 overflow-hidden">
+            <DialogHeader className="shrink-0 pb-2 border-b border-slate-100">
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 Treatment Plan Details
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-3 overflow-y-auto flex-1 pr-1 [scrollbar-gutter:stable]">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Planned Procedures</label>
-                <div className="space-y-2.5 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Planned Procedures</label>
+                  {currentVisitTreatments.length > 0 && (
+                    <span className="text-xs text-slate-400 font-medium">{currentVisitTreatments.length} item{currentVisitTreatments.length === 1 ? '' : 's'}</span>
+                  )}
+                </div>
+                <div className="space-y-2 bg-slate-50 rounded-xl p-3 border border-slate-100 divide-y divide-slate-200/60">
                   {currentVisitTreatments.length > 0 ? (
                     currentVisitTreatments.map((item: any) => {
                       const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
@@ -1246,7 +1365,7 @@ export function DoctorWorkspacePage() {
                       const notes = item.notes
 
                       return (
-                        <div key={item.id} className="text-sm">
+                        <div key={item.id} className="text-sm pt-2 first:pt-0">
                           <div className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
                             {item.toothNumber && (
                               <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
@@ -1273,8 +1392,16 @@ export function DoctorWorkspacePage() {
                 <span className="font-semibold text-slate-700">Treatment Fee:</span>
                 <span className="font-bold text-emerald-600 text-base">₹{treatmentFee}</span>
               </div>
+              {treatmentFee === 0 && (treatmentZeroReason || (consultation as any)?.treatmentWaiverReason || consultation?.clinicalNotes?.match(/\[Treatment Fee Waiver Reason:\s*([^\]]+)\]/i)) && (
+                <div className="space-y-1 pt-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Treatment Fee Waiver Reason</label>
+                  <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm font-medium text-amber-800">
+                    {treatmentZeroReason || (consultation as any)?.treatmentWaiverReason || consultation?.clinicalNotes?.match(/\[Treatment Fee Waiver Reason:\s*([^\]]+)\]/i)?.[1]}
+                  </div>
+                </div>
+              )}
             </div>
-            <DialogFooter>
+            <DialogFooter className="shrink-0 pt-3 border-t border-slate-100">
               <Button onClick={() => setViewTreatmentModalOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
@@ -1282,14 +1409,14 @@ export function DoctorWorkspacePage() {
 
         {/* View Consultation Modal (Read-only) */}
         <Dialog open={viewConsultationModalOpen} onOpenChange={setViewConsultationModalOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-6 overflow-hidden">
+            <DialogHeader className="shrink-0 pb-2 border-b border-slate-100">
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-blue-600" />
                 Consultation Details
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-3 overflow-y-auto flex-1 pr-1 [scrollbar-gutter:stable]">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Reason for Visit</label>
                 <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm font-medium text-slate-800">
@@ -1299,15 +1426,28 @@ export function DoctorWorkspacePage() {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Notes</label>
                 <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm text-slate-700 whitespace-pre-wrap min-h-[80px]">
-                  {notes || 'No clinical notes recorded.'}
+                  {notes
+                    ? notes
+                        .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
+                        .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
+                        .trim() || 'No clinical notes recorded.'
+                    : 'No clinical notes recorded.'}
                 </div>
               </div>
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-sm">
                 <span className="font-semibold text-slate-700">Consultation Fee:</span>
                 <span className="font-bold text-slate-900 text-base">₹{consultationFee}</span>
               </div>
+              {consultationFee === 0 && consultationZeroReason && (
+                <div className="space-y-1 pt-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Consultation Fee Waiver Reason</label>
+                  <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm font-medium text-amber-800">
+                    {consultationZeroReason}
+                  </div>
+                </div>
+              )}
             </div>
-            <DialogFooter>
+            <DialogFooter className="shrink-0 pt-3 border-t border-slate-100">
               <Button onClick={() => setViewConsultationModalOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
@@ -1379,15 +1519,156 @@ export function DoctorWorkspacePage() {
                 />
               </div>
               <div className="border-t border-slate-100 pt-6">
-                <div className="space-y-3 max-w-xs">
+                <div className="space-y-2 max-w-xs">
                   <Label htmlFor="consultationFee" className="text-sm font-semibold text-slate-700">Consultation Fee (₹)</Label>
-                  <Input id="consultationFee" type="number" min="0" step="50" value={consultationFee} onChange={(e) => setConsultationFee(Number(e.target.value) || 0)} />
+                  <Input
+                    id="consultationFee"
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={consultationFee}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) || 0;
+                      setConsultationFee(val);
+                      if (val > 0) {
+                        setConsultationZeroReason('');
+                        setConsultationZeroError('');
+                      }
+                    }}
+                  />
+                  {consultationFee === 0 && (
+                    <div className="text-xs pt-1">
+                      {consultationZeroReason ? (
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50 border border-amber-200">
+                          <div>
+                            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                              Fee Waiver Reason
+                            </span>
+                            <span className="text-xs font-semibold text-amber-900">
+                              {consultationZeroReason}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsConsultationZeroFeeModalOpen(true)}
+                            className="text-xs font-semibold text-amber-800 underline hover:text-amber-900 ml-2"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-amber-600 font-medium">
+                          ₹0 consultation fee requires a waiver reason before saving.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setConsultationModalOpen(false)}>Cancel</Button>
               <Button onClick={handleSaveConsultation}>Save Consultation</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal for ₹0 Consultation Fee Reason */}
+        <Dialog open={isConsultationZeroFeeModalOpen} onOpenChange={setIsConsultationZeroFeeModalOpen}>
+          <DialogContent className="max-w-md w-full p-5 gap-3.5 bg-white rounded-2xl shadow-xl">
+            <DialogHeader className="space-y-1">
+              <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 text-amber-700">
+                  <AlertCircle className="w-4 h-4" />
+                </span>
+                Reason for ₹0 Consultation Fee
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Please specify why no consultation fee is charged for this visit. Required for clinical audit and fee waiver records.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3.5 py-1">
+              {/* Quick Tags */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                  Select Reason Tag
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Free Follow-up (Within 7 Days)',
+                    'Courtesy / Staff / Family',
+                    'Initial Screening / Camp',
+                    'Second Opinion / Enquiry Only',
+                    'Doctor Discretion / Waived'
+                  ].map((tag) => (
+                    <button
+                      type="button"
+                      key={tag}
+                      onClick={() => {
+                        setConsultationZeroReason(tag);
+                        setConsultationZeroError('');
+                      }}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                        consultationZeroReason === tag
+                          ? 'bg-amber-600 text-white border-amber-600 font-semibold shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Reason Details / Notes <span className="text-rose-500">*</span>
+                </label>
+                <Textarea
+                  placeholder="Enter reason for ₹0 consultation fee (e.g. Free checkup, family courtesy, camp referral)..."
+                  value={consultationZeroReason}
+                  onChange={(e) => {
+                    setConsultationZeroReason(e.target.value);
+                    if (e.target.value.trim()) setConsultationZeroError('');
+                  }}
+                  rows={3}
+                  className={`text-xs bg-white resize-none ${
+                    consultationZeroError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
+                  }`}
+                />
+                {consultationZeroError && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">{consultationZeroError}</p>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  setConsultationZeroError('');
+                  setIsConsultationZeroFeeModalOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
+                onClick={() => {
+                  if (!consultationZeroReason.trim()) {
+                    setConsultationZeroError('Please select or provide a reason for ₹0 consultation fee.');
+                    return;
+                  }
+                  // Close ONLY this waiver reason modal - do NOT contaminate clinical notes
+                  setIsConsultationZeroFeeModalOpen(false);
+                }}
+              >
+                Confirm Reason
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

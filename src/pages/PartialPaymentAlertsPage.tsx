@@ -42,9 +42,10 @@ export function PartialPaymentAlertsPage() {
       
       if (vPayments.length > 0) {
         const totalPaid = vPayments.reduce((sum, p) => sum + p.amount, 0);
-        const calculatedDue = (v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0);
-        const amountDue = calculatedDue > 0 ? calculatedDue : (v.amountDue || 0);
-        const balance = amountDue - totalPaid;
+        const rawCalculatedDue = (v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0);
+        const rawDue = rawCalculatedDue > 0 ? rawCalculatedDue : (v.amountDue || 0);
+        const amountDue = Math.round(rawDue);
+        const balance = Math.max(0, amountDue - totalPaid);
 
         if (balance > 0) {
           // Find the earliest payment to determine when partial payment started
@@ -82,13 +83,14 @@ export function PartialPaymentAlertsPage() {
             patientGender: patient?.gender,
             patientAddress: patient?.address || '—',
             doctorName: doctor?.name || 'Unassigned',
-            consultationFee: v.consultationFee || consultation?.consultationFee || 0,
-            treatmentFee: v.treatmentFee || 0,
-            medicineCost: v.medicineCost || 0,
+            consultationFee: Number((v.consultationFee || consultation?.consultationFee || 0).toFixed(2)),
+            treatmentFee: Number((v.treatmentFee || 0).toFixed(2)),
+            medicineCost: Number((v.medicineCost || 0).toFixed(2)),
+            roundOff: Number((amountDue - rawDue).toFixed(2)),
             reasonForVisit: consultation?.reasonForVisit || v.reasonForVisit || 'General Consultation',
             clinicalNotes: consultation?.clinicalNotes || '',
             totalAmount: amountDue,
-            paidAmount: totalPaid,
+            paidAmount: Math.round(totalPaid * 100) / 100,
             balance: balance,
             partialPaymentDate: earliestDate.toLocaleDateString(),
             daysOutstanding: daysOutstanding,
@@ -239,7 +241,7 @@ export function PartialPaymentAlertsPage() {
   ];
 
   return (
-    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8">
+    <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8 w-full min-w-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Partial Payments</h1>
@@ -247,7 +249,7 @@ export function PartialPaymentAlertsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1">
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 w-full min-w-0">
         <DataTableToolbar
           searchQuery={search}
           onSearchChange={setSearch}
@@ -312,7 +314,27 @@ export function PartialPaymentAlertsPage() {
                   min="1"
                   max={selectedAlert.balance}
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowUp' && Number(paymentAmount) >= selectedAlert.balance) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onChange={(e) => {
+                    if (e.target.value === '') {
+                      setPaymentAmount('');
+                    } else {
+                      const num = Number(e.target.value);
+                      if (isNaN(num)) {
+                        setPaymentAmount('');
+                      } else if (selectedAlert.balance > 0 && num > selectedAlert.balance) {
+                        setPaymentAmount(selectedAlert.balance);
+                      } else if (num < 0) {
+                        setPaymentAmount(0);
+                      } else {
+                        setPaymentAmount(num);
+                      }
+                    }
+                  }}
                 />
               </div>
 
@@ -446,6 +468,12 @@ export function PartialPaymentAlertsPage() {
                     <span>Medicine Cost</span>
                     <span className="font-medium text-slate-800">₹{viewDetailsAlert.medicineCost}</span>
                   </div>
+                  {viewDetailsAlert.roundOff !== 0 && (
+                    <div className="flex justify-between text-slate-500 text-[11px] italic">
+                      <span>Round Off</span>
+                      <span>{viewDetailsAlert.roundOff > 0 ? `+₹${viewDetailsAlert.roundOff.toFixed(2)}` : `-₹${Math.abs(viewDetailsAlert.roundOff).toFixed(2)}`}</span>
+                    </div>
+                  )}
                   <div className="pt-2 border-t border-slate-100 flex justify-between font-bold text-slate-900 text-sm">
                     <span>Total Bill</span>
                     <span>₹{viewDetailsAlert.totalAmount}</span>

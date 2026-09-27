@@ -186,8 +186,8 @@ export function QueuePage() {
   ];
 
   return (
-    <div className="space-y-6 pb-8">
-      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
+    <div className="space-y-6 pb-8 w-full min-w-0">
+      <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col w-full min-w-0">
         <DataTableToolbar
           searchQuery={search}
           onSearchChange={setSearch}
@@ -217,7 +217,7 @@ export function QueuePage() {
           }}
         />
 
-        <div className="p-4">
+        <div className="p-2 sm:p-4 w-full min-w-0 overflow-hidden">
           <DataTable 
             columns={columns} 
             data={filteredQueue}

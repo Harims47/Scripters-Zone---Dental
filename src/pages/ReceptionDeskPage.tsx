@@ -150,6 +150,14 @@ export function ReceptionDeskPage() {
     return availability;
   }, [doctors, queue]);
 
+  // Active Process Visit, Patient, Doctor derived for Checkout & Billing
+  const activeProcessVisit = useMemo(() => visits.find(v => v.id === processVisitId), [visits, processVisitId]);
+  const activeProcessPatient = useMemo(() => patients.find(p => p.id === activeProcessVisit?.patientId), [patients, activeProcessVisit]);
+  const activeProcessDoctor = useMemo(() => doctors.find(d => d.id === activeProcessVisit?.doctorId), [doctors, activeProcessVisit]);
+
+  // Track if user has manually adjusted payment amount
+  const isPaymentManuallyEditedRef = useRef(false);
+
   // Audio & Doctor State Transition Detection (Feature 2)
   const previousDoctorStateRef = useRef<Record<string, 'Available' | 'With Patient' | 'Leave'> | null>(null);
   const isInitialMountRef = useRef(true);
@@ -192,6 +200,20 @@ export function ReceptionDeskPage() {
       document.removeEventListener('visibilitychange', handleFocus);
     };
   }, [refreshClinicOperations]);
+
+  // Auto-prefill paymentAmount with current balance when drawer is open
+  useEffect(() => {
+    if (processVisitId && activeProcessVisit) {
+      const visitPayments = payments.filter(p => p.visitId === processVisitId);
+      const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
+      const rawCalculatedDue = (activeProcessVisit.consultationFee || 0) + (activeProcessVisit.treatmentFee || 0) + (activeProcessVisit.medicineCost || 0);
+      const rawDue = rawCalculatedDue > 0 ? rawCalculatedDue : (activeProcessVisit.amountDue || 0);
+      const currentBalance = Math.max(0, Math.round(rawDue) - totalPaid);
+      if (!isPaymentManuallyEditedRef.current && currentBalance > 0) {
+        setPaymentAmount(currentBalance);
+      }
+    }
+  }, [processVisitId, activeProcessVisit, payments]);
 
   // Doctor status transition tracking
   useEffect(() => {
@@ -798,6 +820,7 @@ export function ReceptionDeskPage() {
 
       if (regType === 'walk-in') {
         await startVisit(finalPatientId, undefined, false, regData.reasonForVisit || 'General Consultation');
+        await refreshClinicOperations();
         showSuccessModal('Registration Complete', isNewPatient ? "Patient registered and added to Waiting list" : "Walk-in added to Waiting list");
         setIsRegisterOpen(false);
         resetRegistrationForm();
@@ -814,6 +837,7 @@ export function ReceptionDeskPage() {
         const today = new Date().toISOString().split('T')[0];
         if (apptData.date === today) {
           await confirmAppointmentArrival(appointment.id, apptData.type || 'General Consultation');
+          await refreshClinicOperations();
           showSuccessModal('Checked In', isNewPatient ? "Patient registered and checked in for today's appointment." : "Checked in for today's appointment.");
         } else {
           showSuccessModal('Appointment Booked', isNewPatient ? "Patient registered and appointment created." : "Appointment created successfully.");
@@ -897,8 +921,16 @@ export function ReceptionDeskPage() {
       setActiveItems([]);
     }
 
+    const v = visits.find(vis => vis.id === row.visitId);
+    const visitPayments = payments.filter(p => p.visitId === row.visitId);
+    const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
+    const calculatedDue = (v?.consultationFee || 0) + (v?.treatmentFee || 0) + (v?.medicineCost || 0);
+    const rawDue = calculatedDue > 0 ? calculatedDue : (v?.amountDue || 0);
+    const initialBalance = Math.max(0, Math.round(rawDue) - totalPaid);
+
+    isPaymentManuallyEditedRef.current = false;
     setActiveMethod(null);
-    setPaymentAmount('');
+    setPaymentAmount(initialBalance > 0 ? initialBalance : '');
     setPaymentReason('');
     setPaymentReasonOther('');
     setAltPhone('');
@@ -906,7 +938,6 @@ export function ReceptionDeskPage() {
     setProcessTreatmentPlan(null);
     setProcessVisitId(row.visitId);
 
-    const v = visits.find(vis => vis.id === row.visitId);
     const pId = row.patientId || v?.patientId;
     if (pId) {
       api.get<any>(`/api/patients/${pId}/treatment-plan`)
@@ -947,6 +978,18 @@ export function ReceptionDeskPage() {
     const result = await completeDispensing(processVisitId, rx.id, mappedItems);
     if (result.success) {
       toast.success('Dispensing completed');
+      const newMedCost = mappedItems.reduce((sum, item) => {
+        const med = medicines.find(m => m.id === item.medicineId);
+        return sum + (item.dispensedQuantity * (med?.unitPrice || 0));
+      }, 0);
+      const visitPayments = payments.filter(p => p.visitId === processVisitId);
+      const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
+      const newDue = Math.round((activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + newMedCost);
+      const newBalance = Math.max(0, newDue - totalPaid);
+      isPaymentManuallyEditedRef.current = false;
+      if (newBalance > 0) {
+        setPaymentAmount(newBalance);
+      }
     } else {
       toast.error(result.error || 'Failed to complete dispensing');
     }
@@ -970,8 +1013,9 @@ export function ReceptionDeskPage() {
     const visitPayments = payments.filter(p => p.visitId === processVisitId);
     const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
     const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
-    const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
-    const balance = amountDue - totalPaid;
+    const rawDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
+    const amountDue = Math.round(rawDue);
+    const balance = Math.max(0, amountDue - totalPaid);
 
     if (amt > balance) {
       toast.error(`Payment amount cannot exceed remaining balance (₹${balance})`);
@@ -1026,6 +1070,7 @@ export function ReceptionDeskPage() {
       if (result.success) {
         toast.success(`Payment of ₹${amount} via ${method} recorded successfully!`, { duration: 4000 });
         setPendingPaymentConfirmation(null);
+        isPaymentManuallyEditedRef.current = false;
         setPaymentAmount(''); // Reset for next payment if balance remains
         setPaymentReason('');
         setPaymentReasonOther('');
@@ -1075,14 +1120,13 @@ export function ReceptionDeskPage() {
 
   const handleCloseProcessVisit = () => {
     setProcessVisitId(null);
+    isPaymentManuallyEditedRef.current = false;
+    setPaymentAmount('');
+    setActiveMethod(null);
   };
 
-  const activeProcessVisit = visits.find(v => v.id === processVisitId);
-  const activeProcessPatient = patients.find(p => p.id === activeProcessVisit?.patientId);
-  const activeProcessDoctor = doctors.find(d => d.id === activeProcessVisit?.doctorId);
-
   return (
-    <div className="flex-1 bg-slate-50/50 flex flex-col h-screen overflow-hidden">
+    <div className="flex-1 bg-slate-50/50 flex flex-col min-w-0 w-full">
       <div className="h-auto py-3 shrink-0 px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 sm:gap-4 border-b border-slate-200/80 bg-white/60 backdrop-blur-xs">
         <div>
           <div className="flex items-center gap-3">
@@ -1150,16 +1194,16 @@ export function ReceptionDeskPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <div className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 w-full">
+        <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8 min-w-0 w-full">
 
           {/* Doctor Availability Section */}
-          <section>
+          <section className="min-w-0 w-full">
             <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-slate-400" />
               Doctors
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               {doctors.map(doc => {
                 const avail = doctorAvailability[doc.id];
                 const isLeave = avail === 'Leave';
@@ -1168,20 +1212,36 @@ export function ReceptionDeskPage() {
                 const bgClass = isAvailable ? 'bg-emerald-600 border-emerald-700' : isLeave ? 'bg-slate-200 border-slate-300' : 'bg-rose-600 border-rose-700';
                 const textClass = isLeave ? 'text-slate-700' : 'text-white';
                 const textSubClass = isLeave ? 'text-slate-600' : 'text-white/90';
+                const badgeClass = isAvailable
+                  ? 'bg-white/20 text-white border-white/20'
+                  : isLeave
+                  ? 'bg-slate-300 text-slate-700 border-slate-400'
+                  : 'bg-white/20 text-white border-white/20';
+
+                const activeQueueItem = queue.find(q => q.assignedDoctorId === doc.id && q.status === 'In Progress');
+                const activePatient = activeQueueItem ? patients.find(p => p.id === activeQueueItem.patientId) : null;
 
                 return (
-                  <div key={doc.id} className={`rounded-xl p-4 flex flex-col justify-between transition-all border shadow-md hover:shadow-lg ${bgClass} ${isLeave ? 'opacity-80' : ''} ${isAvailable ? 'animate-pulse' : ''}`}>
-                    <div className="flex items-start justify-between mb-3 gap-2">
-                      <div>
-                        <h3 className={`font-bold text-lg leading-tight ${textClass}`}>{doc.name}</h3>
-                        <p className={`font-bold text-sm ${textSubClass}`}>{doc.role}</p>
-                        <p className={`font-bold text-sm ${textSubClass}`}>Room {doc.roomNumber || '—'}</p>
-                      </div>
-                      <Badge variant="outline"
-                        className={`shrink-0 shadow-sm ${isAvailable ? 'bg-white/20 text-white border-white/20' : isLeave ? 'bg-slate-300 text-slate-700 border-slate-400' : 'bg-white/20 text-white border-white/20'}`}>
+                  <div
+                    key={doc.id}
+                    className={`rounded-xl p-4 flex flex-col justify-between transition-all border shadow-md hover:shadow-lg overflow-hidden ${bgClass} ${isLeave ? 'opacity-80' : ''} ${isAvailable ? 'animate-pulse' : ''}`}
+                  >
+                    {/* Top Row: Room info & Status Badge */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
+                        Room {doc.roomNumber || '—'}
+                      </span>
+
+                      <Badge
+                        variant="outline"
+                        className={`shrink-0 shadow-sm border ${badgeClass}`}
+                      >
                         {isAvailable ? (
                           <span className="flex items-center gap-1.5 font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                            </span>
                             Available
                           </span>
                         ) : isLeave ? (
@@ -1191,11 +1251,41 @@ export function ReceptionDeskPage() {
                           </span>
                         ) : (
                           <span className="flex items-center gap-1.5 font-medium">
-                            <Activity className="w-3.5 h-3.5" />
+                            <Activity className="w-3.5 h-3.5 animate-pulse" />
                             With Patient
                           </span>
                         )}
                       </Badge>
+                    </div>
+
+                    {/* Middle: Doctor Information */}
+                    <div className="min-w-0">
+                      <h3 className={`font-bold text-lg leading-tight break-words ${textClass}`} title={doc.name}>
+                        {doc.name}
+                      </h3>
+                      <p className={`font-bold text-sm mt-0.5 ${textSubClass}`}>
+                        {doc.role}
+                      </p>
+                    </div>
+
+                    {/* Bottom: Context indicator */}
+                    <div className={`mt-3 pt-2.5 border-t text-xs flex items-center justify-between ${
+                      isLeave ? 'border-slate-300 text-slate-600' : 'border-white/20 text-white/90'
+                    }`}>
+                      {isAvailable ? (
+                        <span className="text-xs font-medium flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Ready for next patient
+                        </span>
+                      ) : isLeave ? (
+                        <span className="text-xs text-slate-500">Not in clinic today</span>
+                      ) : (
+                        <div className="flex items-center justify-between w-full min-w-0 gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wider text-white/80 shrink-0">In Room:</span>
+                          <span className="text-xs font-bold text-white truncate text-right">
+                            {activePatient?.name || 'In Consultation'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1204,7 +1294,7 @@ export function ReceptionDeskPage() {
           </section>
 
           {/* Unified Operations Table */}
-          <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-w-0 w-full">
             <DataTableToolbar
               searchQuery={search}
               onSearchChange={setSearch}
@@ -1297,7 +1387,7 @@ export function ReceptionDeskPage() {
               </div>
             )}
 
-            <div className="p-4">
+            <div className="p-2 sm:p-4 min-w-0 w-full overflow-hidden">
               <DataTable
                 columns={columns}
                 data={unifiedData}
@@ -1617,7 +1707,7 @@ export function ReceptionDeskPage() {
       }}>
         <SheetContent
           side="right"
-          className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-slate-50 h-full"
+          className="w-full max-w-[100vw] sm:max-w-[540px] p-0 flex flex-col bg-slate-50 h-full"
           onInteractOutside={(e) => {
             if (isCameraOpen) e.preventDefault();
           }}
@@ -2077,7 +2167,7 @@ export function ReceptionDeskPage() {
       }}>
         <SheetContent
           side="right"
-          className="w-[480px] sm:w-[680px] p-0 flex flex-col bg-slate-50 h-full"
+          className="w-full max-w-[100vw] sm:max-w-[680px] p-0 flex flex-col bg-slate-50 h-full"
         >
           <SheetTitle className="sr-only">Checkout & Billing</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
@@ -2098,9 +2188,11 @@ export function ReceptionDeskPage() {
 
               const visitPayments = payments.filter(p => p.visitId === processVisitId);
               const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-              const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
-              const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
-              const balance = amountDue - totalPaid;
+              const rawCalculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+              const rawDue = rawCalculatedDue > 0 ? rawCalculatedDue : (activeProcessVisit?.amountDue || 0);
+              const amountDue = Math.round(rawDue);
+              const balance = Math.max(0, amountDue - totalPaid);
+              const roundOff = Number((amountDue - rawDue).toFixed(2));
 
               const hasCompletedPayment = isDoctorHandled || activeProcessVisit?.status === 'COMPLETED' || (balance <= 0 && (!hasPrescription || hasCompletedDispensing));
               // Only a step if dispensing is done AND balance is still > 0
@@ -2381,16 +2473,24 @@ export function ReceptionDeskPage() {
                             <div className="space-y-2 text-xs">
                               <div className="flex justify-between text-slate-600">
                                 <span>Consultation Fee</span>
-                                <span className="font-medium text-slate-800">₹{activeProcessVisit?.consultationFee || 0}</span>
+                                <span className="font-medium text-slate-800">₹{Number((activeProcessVisit?.consultationFee || 0).toFixed(2))}</span>
                               </div>
                               <div className="flex justify-between text-slate-600">
                                 <span>Treatment Fee</span>
-                                <span className="font-medium text-slate-800">₹{activeProcessVisit?.treatmentFee || 0}</span>
+                                <span className="font-medium text-slate-800">₹{Number((activeProcessVisit?.treatmentFee || 0).toFixed(2))}</span>
                               </div>
                               <div className="flex justify-between text-slate-600">
                                 <span>Medicine Cost</span>
-                                <span className="font-medium text-slate-800">₹{activeProcessVisit?.medicineCost || 0}</span>
+                                <span className="font-medium text-slate-800">
+                                  ₹{Number((activeProcessVisit?.medicineCost || 0).toFixed(2))}
+                                </span>
                               </div>
+                              {roundOff !== 0 && (
+                                <div className="flex justify-between text-slate-500 text-[11px] italic">
+                                  <span>Round Off</span>
+                                  <span>{roundOff > 0 ? `+₹${roundOff.toFixed(2)}` : `-₹${Math.abs(roundOff).toFixed(2)}`}</span>
+                                </div>
+                              )}
                               <div className="pt-2 border-t border-slate-100 flex justify-between font-semibold text-slate-900 text-sm">
                                 <span>Total Due</span>
                                 <span>₹{amountDue}</span>
@@ -2415,7 +2515,28 @@ export function ReceptionDeskPage() {
                                   max={balance}
                                   placeholder={`Max ₹${balance}`}
                                   value={paymentAmount}
-                                  onChange={(e) => setPaymentAmount(e.target.value ? Number(e.target.value) : '')}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'ArrowUp' && Number(paymentAmount) >= balance) {
+                                      e.preventDefault();
+                                    }
+                                  }}
+                                  onChange={(e) => {
+                                    isPaymentManuallyEditedRef.current = true;
+                                    if (e.target.value === '') {
+                                      setPaymentAmount('');
+                                    } else {
+                                      const num = Number(e.target.value);
+                                      if (isNaN(num)) {
+                                        setPaymentAmount('');
+                                      } else if (balance > 0 && num > balance) {
+                                        setPaymentAmount(balance);
+                                      } else if (num < 0) {
+                                        setPaymentAmount(0);
+                                      } else {
+                                        setPaymentAmount(num);
+                                      }
+                                    }
+                                  }}
                                 />
                               </div>
 
@@ -2574,8 +2695,9 @@ export function ReceptionDeskPage() {
               const visitPayments = payments.filter(p => p.visitId === processVisitId);
               const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
               const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
-              const amountDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
-              const balance = amountDue - totalPaid;
+              const rawDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
+              const amountDue = Math.round(rawDue);
+              const balance = Math.max(0, amountDue - totalPaid);
               const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
               const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
 
