@@ -344,7 +344,8 @@ export function ReceptionDeskPage() {
         paymentStatus = 'Handled by Doctor';
       } else if (stage === 'Ready at Reception' || stage === 'Completed') {
         paymentStatus = 'Unpaid';
-        if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
+        if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) paymentStatus = 'Paid';
+        else if (v?.status === 'COMPLETED') paymentStatus = 'Paid';
         else if (totalPaid > 0) paymentStatus = 'Partial';
         else if (amountDue === 0 && v) paymentStatus = 'Paid';
       } else if (totalPaid > 0) {
@@ -396,10 +397,9 @@ export function ReceptionDeskPage() {
       if (isDoctorHandled) {
         paymentStatus = 'Handled by Doctor';
       } else if (v.status === 'COMPLETED') {
-        paymentStatus = 'Unpaid';
-        if (amountDue > 0 && totalPaid >= amountDue) paymentStatus = 'Paid';
-        else if (totalPaid > 0) paymentStatus = 'Partial';
-        else if (amountDue === 0 && v) paymentStatus = 'Paid';
+        paymentStatus = 'Paid';
+      } else if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) {
+        paymentStatus = 'Paid';
       } else if (totalPaid > 0) {
         paymentStatus = 'Partial';
       }

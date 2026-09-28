@@ -151,12 +151,14 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       );
     }
     const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-    const grossTotal = consultationFee + treatmentFee + medicineCost;
+    const itemizedTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
+    const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
 
     // Prior payments made before this installment
     const priorPaid = validPayments.slice(0, paymentIndex).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
     const cumulativePaid = priorPaid + payment.amount;
-    const balanceDue = Math.max(0, grossTotal - cumulativePaid);
+    const rawBalance = totalAmount - cumulativePaid;
+    const balanceDue = (rawBalance <= 0 || (visit.status === 'COMPLETED' && rawBalance < 1)) ? 0 : rawBalance;
     const isPartial = balanceDue > 0;
 
     const branding = getClinicBranding();
@@ -175,7 +177,7 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       consultationFee,
       treatmentFee,
       medicineCost,
-      totalAmount: grossTotal > 0 ? grossTotal : payment.amount,
+      totalAmount: totalAmount > 0 ? totalAmount : payment.amount,
       amountPaid: payment.amount,
       priorPaid,
       cumulativePaid,
@@ -266,11 +268,14 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
     });
 
     const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-    const grossTotal = consultationFee + treatmentFee + medicineCost;
+    const itemizedTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
+    const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
+    const roundOff = Math.round((totalAmount - itemizedTotal) * 100) / 100;
 
     const validPayments = (visit.payments || []).filter((p: any) => p.status === 'Paid' || p.status === 'Completed');
     const paidTotal = validPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-    const amountDue = Math.max(0, grossTotal - paidTotal);
+    const rawDue = totalAmount - paidTotal;
+    const amountDue = (rawDue <= 0 || (visit.status === 'COMPLETED' && rawDue < 1)) ? 0 : rawDue;
 
     const treatments = (visit.completedTreatmentItems || []).map((t: any) => ({
       name: t.catalogItem?.name || 'Dental Procedure',
@@ -304,7 +309,9 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
       consultationFee,
       treatmentFee,
       medicineCost,
-      totalAmount: grossTotal,
+      subtotal: roundOff !== 0 ? itemizedTotal : undefined,
+      roundOff: roundOff !== 0 ? roundOff : undefined,
+      totalAmount,
       amountPaid: paidTotal,
       amountDue,
       status,

@@ -77,18 +77,21 @@ export function BillingPage() {
       const p = v.patient
       const rx = v.prescription
       const disp = v.dispensing
-      const payRecord = v.payment
+      const validPayments = (v.payments || []).filter((pay: any) => pay.status === 'Paid' || pay.status === 'Completed')
+      const totalPaid = validPayments.reduce((sum: number, pay: any) => sum + (pay.amount || 0), 0)
+      const expectedDue = Math.round(v.amountDue ?? ((v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0)))
+      const isPaid = v.status === 'COMPLETED' || (expectedDue > 0 && (totalPaid >= expectedDue || Math.abs(expectedDue - totalPaid) < 1)) || (expectedDue === 0 && totalPaid > 0)
+      const paymentStatus = isPaid ? 'Paid' : (totalPaid > 0 ? 'Partial' : 'Pending')
+      const latestPayment = validPayments[validPayments.length - 1] || null
 
       let dispensingStatus = 'Not Required'
       if (rx && rx.items && rx.items.length > 0) {
         dispensingStatus = disp ? 'Dispensed' : 'Pending'
       }
 
-      const paymentStatus = payRecord ? 'Paid' : 'Pending'
-
       let action = 'View'
       if (dispensingStatus === 'Pending') action = 'Process Billing'
-      else if (paymentStatus === 'Pending') action = 'Collect Payment'
+      else if (paymentStatus === 'Pending' || paymentStatus === 'Partial') action = 'Collect Payment'
 
       // Build active items for dispensing if prescription exists
       const items: DispensingItem[] = rx && rx.items ? rx.items.map((ri: any, idx: number) => {
@@ -123,7 +126,7 @@ export function BillingPage() {
         paymentStatus,
         action,
         items,
-        paymentMethod: payRecord?.method || null,
+        paymentMethod: latestPayment?.method || null,
         paymentOwner: v.paymentOwner,
         preferredCommunicationChannel: p?.preferredCommunicationChannel,
         whatsappAvailable: p?.whatsappAvailable

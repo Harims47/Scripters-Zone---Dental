@@ -38,7 +38,8 @@ async function cleanDataExceptHeadDoctor() {
   await prisma.visit.deleteMany({});
   await prisma.appointment.deleteMany({});
 
-  console.log('Deleting Notifications, Reimbursements, Migration Records...');
+  console.log('Deleting Notifications, Reimbursements, Migration Records, Dental Images...');
+  await prisma.dentalImage.deleteMany({});
   await prisma.notification.deleteMany({});
   await prisma.reimbursementDocument.deleteMany({});
   await prisma.historicalMigrationRecord.deleteMany({});

@@ -97,6 +97,8 @@ export interface InvoiceData {
   consultationFee: number;
   treatmentFee: number;
   medicineCost: number;
+  subtotal?: number;
+  roundOff?: number;
   totalAmount: number;
   amountPaid: number;
   amountDue: number;
@@ -838,9 +840,17 @@ export const generateInvoicePDF = (data: InvoiceData): Promise<Buffer> => {
 
     currentY += 12;
 
-    // Financial Breakdown — Final totals only (itemized fees are already displayed in the table above)
+    // Financial Breakdown — Final totals with standard round-off if applicable
+    const summaryItems: { label: string; amount: number; isBold?: boolean }[] = [];
+    if (data.roundOff !== undefined && Math.abs(data.roundOff) > 0) {
+      if (data.subtotal !== undefined) {
+        summaryItems.push({ label: 'Subtotal', amount: data.subtotal });
+      }
+      summaryItems.push({ label: 'Round Off', amount: data.roundOff });
+    }
+
     const financialSummary = {
-      items: [],
+      items: summaryItems,
       totalAmount: data.totalAmount,
       amountPaid: data.amountPaid,
       amountDue: data.amountDue,

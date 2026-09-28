@@ -81,20 +81,26 @@ export function PaymentPage() {
     const list = isReceptionist ? paymentVisits.filter(v => v.paymentOwner !== 'DOCTOR') : paymentVisits
     return list.map(v => {
       const p = v.patient
-      const payRecord = v.payment
+      const validPayments = (v.payments || []).filter((pay: any) => pay.status === 'Paid' || pay.status === 'Completed')
+      const totalPaid = validPayments.reduce((sum: number, pay: any) => sum + (pay.amount || 0), 0)
+      const expectedDue = Math.round(v.amountDue ?? ((v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0)))
+      const isPaid = v.status === 'COMPLETED' || (expectedDue > 0 && (totalPaid >= expectedDue || Math.abs(expectedDue - totalPaid) < 1)) || (expectedDue === 0 && totalPaid > 0)
+      const status = isPaid ? 'Paid' : (totalPaid > 0 ? 'Partial' : 'Pending')
+      const latestPayment = validPayments[validPayments.length - 1] || null
       
       return {
-        paymentId: payRecord?.id || '',
+        paymentId: latestPayment?.id || '',
         visitId: v.id,
         paymentOwner: v.paymentOwner,
         patientId: p?.id || 'Unknown',
         patientName: p?.name || 'Unknown',
         patientPhone: p?.phone || '-',
-        amount: v.amountDue || 0,
+        amount: expectedDue,
+        amountDue: Math.max(0, expectedDue - totalPaid),
         consultationFee: v.consultationFee || 0,
         medicineCost: v.medicineCost || 0,
-        method: payRecord?.method || null,
-        status: payRecord ? 'Paid' : 'Pending',
+        method: latestPayment?.method || null,
+        status,
         preferredCommunicationChannel: p?.preferredCommunicationChannel,
         whatsappAvailable: p?.whatsappAvailable
       }
