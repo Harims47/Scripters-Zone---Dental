@@ -54,6 +54,7 @@ model Patient {
   importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalPatient")
   reimbursementDocuments    ReimbursementDocument[]
   dentalImages              DentalImage[]
+  externalAdvices           ExternalDoctorAdvice[]
 }
 
 model Appointment {
@@ -81,6 +82,8 @@ model Visit {
   consultationFee Float?
   treatmentFee    Float?
   medicineCost    Float?
+  discount        Float?        @default(0)
+  discountReason  String?
   reasonForVisit  String?
   paymentOwner    String        @default("RECEPTION")
   visitDate       DateTime?
@@ -96,6 +99,7 @@ model Visit {
   completedTreatmentItems TreatmentPlanItem[]
   importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalVisit")
   dentalImages              DentalImage[]
+  externalAdvices           ExternalDoctorAdvice[]
 
   @@index([visitDate])
 }
@@ -594,6 +598,34 @@ model DentalImage {
   @@index([visitId])
   @@index([type])
   @@index([toothNumber])
+}
+
+model ExternalDoctorAdvice {
+  id                 String    @id @default(uuid())
+  visitId            String
+  patientId          String
+  doctorId           String?
+  doctorName         String
+  doctorEmail        String
+  doctorPhone        String?
+  speciality         String
+  hospitalClinic     String?
+  medicalCondition   String    @db.Text
+  plannedProcedure   String    @db.Text
+  clinicalQuery      String    @db.Text
+  status             String    @default("PENDING") // PENDING, CLEARED, CLEARED_WITH_PRECAUTIONS, CONTRAINDICATED
+  doctorResponse     String?   @db.Text
+  emailSent          Boolean   @default(false)
+  emailSentAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  visit              Visit     @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patient            Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+  @@index([patientId])
+  @@index([status])
 }
 
 

@@ -133,7 +133,8 @@ export const completeDispensing = async (req: Request, res: Response, next: Next
 
       // Transition Visit
       const totalPaid = visit.payments?.reduce((sum: number, p: any) => sum + p.amount, 0) || 0;
-      const finalAmountDue = Math.round((visit.consultationFee || 0) + (visit.treatmentFee || 0) + medicineCost);
+      const discount = visit.discount || 0;
+      const finalAmountDue = Math.max(0, Math.round((visit.consultationFee || 0) + (visit.treatmentFee || 0) + medicineCost - discount));
       const isFullyPaid = visit.paymentOwner === 'DOCTOR' || (totalPaid >= finalAmountDue);
 
       const nextStatus = isFullyPaid ? 'COMPLETED' : 'READY_FOR_PAYMENT';

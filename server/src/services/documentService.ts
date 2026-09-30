@@ -84,6 +84,8 @@ export interface ReceiptData {
   receivedBy: string;
   doctorName?: string;
   paymentNotes?: string;
+  discount?: number;
+  discountReason?: string;
 }
 
 export interface InvoiceData {
@@ -102,6 +104,8 @@ export interface InvoiceData {
   consultationFee: number;
   treatmentFee: number;
   medicineCost: number;
+  discount?: number;
+  discountReason?: string;
   subtotal?: number;
   roundOff?: number;
   totalAmount: number;
@@ -592,6 +596,21 @@ export const generateReceiptPDF = (data: ReceiptData): Promise<Buffer> => {
       rowY += 30;
     }
 
+    // Row 4: Doctor Discount (if any)
+    if (data.discount && data.discount > 0) {
+      doc.fillColor(rowIdx % 2 === 1 ? PDF_THEME.colors.bgWhite : PDF_THEME.colors.bgLight).rect(margin, rowY, tableWidth, 30).fill();
+      doc.font(PDF_THEME.fonts.regular).fontSize(9).fillColor(PDF_THEME.colors.textMuted);
+      doc.text(String(rowIdx++), margin + 10, rowY + 9, { width: colW.num });
+      const discText = data.discountReason ? `Doctor Discount (${data.discountReason})` : 'Doctor Discount';
+      doc.font(PDF_THEME.fonts.bold).fillColor('#b45309').text(discText, margin + colW.num + 10, rowY + 9, { width: colW.desc });
+      doc.font(PDF_THEME.fonts.bold).fillColor('#b45309').text(`-${formatCurrency(data.discount).replace('₹', '')}`, margin + tableWidth - colW.amount - 10, rowY + 9, {
+        width: colW.amount,
+        align: 'right'
+      });
+      doc.moveTo(margin, rowY + 30).lineTo(margin + tableWidth, rowY + 30).lineWidth(0.4).strokeColor(PDF_THEME.colors.borderLight).stroke();
+      rowY += 30;
+    }
+
     // Total Highlight Row
     doc.fillColor(PDF_THEME.colors.headerBg).rect(margin, rowY, tableWidth, 34).fill();
     doc.rect(margin, rowY, tableWidth, 34).lineWidth(0.8).strokeColor(PDF_THEME.colors.border).stroke();
@@ -820,12 +839,16 @@ export const generateInvoicePDF = (data: InvoiceData): Promise<Buffer> => {
 
     currentY += 12;
 
-    // Financial Breakdown — Final totals with standard round-off if applicable
+    // Financial Breakdown — Final totals with discount and standard round-off if applicable
     const summaryItems: { label: string; amount: number; isBold?: boolean }[] = [];
+    if (data.subtotal !== undefined && (data.discount || (data.roundOff !== undefined && Math.abs(data.roundOff) > 0))) {
+      summaryItems.push({ label: 'Gross Total', amount: data.subtotal });
+    }
+    if (data.discount !== undefined && data.discount > 0) {
+      const discLabel = data.discountReason ? `Doctor Discount (${data.discountReason})` : 'Doctor Discount';
+      summaryItems.push({ label: discLabel, amount: -data.discount });
+    }
     if (data.roundOff !== undefined && Math.abs(data.roundOff) > 0) {
-      if (data.subtotal !== undefined) {
-        summaryItems.push({ label: 'Subtotal', amount: data.subtotal });
-      }
       summaryItems.push({ label: 'Round Off', amount: data.roundOff });
     }
 

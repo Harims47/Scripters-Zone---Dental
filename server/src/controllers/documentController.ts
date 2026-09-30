@@ -154,7 +154,8 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       );
     }
     const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-    const itemizedTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
+    const discount = visit.discount || 0;
+    const itemizedTotal = Math.max(0, Math.round((consultationFee + treatmentFee + medicineCost - discount) * 100) / 100);
     const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
 
     // Prior payments made before this installment
@@ -180,6 +181,8 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       consultationFee,
       treatmentFee,
       medicineCost,
+      discount: discount > 0 ? discount : undefined,
+      discountReason: visit.discountReason || undefined,
       totalAmount: totalAmount > 0 ? totalAmount : payment.amount,
       amountPaid: payment.amount,
       priorPaid,
@@ -271,9 +274,11 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
     });
 
     const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-    const itemizedTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
-    const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
-    const roundOff = Math.round((totalAmount - itemizedTotal) * 100) / 100;
+    const discount = visit.discount || 0;
+    const grossTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
+    const netTotal = Math.max(0, Math.round((grossTotal - discount) * 100) / 100);
+    const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(netTotal);
+    const roundOff = Math.round((totalAmount - netTotal) * 100) / 100;
 
     const validPayments = (visit.payments || []).filter((p: any) => p.status === 'Paid' || p.status === 'Completed');
     const paidTotal = validPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
@@ -312,7 +317,9 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
       consultationFee,
       treatmentFee,
       medicineCost,
-      subtotal: roundOff !== 0 ? itemizedTotal : undefined,
+      discount: discount > 0 ? discount : undefined,
+      discountReason: visit.discountReason || undefined,
+      subtotal: grossTotal,
       roundOff: roundOff !== 0 ? roundOff : undefined,
       totalAmount,
       amountPaid: paidTotal,

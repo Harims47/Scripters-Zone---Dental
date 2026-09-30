@@ -33,6 +33,7 @@ import webhookRoutes from './routes/webhookRoutes';
 import historicalMigrationRoutes from './routes/historicalMigrationRoutes';
 import reimbursementRoutes from './routes/reimbursementRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import externalAdviceRoutes from './routes/externalAdviceRoutes';
 import { QueueRunner } from './services/communication/queueRunner';
 import { HistoricalBatchService } from './services/historicalMigration/HistoricalBatchService';
 
@@ -85,6 +86,7 @@ app.use('/api/webhooks/communication', webhookRoutes);
 app.use('/api/historical-migration', historicalMigrationRoutes);
 app.use('/api/reimbursements', reimbursementRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/external-advice', externalAdviceRoutes);
 
 // Minimal Health Endpoint for Phase 2.0
 app.get('/api/health', (req, res) => {

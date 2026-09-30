@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText } from 'lucide-react';
+import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText, Tag } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { soundService } from '../lib/soundUtils';
 import { api } from '../lib/api';
@@ -220,8 +220,9 @@ export function ReceptionDeskPage() {
     if (processVisitId && activeProcessVisit) {
       const visitPayments = payments.filter(p => p.visitId === processVisitId);
       const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-      const rawCalculatedDue = (activeProcessVisit.consultationFee || 0) + (activeProcessVisit.treatmentFee || 0) + (activeProcessVisit.medicineCost || 0);
-      const rawDue = rawCalculatedDue > 0 ? rawCalculatedDue : (activeProcessVisit.amountDue || 0);
+      const rawGross = (activeProcessVisit.consultationFee || 0) + (activeProcessVisit.treatmentFee || 0) + (activeProcessVisit.medicineCost || 0);
+      const rawCalculatedDue = Math.max(0, rawGross - (activeProcessVisit.discount || 0));
+      const rawDue = rawGross > 0 ? rawCalculatedDue : (activeProcessVisit.amountDue || 0);
       const currentBalance = Math.max(0, Math.round(rawDue) - totalPaid);
       if (!isPaymentManuallyEditedRef.current && currentBalance > 0) {
         setPaymentAmount(currentBalance);
@@ -966,8 +967,9 @@ export function ReceptionDeskPage() {
     const v = visits.find(vis => vis.id === row.visitId);
     const visitPayments = payments.filter(p => p.visitId === row.visitId);
     const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-    const calculatedDue = (v?.consultationFee || 0) + (v?.treatmentFee || 0) + (v?.medicineCost || 0);
-    const rawDue = calculatedDue > 0 ? calculatedDue : (v?.amountDue || 0);
+    const rawGross = (v?.consultationFee || 0) + (v?.treatmentFee || 0) + (v?.medicineCost || 0);
+    const calculatedDue = Math.max(0, rawGross - (v?.discount || 0));
+    const rawDue = rawGross > 0 ? calculatedDue : (v?.amountDue || 0);
     const initialBalance = Math.max(0, Math.round(rawDue) - totalPaid);
 
     isPaymentManuallyEditedRef.current = false;
@@ -1054,8 +1056,9 @@ export function ReceptionDeskPage() {
 
     const visitPayments = payments.filter(p => p.visitId === processVisitId);
     const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-    const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
-    const rawDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
+    const rawGross = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+    const calculatedDue = Math.max(0, rawGross - (activeProcessVisit?.discount || 0));
+    const rawDue = rawGross > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
     const amountDue = Math.round(rawDue);
     const balance = Math.max(0, amountDue - totalPaid);
 
@@ -2292,8 +2295,10 @@ export function ReceptionDeskPage() {
 
               const visitPayments = payments.filter(p => p.visitId === processVisitId);
               const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-              const rawCalculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
-              const rawDue = rawCalculatedDue > 0 ? rawCalculatedDue : (activeProcessVisit?.amountDue || 0);
+              const discount = activeProcessVisit?.discount || 0;
+              const rawGross = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+              const rawCalculatedDue = Math.max(0, rawGross - discount);
+              const rawDue = rawGross > 0 ? rawCalculatedDue : (activeProcessVisit?.amountDue || 0);
               const amountDue = Math.round(rawDue);
               const balance = Math.max(0, amountDue - totalPaid);
               const roundOff = Number((amountDue - rawDue).toFixed(2));
@@ -2333,6 +2338,15 @@ export function ReceptionDeskPage() {
                               <span className="text-slate-600">
                                 Treatment: <strong className="text-slate-900 font-semibold">₹{activeProcessVisit?.treatmentFee || 0}</strong>
                               </span>
+                              {discount > 0 && (
+                                <>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="text-amber-700 font-semibold flex items-center gap-1">
+                                    <Tag className="w-3 h-3 text-amber-600 inline" />
+                                    Disc: -₹{discount}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                         )}
@@ -2589,6 +2603,22 @@ export function ReceptionDeskPage() {
                                   ₹{Number((activeProcessVisit?.medicineCost || 0).toFixed(2))}
                                 </span>
                               </div>
+                              {discount > 0 && (
+                                <div className="flex justify-between items-center bg-amber-50/90 text-amber-800 border border-amber-200/80 rounded-md px-2.5 py-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <Tag className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span className="font-semibold text-xs">
+                                      Doctor Discount
+                                      {activeProcessVisit?.discountReason && (
+                                        <span className="text-[11px] text-amber-700 font-normal ml-1">
+                                          ({activeProcessVisit.discountReason})
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <span className="font-bold text-amber-900 text-xs">-₹{Number(discount.toFixed(2))}</span>
+                                </div>
+                              )}
                               {roundOff !== 0 && (
                                 <div className="flex justify-between text-slate-500 text-[11px] italic">
                                   <span>Round Off</span>
@@ -2798,8 +2828,10 @@ export function ReceptionDeskPage() {
               const isDoctorHandled = activeProcessVisit?.paymentOwner === 'DOCTOR';
               const visitPayments = payments.filter(p => p.visitId === processVisitId);
               const totalPaid = visitPayments.reduce((sum, p) => sum + p.amount, 0);
-              const calculatedDue = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
-              const rawDue = calculatedDue > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
+              const discount = activeProcessVisit?.discount || 0;
+              const rawGross = (activeProcessVisit?.consultationFee || 0) + (activeProcessVisit?.treatmentFee || 0) + (activeProcessVisit?.medicineCost || 0);
+              const calculatedDue = Math.max(0, rawGross - discount);
+              const rawDue = rawGross > 0 ? calculatedDue : (activeProcessVisit?.amountDue || 0);
               const amountDue = Math.round(rawDue);
               const balance = Math.max(0, amountDue - totalPaid);
               const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');

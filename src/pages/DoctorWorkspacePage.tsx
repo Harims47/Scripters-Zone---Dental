@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle, Stethoscope } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
+import { ExternalDoctorAdviceModal } from '../components/consultation/ExternalDoctorAdviceModal'
+import type { ExternalDoctorAdvice } from '../types/domain'
 
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -394,6 +396,35 @@ export function DoctorWorkspacePage() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
   const [viewingHistoricalVisitId, setViewingHistoricalVisitId] = useState<string | null>(null)
 
+  // External Doctor Advice & Medical Clearance State
+  const [externalAdviceModalOpen, setExternalAdviceModalOpen] = useState(false)
+  const [externalAdvices, setExternalAdvices] = useState<ExternalDoctorAdvice[]>([])
+
+  const fetchExternalAdvices = useCallback(async () => {
+    if (!visitId) return
+    try {
+      const res = await api.get<ExternalDoctorAdvice[]>(`/api/external-advice/visit/${visitId}`)
+      setExternalAdvices(Array.isArray(res) ? res : [])
+    } catch (err) {
+      console.error('Failed to load external advice:', err)
+    }
+  }, [visitId])
+
+  useEffect(() => {
+    fetchExternalAdvices()
+  }, [fetchExternalAdvices])
+
+  // Consultation state
+  const [reason, setReason] = useState(visit?.reasonForVisit || '')
+  const [notes, setNotes] = useState('')
+
+  const plannedProceduresList = useMemo(() => {
+    const list: string[] = []
+    if (consultation?.reasonForVisit) list.push(consultation.reasonForVisit)
+    if (reason && !list.includes(reason)) list.push(reason)
+    return list
+  }, [consultation?.reasonForVisit, reason])
+
   // Payment Ownership & Collection State
   const [paymentOwner, setPaymentOwner] = useState<'RECEPTION' | 'DOCTOR'>('RECEPTION')
   const [doctorPaymentModalOpen, setDoctorPaymentModalOpen] = useState(false)
@@ -402,9 +433,6 @@ export function DoctorWorkspacePage() {
   const [doctorPaymentNotes, setDoctorPaymentNotes] = useState<string>('')
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
 
-  // Consultation state
-  const [reason, setReason] = useState(visit?.reasonForVisit || '')
-  const [notes, setNotes] = useState('')
   const [consultationFee, setConsultationFee] = useState<number>(500)
   const [treatmentFee, setTreatmentFee] = useState<number>(0)
   const [consultationZeroReason, setConsultationZeroReason] = useState<string>('')
@@ -1076,6 +1104,65 @@ export function DoctorWorkspacePage() {
                       </div>
                     </div>
                   )}
+
+                  {/* External Doctor Advice / Clearance Summary */}
+                  {externalAdvices.length > 0 && (
+                    <div className="pt-3 border-t border-slate-200/70">
+                      <div className="flex items-center justify-between mb-2">
+                        <strong className="text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                          <Stethoscope className="w-3.5 h-3.5 text-teal-600" />
+                          External Doctor Advice / Clearance ({externalAdvices.length})
+                        </strong>
+                        <button
+                          type="button"
+                          onClick={() => setExternalAdviceModalOpen(true)}
+                          className="text-xs font-semibold text-teal-700 hover:underline"
+                        >
+                          Manage / Update
+                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {externalAdvices.map((adv) => (
+                          <div
+                            key={adv.id}
+                            className="flex items-center justify-between p-2.5 rounded-lg bg-teal-50/60 border border-teal-200/80 text-xs"
+                          >
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800">Dr. {adv.doctorName}</span>
+                                <span className="text-slate-500">({adv.speciality})</span>
+                              </div>
+                              <div className="text-[11px] text-slate-600">
+                                <span>Condition: <strong>{adv.medicalCondition}</strong></span>
+                              </div>
+                              {adv.doctorResponse && (
+                                <div className="text-[11px] text-emerald-800 font-medium">
+                                  Response: {adv.doctorResponse}
+                                </div>
+                              )}
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                              adv.status === 'CLEARED'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : adv.status === 'CLEARED_WITH_PRECAUTIONS'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : adv.status === 'CONTRAINDICATED'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                    : 'bg-sky-100 text-sky-800 border border-sky-300'
+                            }`}>
+                              {adv.status === 'CLEARED'
+                                ? 'Cleared'
+                                : adv.status === 'CLEARED_WITH_PRECAUTIONS'
+                                  ? 'Cleared w/ Precautions'
+                                  : adv.status === 'CONTRAINDICATED'
+                                    ? 'Contraindicated'
+                                    : 'Pending Advice'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1187,7 +1274,23 @@ export function DoctorWorkspacePage() {
             )}
 
             {/* Core Action Buttons: Side-by-side on mobile, right-aligned on tablet/desktop */}
-            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <Button
+                size="lg"
+                variant="outline"
+                className="flex-1 sm:flex-initial sm:w-auto h-11 px-3 sm:px-5 text-xs sm:text-sm font-semibold text-teal-800 bg-teal-50/70 border-teal-200 hover:bg-teal-100 hover:text-teal-900 shadow-xs flex items-center justify-center gap-1.5"
+                onClick={() => setExternalAdviceModalOpen(true)}
+                title="Seek external physician advice / medical clearance for patient comorbidities"
+              >
+                <Stethoscope className="w-4 h-4 text-teal-600 shrink-0" />
+                <span>External Doctor Advice</span>
+                {externalAdvices.length > 0 && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-teal-200 text-teal-900 font-bold">
+                    {externalAdvices.length}
+                  </span>
+                )}
+              </Button>
+
               <Button
                 size="lg"
                 variant="outline"
@@ -2081,6 +2184,20 @@ export function DoctorWorkspacePage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* External Doctor Advice & Medical Clearance Modal */}
+        {patient && visitId && (
+          <ExternalDoctorAdviceModal
+            open={externalAdviceModalOpen}
+            onOpenChange={setExternalAdviceModalOpen}
+            visitId={visitId}
+            patient={patient}
+            doctorId={visit?.doctorId || undefined}
+            initialReason={consultation?.reasonForVisit || reason || ''}
+            plannedProcedures={plannedProceduresList}
+            onAdviceUpdated={fetchExternalAdvices}
+          />
+        )}
 
         {/* Patient History Drawer */}
         <Sheet open={historyDrawerOpen} onOpenChange={setHistoryDrawerOpen}>

@@ -39,6 +39,8 @@ export interface Visit {
   consultationFee?: number
   treatmentFee?: number
   medicineCost?: number
+  discount?: number
+  discountReason?: string | null
   reasonForVisit?: string
   paymentOwner?: 'RECEPTION' | 'DOCTOR'
   
@@ -237,6 +239,10 @@ export interface PurchaseOrderItem {
     currentStock: number
     form?: string
     unitPrice?: number
+    category?: {
+      id?: string
+      name?: string
+    }
   }
 }
 
@@ -341,5 +347,26 @@ export interface PatientHistoryData {
     }>
   }) | null
   visits: HistoricalVisit[]
+}
+
+export interface ExternalDoctorAdvice {
+  id: string
+  visitId: string
+  patientId: string
+  doctorId?: string | null
+  doctorName: string
+  doctorEmail: string
+  doctorPhone?: string | null
+  speciality: string
+  hospitalClinic?: string | null
+  medicalCondition: string
+  plannedProcedure: string
+  clinicalQuery: string
+  status: 'PENDING' | 'CLEARED' | 'CLEARED_WITH_PRECAUTIONS' | 'CONTRAINDICATED'
+  doctorResponse?: string | null
+  emailSent: boolean
+  emailSentAt?: string | null
+  createdAt: string
+  updatedAt: string
 }
 

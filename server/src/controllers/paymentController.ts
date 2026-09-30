@@ -114,7 +114,8 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
           return sum + (item.quantity * (m?.unitPrice || 0));
         }, 0) * 100) / 100;
         if (medCost > 0) {
-          expectedAmount = Math.round((visit.consultationFee || 0) + (visit.treatmentFee || 0) + medCost);
+          const discount = visit.discount || 0;
+          expectedAmount = Math.max(0, Math.round((visit.consultationFee || 0) + (visit.treatmentFee || 0) + medCost - discount));
           await tx.visit.update({
             where: { id: visit.id },
             data: { medicineCost: medCost, amountDue: expectedAmount }
@@ -353,8 +354,8 @@ export const exportPartialPayments = async (req: Request, res: Response, next: N
       const vPayments = v.payments || [];
       if (vPayments.length > 0) {
         const totalPaid = vPayments.reduce((sum, p) => sum + p.amount, 0);
-        const rawDue = (v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0);
-        const amountDue = Math.round(rawDue > 0 ? rawDue : (v.amountDue || 0));
+        const rawDue = (v.consultationFee || 0) + (v.treatmentFee || 0) + (v.medicineCost || 0) - (v.discount || 0);
+        const amountDue = Math.max(0, Math.round(rawDue > 0 ? rawDue : (v.amountDue || 0)));
         const balance = Math.max(0, amountDue - totalPaid);
 
         if (balance > 0) {

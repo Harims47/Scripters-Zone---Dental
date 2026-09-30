@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../../lib/api';
 import { toast } from 'react-hot-toast';
 import { Plus, Trash2, Eye, Edit2, Send, XCircle, ShoppingCart, Upload, Image as ImageIcon, FileText, X, Receipt, HandCoins } from 'lucide-react';
@@ -30,6 +30,30 @@ interface PurchaseOrdersTabProps {
   initialMedicineId?: string;
   onGoodsReceived?: () => void;
 }
+
+const MATERIAL_FORMS = ['Material', 'Dental Material', 'Consumable', 'Instrument / Tool', 'Disposable', 'Equipment', 'Other Material'];
+
+export const isMaterialItem = (item: { form?: string; category?: { name?: string } } | null | undefined): boolean => {
+  if (!item) return false;
+  const f = (item.form || '').toLowerCase().trim();
+  if (MATERIAL_FORMS.some(mf => mf.toLowerCase() === f) ||
+    f.includes('material') || f.includes('equipment') || f.includes('consumable') ||
+    f.includes('instrument') || f.includes('disposable') || f.includes('tool')) {
+    return true;
+  }
+  const catName = (item.category?.name || '').toLowerCase().trim();
+  return catName.includes('material') || catName.includes('equipment') || catName.includes('consumable') || catName.includes('supply') || catName.includes('instrument');
+};
+
+export const getPurchaseOrderType = (po: PurchaseOrder): 'MATERIAL' | 'MEDICINE' => {
+  if (po.notes?.includes('[Material PO]')) return 'MATERIAL';
+  if (po.notes?.includes('[Item PO]') || po.notes?.includes('[Medicine PO]')) return 'MEDICINE';
+  if (po.items && po.items.length > 0) {
+    const hasMaterial = po.items.some(i => isMaterialItem(i.medicine));
+    if (hasMaterial) return 'MATERIAL';
+  }
+  return 'MEDICINE';
+};
 
 export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: PurchaseOrdersTabProps = {}) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -80,11 +104,30 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Create / Edit PO form state
+  const [poType, setPoType] = useState<'MEDICINE' | 'MATERIAL'>('MEDICINE');
+  const [poCategoryFilter, setPoCategoryFilter] = useState<'all' | 'item' | 'material'>('all');
   const [poSupplierId, setPoSupplierId] = useState('');
   const [poOrderDate, setPoOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [poNotes, setPoNotes] = useState('');
   const [poItems, setPoItems] = useState<CreatePOItemRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter(po => {
+      if (poCategoryFilter === 'all') return true;
+      const type = getPurchaseOrderType(po);
+      if (poCategoryFilter === 'item') return type === 'MEDICINE';
+      if (poCategoryFilter === 'material') return type === 'MATERIAL';
+      return true;
+    });
+  }, [orders, poCategoryFilter]);
+
+  const selectableMedicines = useMemo(() => {
+    return medicines.filter(m => {
+      if (m.status === 'Inactive') return false;
+      return poType === 'MATERIAL' ? isMaterialItem(m) : !isMaterialItem(m);
+    });
+  }, [medicines, poType]);
 
   const fetchOrders = useCallback(async () => {
     setIsLoading(true);
@@ -130,15 +173,20 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       setPoSupplierId('');
       setPoOrderDate(new Date().toISOString().split('T')[0]);
       setPoNotes('Urgent low stock reorder');
-      setPoItems([{ medicineId: initialMedicineId, orderedQuantity: 50, unitCost: 0 }]);
+      const med = medicines.find(m => m.id === initialMedicineId);
+      const targetType = med && isMaterialItem(med) ? 'MATERIAL' : 'MEDICINE';
+      setPoType(targetType);
+      setPoItems([{ medicineId: initialMedicineId, orderedQuantity: 50, unitCost: med?.unitPrice || 0 }]);
       setDrawerMode('create');
       setDrawerOpen(true);
     }
-  }, [initialMedicineId]);
+  }, [initialMedicineId, medicines]);
 
-  const openCreateDrawer = () => {
+  const openCreateDrawer = (type?: 'MEDICINE' | 'MATERIAL') => {
     loadDependencies();
     setSelectedOrder(null);
+    const targetType = type || (poCategoryFilter === 'material' ? 'MATERIAL' : 'MEDICINE');
+    setPoType(targetType);
     setPoSupplierId('');
     setPoOrderDate(new Date().toISOString().split('T')[0]);
     setPoNotes('');
@@ -149,6 +197,7 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
 
   const openViewDrawer = (po: PurchaseOrder) => {
     setSelectedOrder(po);
+    setPoType(getPurchaseOrderType(po));
     setDrawerMode('view');
     setDrawerOpen(true);
   };
@@ -156,9 +205,11 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
   const openEditDrawer = (po: PurchaseOrder) => {
     loadDependencies();
     setSelectedOrder(po);
+    const type = getPurchaseOrderType(po);
+    setPoType(type);
     setPoSupplierId(po.supplierId);
     setPoOrderDate(new Date(po.orderDate).toISOString().split('T')[0]);
-    setPoNotes(po.notes || '');
+    setPoNotes(po.notes ? po.notes.replace(/\[(Material|Item|Medicine) PO\]\s*/g, '').trim() : '');
     setPoItems(
       po.items.map((i) => ({
         medicineId: i.medicineId,
@@ -201,23 +252,40 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
     setPayNotes('');
   };
 
+  const handlePOTypeChange = (newType: 'MEDICINE' | 'MATERIAL') => {
+    if (newType === poType) return;
+    setPoType(newType);
+    const hasIncompatible = poItems.some(item => {
+      if (!item.medicineId) return false;
+      const med = medicines.find(m => m.id === item.medicineId);
+      return med && (newType === 'MATERIAL' ? !isMaterialItem(med) : isMaterialItem(med));
+    });
+    if (hasIncompatible) {
+      setPoItems([{ medicineId: '', orderedQuantity: 50, unitCost: 0 }]);
+      toast(`Switched to ${newType === 'MATERIAL' ? 'Dental Material' : 'Item / Medicine'} PO`, {
+        icon: newType === 'MATERIAL' ? '📦' : '💊'
+      });
+    }
+  };
+
   const handleAddItemRow = () => {
     setPoItems((prev) => [...prev, { medicineId: '', orderedQuantity: 50, unitCost: 0 }]);
   };
 
-  const handleAddAllActiveMedicines = () => {
-    const activeMeds = medicines.filter(m => m.status !== 'Inactive');
-    if (activeMeds.length === 0) {
-      toast.error('No active medicines found');
+  const handleAddAllActiveItems = () => {
+    const isMaterial = poType === 'MATERIAL';
+    const activeItems = medicines.filter(m => m.status !== 'Inactive' && (isMaterial ? isMaterialItem(m) : !isMaterialItem(m)));
+    if (activeItems.length === 0) {
+      toast.error(`No active ${isMaterial ? 'materials' : 'medicines'} found in catalog`);
       return;
     }
-    const newItems: CreatePOItemRow[] = activeMeds.map((m) => ({
+    const newItems: CreatePOItemRow[] = activeItems.map((m) => ({
       medicineId: m.id,
       orderedQuantity: 50,
       unitCost: m.unitPrice || 0
     }));
     setPoItems(newItems);
-    toast.success(`Loaded all ${newItems.length} active medicines into PO`);
+    toast.success(`Loaded all ${newItems.length} active ${isMaterial ? 'materials' : 'medicines'} into PO`);
   };
 
   const handleRemoveItemRow = (idx: number) => {
@@ -244,14 +312,15 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       toast.error('Please select an active supplier');
       return;
     }
+    const isMaterial = poType === 'MATERIAL';
     if (poItems.length === 0) {
-      toast.error('Please add at least one medicine item');
+      toast.error(`Please add at least one ${isMaterial ? 'material' : 'medicine'} item`);
       return;
     }
 
     for (const item of poItems) {
       if (!item.medicineId) {
-        toast.error('Please select a medicine for all item rows');
+        toast.error(`Please select a ${isMaterial ? 'material' : 'medicine'} for all item rows`);
         return;
       }
       if (!item.orderedQuantity || item.orderedQuantity <= 0) {
@@ -262,16 +331,20 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
 
     setIsSaving(true);
     try {
+      const tag = isMaterial ? '[Material PO]' : '[Item PO]';
+      const cleanNotes = (poNotes || '').replace(/\[(Material|Item|Medicine) PO\]\s*/g, '').trim();
+      const finalNotes = cleanNotes ? `${tag} ${cleanNotes}` : tag;
+
       const payload = {
         supplierId: poSupplierId,
         orderDate: poOrderDate,
-        notes: poNotes,
+        notes: finalNotes,
         items: poItems
       };
 
       if (drawerMode === 'create') {
         await api.post('/api/purchase-orders', payload);
-        toast.success('Purchase Order created as Draft');
+        toast.success(`${isMaterial ? 'Material' : 'Item'} Purchase Order created as Draft`);
       } else if (drawerMode === 'edit' && selectedOrder) {
         await api.put(`/api/purchase-orders/${selectedOrder.id}`, payload);
         toast.success('Purchase Order updated successfully');
@@ -372,6 +445,22 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       )
     },
     {
+      id: 'poType',
+      header: 'PO Type',
+      cell: ({ row }) => {
+        const type = getPurchaseOrderType(row.original);
+        return type === 'MATERIAL' ? (
+          <Badge className="bg-amber-50 text-amber-800 border-amber-300 font-semibold text-[11px] hover:bg-amber-50 shadow-xs">
+            📦 Material
+          </Badge>
+        ) : (
+          <Badge className="bg-indigo-50 text-indigo-800 border-indigo-200 font-semibold text-[11px] hover:bg-indigo-50 shadow-xs">
+            💊 Medicine
+          </Badge>
+        );
+      }
+    },
+    {
       accessorKey: 'supplier',
       header: 'Supplier',
       cell: ({ row }) => (
@@ -394,9 +483,10 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       header: 'Items',
       cell: ({ row }) => {
         const count = row.original.items?.length || 0;
+        const isMat = getPurchaseOrderType(row.original) === 'MATERIAL';
         return (
           <span className="text-slate-700 text-xs font-medium">
-            {count} {count === 1 ? 'item' : 'items'}
+            {count} {isMat ? (count === 1 ? 'material' : 'materials') : (count === 1 ? 'item' : 'items')}
           </span>
         );
       }
@@ -527,14 +617,87 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
 
   return (
     <div className="space-y-4">
+      {/* 2-Option Split Tabs: Items / Medicines PO vs Materials PO */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="grid grid-cols-3 sm:flex sm:items-center gap-1 sm:gap-1.5 w-full sm:w-auto p-1 bg-slate-100/90 rounded-xl border border-slate-200/70">
+          <button
+            type="button"
+            onClick={() => setPoCategoryFilter('all')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${poCategoryFilter === 'all'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+              }`}
+          >
+            <span className="sm:hidden">All</span>
+            <span className="hidden sm:inline">All Orders</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none shrink-0 ${poCategoryFilter === 'all' ? 'bg-slate-100 text-slate-800 font-bold' : 'bg-slate-200/70 text-slate-600'}`}>
+              {orders.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPoCategoryFilter('item')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${poCategoryFilter === 'item'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-indigo-700'
+              }`}
+          >
+            <span className="shrink-0 text-xs">💊</span>
+            <span className="sm:hidden">Items</span>
+            <span className="hidden sm:inline">Item / Medicine POs</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none shrink-0 ${poCategoryFilter === 'item' ? 'bg-indigo-100 text-indigo-800 font-bold' : 'bg-slate-200/70 text-slate-600'}`}>
+              {orders.filter(po => getPurchaseOrderType(po) === 'MEDICINE').length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPoCategoryFilter('material')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${poCategoryFilter === 'material'
+                ? 'bg-white text-amber-800 shadow-xs'
+                : 'text-slate-600 hover:text-amber-800'
+              }`}
+          >
+            <span className="shrink-0 text-xs">📦</span>
+            <span className="sm:hidden">Materials</span>
+            <span className="hidden sm:inline">Dental Material POs</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none shrink-0 ${poCategoryFilter === 'material' ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-slate-200/70 text-slate-600'}`}>
+              {orders.filter(po => getPurchaseOrderType(po) === 'MATERIAL').length}
+            </span>
+          </button>
+        </div>
+
+        {/* Single Create PO Button */}
+        <div className="w-full sm:w-auto">
+          <Button
+            onClick={() => openCreateDrawer()}
+            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 shadow-sm text-white font-medium text-xs h-9 sm:h-8 px-3.5 flex items-center justify-center"
+            title="Create a new purchase order"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5 shrink-0" /> Create Purchase Order
+          </Button>
+        </div>
+      </div>
+
       <DataTableToolbar
         searchQuery={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search POs..."
-        actionSlot={
-          <Button onClick={openCreateDrawer} className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white font-medium text-xs h-9">
-            <Plus className="w-4 h-4 mr-1.5" /> Create Purchase Order
-          </Button>
+        searchPlaceholder={poCategoryFilter === 'material' ? 'Search Material POs...' : poCategoryFilter === 'item' ? 'Search Item POs...' : 'Search POs...'}
+        filterSlot={
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-[180px] h-9 bg-slate-50/50 text-xs font-medium">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Draft">Draft</SelectItem>
+              <SelectItem value="Ordered">Waiting for Receive</SelectItem>
+              <SelectItem value="Partially Received">Partially Collected</SelectItem>
+              <SelectItem value="Received">Collected</SelectItem>
+              <SelectItem value="Cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
         }
         exportOptions={{
           pdf: true,
@@ -549,27 +712,12 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
             api.download(`/api/purchase-orders/export?${query}`, `purchase_orders_export.${format === 'xlsx' ? 'xlsx' : format}`);
           }
         }}
-        filterSlot={
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px] h-9 bg-slate-50/50 text-xs font-medium">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Draft">Draft</SelectItem>
-              <SelectItem value="Ordered">Waiting for Receive</SelectItem>
-              <SelectItem value="Partially Received">Partially Collected</SelectItem>
-              <SelectItem value="Received">Collected</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-        }
       />
 
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <DataTable
           columns={columns}
-          data={orders}
+          data={filteredOrders}
           loading={isLoading}
           emptyState={
             <DataTableEmpty
@@ -577,7 +725,7 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
               title="No purchase orders found"
               description="Create a purchase order to request stock from approved suppliers."
               action={
-                <Button onClick={openCreateDrawer} size="sm" className="mt-2">
+                <Button onClick={() => openCreateDrawer()} size="sm" className="mt-2">
                   <Plus className="w-4 h-4 mr-1.5" /> Create Purchase Order
                 </Button>
               }
@@ -602,16 +750,23 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" size="lg" className="sm:max-w-xl bg-white border-l shadow-2xl p-0 flex flex-col">
           <div className="px-6 py-5 border-b bg-slate-50/60">
-            <h3 className="text-lg font-bold text-slate-900">
-              {drawerMode === 'create'
-                ? 'Create Purchase Order'
-                : drawerMode === 'edit'
-                  ? `Edit ${selectedOrder?.orderNumber}`
-                  : `Purchase Order: ${selectedOrder?.orderNumber}`}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-slate-900">
+                {drawerMode === 'create'
+                  ? (poType === 'MATERIAL' ? 'Create Material Purchase Order' : 'Create Item Purchase Order')
+                  : drawerMode === 'edit'
+                    ? `Edit ${poType === 'MATERIAL' ? 'Material' : 'Item'} PO: ${selectedOrder?.orderNumber}`
+                    : `Purchase Order: ${selectedOrder?.orderNumber}`}
+              </h3>
+              <Badge className={poType === 'MATERIAL' ? 'bg-amber-100 text-amber-800 border-amber-300 font-semibold' : 'bg-indigo-100 text-indigo-800 border-indigo-200 font-semibold'}>
+                {poType === 'MATERIAL' ? '📦 Material PO' : '💊 Item PO'}
+              </Badge>
+            </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {drawerMode === 'create' || drawerMode === 'edit'
-                ? 'Creating or editing a PO does NOT increase stock. Stock increases upon delivery reception.'
+                ? (poType === 'MATERIAL'
+                  ? 'Procure dental materials, supplies, instruments, and equipment. Stock updates upon delivery reception.'
+                  : 'Procure clinical medicines, drugs, and pharmaceuticals. Stock updates upon delivery reception.')
                 : `Order Date: ${selectedOrder ? new Date(selectedOrder.orderDate).toLocaleDateString() : ''}`}
             </p>
           </div>
@@ -627,6 +782,10 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                         <Label className="text-xs text-slate-500">Status</Label>
                         <div>{getStatusBadge(selectedOrder.status)}</div>
                       </div>
+                      <ReadOnlyField
+                        label="PO Type"
+                        value={getPurchaseOrderType(selectedOrder) === 'MATERIAL' ? '📦 Dental Material PO' : '💊 Item / Medicine PO'}
+                      />
                       <ReadOnlyField label="Supplier" value={selectedOrder.supplier?.name || '—'} />
                       <ReadOnlyField
                         label="Order Date"
@@ -645,7 +804,9 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                       <table className="w-full text-left">
                         <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
                           <tr>
-                            <th className="py-2.5 px-3">Medicine</th>
+                            <th className="py-2.5 px-3">
+                              {getPurchaseOrderType(selectedOrder) === 'MATERIAL' ? 'Dental Material / Supply' : 'Medicine / Item'}
+                            </th>
                             <th className="py-2.5 px-3 text-center">Ordered</th>
                             <th className="py-2.5 px-3 text-center">Received</th>
                             <th className="py-2.5 px-3 text-center">Remaining</th>
@@ -744,12 +905,12 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                                       <Badge
                                         variant="outline"
                                         className={`text-[10px] font-bold ${bill.status === 'Paid'
-                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                            : bill.status === 'Partial'
-                                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                              : bill.status === 'Cancelled'
-                                                ? 'bg-slate-100 text-slate-500'
-                                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : bill.status === 'Partial'
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : bill.status === 'Cancelled'
+                                              ? 'bg-slate-100 text-slate-500'
+                                              : 'bg-rose-50 text-rose-700 border-rose-200'
                                           }`}
                                       >
                                         {bill.status}
@@ -770,6 +931,39 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                 <>
                   {/* Create / Edit Form */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* PO Type Toggle */}
+                    <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600 uppercase">
+                        Purchase Order Type <span className="text-rose-500">*</span>
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3 p-1 bg-slate-100/80 rounded-xl border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => handlePOTypeChange('MEDICINE')}
+                          className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${poType === 'MEDICINE'
+                              ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                              : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                          <span className="text-sm shrink-0">💊</span>
+                          <span className="sm:hidden">Item PO</span>
+                          <span className="hidden sm:inline">Item / Medicine PO</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePOTypeChange('MATERIAL')}
+                          className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${poType === 'MATERIAL'
+                              ? 'bg-white text-amber-700 shadow-sm border border-slate-200'
+                              : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                          <span className="text-sm shrink-0">📦</span>
+                          <span className="sm:hidden">Material PO</span>
+                          <span className="hidden sm:inline">Dental Material PO</span>
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold text-slate-600 uppercase">
                         Supplier <span className="text-rose-500">*</span>
@@ -815,18 +1009,21 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                   <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Ordered Medicines ({poItems.length})
+                        {poType === 'MATERIAL' ? 'Ordered Dental Materials' : 'Ordered Medicines / Items'} ({poItems.length})
                       </Label>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={handleAddAllActiveMedicines}
-                          className="h-8 px-2.5 text-xs text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 border-indigo-200"
-                          title="Auto-fill all active catalog medicines"
+                          onClick={handleAddAllActiveItems}
+                          className={`h-8 px-2.5 text-xs font-medium ${poType === 'MATERIAL'
+                              ? 'text-amber-800 hover:text-amber-900 hover:bg-amber-50 border-amber-200'
+                              : 'text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 border-indigo-200'
+                            }`}
+                          title={`Auto-fill all active catalog ${poType === 'MATERIAL' ? 'materials' : 'medicines'}`}
                         >
-                          + Add All Medicines
+                          + Add All {poType === 'MATERIAL' ? 'Materials' : 'Medicines'}
                         </Button>
                         <Button
                           type="button"
@@ -840,11 +1037,11 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                       </div>
                     </div>
 
-                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                      <table className="w-full text-left text-xs">
+                    <div className="border border-slate-200 rounded-xl overflow-x-auto bg-white">
+                      <table className="w-full text-left text-xs min-w-[340px]">
                         <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
                           <tr>
-                            <th className="py-2 px-3">Medicine</th>
+                            <th className="py-2 px-3">{poType === 'MATERIAL' ? 'Dental Material / Supply' : 'Medicine / Item'}</th>
                             <th className="py-2 px-3 w-28 text-center">Ordered Qty</th>
                             <th className="py-2 px-3 w-28 text-right">Unit Cost (₹)</th>
                             <th className="py-2 px-2 w-10 text-center"></th>
@@ -859,14 +1056,20 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                                   onValueChange={(val) => handleItemChange(idx, 'medicineId', val)}
                                 >
                                   <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue placeholder="Select medicine" />
+                                    <SelectValue placeholder={poType === 'MATERIAL' ? "Select material" : "Select medicine"} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {medicines.filter(m => m.status !== 'Inactive').map((m) => (
-                                      <SelectItem key={m.id} value={m.id}>
-                                        {m.name} ({m.unit})
-                                      </SelectItem>
-                                    ))}
+                                    {selectableMedicines.length === 0 ? (
+                                      <div className="p-2 text-xs text-slate-400 text-center">
+                                        No active {poType === 'MATERIAL' ? 'materials' : 'medicines'} found in catalog
+                                      </div>
+                                    ) : (
+                                      selectableMedicines.map((m) => (
+                                        <SelectItem key={m.id} value={m.id}>
+                                          {m.name} ({m.unit})
+                                        </SelectItem>
+                                      ))
+                                    )}
                                   </SelectContent>
                                 </Select>
                               </td>
@@ -1060,8 +1263,8 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                         setRecordPaymentNow(true);
                       }}
                       className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors ${isSelected
-                          ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
+                        ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -1080,8 +1283,8 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                         <Badge
                           variant="outline"
                           className={`text-[10px] ${b.status === 'Paid'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
                             }`}
                         >
                           Bal: ₹{bBal.toLocaleString()}
@@ -1100,8 +1303,8 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                       setPayAmount(recTotal > 0 ? recTotal : '');
                     }}
                     className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${selectedBillToPay === 'new'
-                        ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
+                      ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
                       }`}
                   >
                     <input

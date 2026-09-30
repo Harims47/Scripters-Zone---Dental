@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, PlayCircle, Users } from 'lucide-react'
+import { Search, PlayCircle, Users, Tag } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import { toast } from 'react-hot-toast'
 
 import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
 import { canAccessRoute } from '../lib/route-permissions'
 import { api } from '../lib/api'
+import { DiscountModal } from '../components/queue/DiscountModal'
 
 type QueueRow = {
   id: string
@@ -23,14 +25,21 @@ type QueueRow = {
   visitType: 'Walk-in' | 'Appointment'
   patientType: 'New Patient' | 'Existing Patient'
   status: string
+  consultationFee: number
+  treatmentFee: number
+  medicineCost: number
+  discount: number
+  discountReason?: string | null
+  amountDue?: number
 }
 
 export function QueuePage() {
-  const { queue, patients, visits, consultations, appointments } = useClinicContext()
+  const { queue, patients, visits, consultations, appointments, updateVisit } = useClinicContext()
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
   const [visitTypeFilter, setVisitTypeFilter] = useState<'all' | 'Walk-in' | 'Appointment'>('all')
+  const [discountModalRow, setDiscountModalRow] = useState<QueueRow | null>(null)
   
   const navigate = useNavigate()
 
@@ -58,10 +67,34 @@ export function QueuePage() {
         reasonForVisit: v?.reasonForVisit || 'Not Specified',
         visitType,
         patientType,
-        status: q.status
+        status: q.status,
+        consultationFee: v?.consultationFee || 0,
+        treatmentFee: v?.treatmentFee || 0,
+        medicineCost: v?.medicineCost || 0,
+        discount: v?.discount || 0,
+        discountReason: v?.discountReason || null,
+        amountDue: v?.amountDue || 0
       }
     })
   }, [queue, patients, visits, appointments])
+
+  const handleApplyDiscount = async (discount: number, reason: string) => {
+    if (!discountModalRow) return;
+    try {
+      const res = await updateVisit(discountModalRow.visitId, {
+        discount,
+        discountReason: reason
+      });
+      if (res.success) {
+        toast.success(discount > 0 ? `₹${discount} discount saved` : 'Discount removed');
+        setDiscountModalRow(null);
+      } else {
+        toast.error(res.error || 'Failed to update discount');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error updating discount');
+    }
+  };
 
   const handleAction = async (id: string, action: 'Start') => {
     const row = queueRows.find(q => q.id === id)
@@ -141,6 +174,51 @@ export function QueuePage() {
             {type}
           </span>
         )
+      }
+    },
+    {
+      accessorKey: "discount",
+      header: "Doctor Discount",
+      cell: ({ row }) => {
+        const item = row.original;
+        const normalizedStatus = (item.status || '').toLowerCase().trim();
+        const isReadyForReception = normalizedStatus === 'ready at reception' || 
+                                    normalizedStatus === 'ready for reception' || 
+                                    normalizedStatus === 'ready for payment' ||
+                                    normalizedStatus === 'dispensing' ||
+                                    normalizedStatus === 'payment';
+
+        if (!isReadyForReception) {
+          return <span className="text-slate-300 text-xs pl-4">—</span>;
+        }
+
+        const discount = item.discount || 0;
+        const hasDiscount = discount > 0;
+
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDiscountModalRow(item);
+            }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all shadow-xs ${
+              hasDiscount
+                ? 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 hover:border-amber-400 font-semibold cursor-pointer'
+                : 'bg-slate-50 text-slate-600 border border-dashed border-slate-300 hover:bg-slate-100 hover:text-indigo-600 hover:border-indigo-300 cursor-pointer'
+            }`}
+            title={hasDiscount ? `Discount: ₹${discount}${item.discountReason ? ` (${item.discountReason})` : ''} — Click to view breakup / edit` : 'Click to give discount & view bill breakup'}
+          >
+            <Tag className={`w-3.5 h-3.5 ${hasDiscount ? 'text-amber-600' : 'text-slate-400'}`} />
+            {hasDiscount ? (
+              <span>
+                Discount: <span className="font-bold text-amber-900">₹{discount}</span>
+              </span>
+            ) : (
+              <span>+ Discount</span>
+            )}
+          </button>
+        );
       }
     },
     {
@@ -239,6 +317,22 @@ export function QueuePage() {
           />
         </div>
       </div>
+
+      {discountModalRow && (
+        <DiscountModal
+          isOpen={!!discountModalRow}
+          onClose={() => setDiscountModalRow(null)}
+          patientName={discountModalRow.name}
+          patientId={discountModalRow.patientId}
+          visitId={discountModalRow.visitId}
+          consultationFee={discountModalRow.consultationFee}
+          treatmentFee={discountModalRow.treatmentFee}
+          medicineCost={discountModalRow.medicineCost}
+          currentDiscount={discountModalRow.discount}
+          currentDiscountReason={discountModalRow.discountReason}
+          onApplyDiscount={handleApplyDiscount}
+        />
+      )}
     </div>
   )
 }

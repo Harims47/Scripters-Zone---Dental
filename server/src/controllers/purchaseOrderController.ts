@@ -57,7 +57,11 @@ export const getPurchaseOrders = async (req: Request, res: Response, next: NextF
       include: {
         supplier: true,
         items: {
-          include: { medicine: true }
+          include: {
+            medicine: {
+              include: { category: true }
+            }
+          }
         },
         bills: {
           include: { payments: true },
@@ -80,7 +84,11 @@ export const getPurchaseOrderById = async (req: Request, res: Response, next: Ne
       include: {
         supplier: true,
         items: {
-          include: { medicine: true }
+          include: {
+            medicine: {
+              include: { category: true }
+            }
+          }
         },
         bills: {
           include: { payments: true },
@@ -149,7 +157,11 @@ export const createPurchaseOrder = async (req: Request, res: Response, next: Nex
         include: {
           supplier: true,
           items: {
-            include: { medicine: true }
+            include: {
+              medicine: {
+                include: { category: true }
+              }
+            }
           }
         }
       });
@@ -226,7 +238,11 @@ export const updatePurchaseOrder = async (req: Request, res: Response, next: Nex
         include: {
           supplier: true,
           items: {
-            include: { medicine: true }
+            include: {
+              medicine: {
+                include: { category: true }
+              }
+            }
           }
         }
       });

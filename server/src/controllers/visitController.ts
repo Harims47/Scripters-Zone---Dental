@@ -262,7 +262,7 @@ export const cancelVisit = async (req: Request, res: Response, next: NextFunctio
 export const updateVisit = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params.id as string;
-    const { reasonForVisit, doctorId, isUrgent, amountDue, paymentOwner, treatmentFee, consultationFee } = req.body;
+    const { reasonForVisit, doctorId, isUrgent, amountDue, paymentOwner, treatmentFee, consultationFee, discount, discountReason } = req.body;
 
     const existingVisit = await prisma.visit.findUnique({
       where: { id },
@@ -286,11 +286,15 @@ export const updateVisit = async (req: Request, res: Response, next: NextFunctio
       if (paymentOwner !== undefined) visitData.paymentOwner = paymentOwner;
       if (treatmentFee !== undefined) visitData.treatmentFee = treatmentFee;
       if (consultationFee !== undefined) visitData.consultationFee = consultationFee;
-      if (amountDue === undefined && (treatmentFee !== undefined || consultationFee !== undefined)) {
+      if (discount !== undefined) visitData.discount = Math.max(0, Number(discount) || 0);
+      if (discountReason !== undefined) visitData.discountReason = discountReason ? String(discountReason).trim() : null;
+
+      if (amountDue === undefined && (treatmentFee !== undefined || consultationFee !== undefined || discount !== undefined)) {
         const cFee = consultationFee !== undefined ? consultationFee : (existingVisit.consultationFee || 0);
         const tFee = treatmentFee !== undefined ? treatmentFee : (existingVisit.treatmentFee || 0);
         const mCost = existingVisit.medicineCost || 0;
-        visitData.amountDue = Math.round(cFee + tFee + mCost);
+        const disc = discount !== undefined ? Math.max(0, Number(discount) || 0) : (existingVisit.discount || 0);
+        visitData.amountDue = Math.max(0, Math.round(cFee + tFee + mCost - disc));
       }
 
       const v = await tx.visit.update({
