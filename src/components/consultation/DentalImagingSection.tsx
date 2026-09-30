@@ -143,12 +143,12 @@ export function DentalImagingSection({
   const canUpload =
     currentUser?.role === 'Head Doctor' ||
     currentUser?.role === 'Duty Doctor' ||
-    currentUser?.role === 'Admin';
+    (currentUser?.role as string) === 'Admin';
 
   const canDelete =
     currentUser?.role === 'Head Doctor' ||
     currentUser?.role === 'Duty Doctor' ||
-    currentUser?.role === 'Admin';
+    (currentUser?.role as string) === 'Admin';
 
   // Load existing images
   const loadImages = async () => {

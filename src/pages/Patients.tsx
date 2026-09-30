@@ -26,10 +26,7 @@ import { useClinicContext } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { PatientImportModal } from '../components/patients/PatientImportModal';
 import { api } from '../lib/api';
-import Swal from 'sweetalert2';
-import withReactContent from 'sweetalert2-react-content';
 
-const MySwal = withReactContent(Swal);
 export function PatientsPage() {
   const { currentUser } = useAuth();
   const { visits, staff, addPatient, updatePatient, startVisit, updateVisit, normalizePhone } = useClinicContext();
