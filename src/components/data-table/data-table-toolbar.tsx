@@ -29,9 +29,9 @@ export function DataTableToolbar({
   ...props
 }: DataTableToolbarProps) {
   return (
-    <div className={cn("p-3 sm:p-4 lg:p-5 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4 bg-white min-w-0 w-full", className)} {...props}>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-1 min-w-0 flex-wrap">
-        <div className="relative w-full sm:w-64 md:w-72 shrink-0">
+    <div className={cn("p-2.5 sm:p-3 lg:p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 bg-white min-w-0 w-full", className)} {...props}>
+      <div className="flex flex-row items-center gap-2 sm:gap-2.5 flex-1 min-w-0 flex-wrap">
+        <div className="relative w-full sm:w-56 md:w-60 lg:w-72 shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input 
             placeholder={searchPlaceholder}
@@ -47,19 +47,23 @@ export function DataTableToolbar({
         )}
       </div>
       {(actionSlot || exportOptions) && (
-        <div className="flex items-center gap-2 flex-wrap shrink-0 justify-between sm:justify-end w-full xl:w-auto pt-1 xl:pt-0 border-t xl:border-t-0 border-slate-100">
-          {actionSlot}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto sm:ml-auto shrink-0">
+          {actionSlot && (
+            <div className="w-full sm:w-auto flex items-center [&>button]:w-full sm:[&>button]:w-auto [&>a]:w-full sm:[&>a]:w-auto">
+              {actionSlot}
+            </div>
+          )}
           {exportOptions && (
-            <div className="flex items-center gap-1.5 bg-slate-50/80 p-1 rounded-xl border border-slate-200/80">
+            <div className="flex items-center justify-between sm:justify-end gap-1.5 bg-slate-50/80 p-1 rounded-xl border border-slate-200/80 w-full sm:w-auto shrink-0">
               {exportOptions.pdf !== false && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => exportOptions.onExport?.('pdf')}
-                  className="h-8 px-2.5 text-xs font-semibold text-rose-700 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
+                  className="flex-1 sm:flex-initial justify-center h-8 px-2.5 text-xs font-semibold text-rose-700 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
                   title="Download PDF"
                 >
-                  <FileText className="mr-1.5 h-3.5 w-3.5 text-rose-500" />
+                  <FileText className="mr-1.5 h-3.5 w-3.5 text-rose-500 shrink-0" />
                   PDF
                 </Button>
               )}
@@ -68,10 +72,10 @@ export function DataTableToolbar({
                   variant="ghost"
                   size="sm"
                   onClick={() => exportOptions.onExport?.('xlsx')}
-                  className="h-8 px-2.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-200"
+                  className="flex-1 sm:flex-initial justify-center h-8 px-2.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-200"
                   title="Download Excel"
                 >
-                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
+                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   Excel
                 </Button>
               )}
@@ -80,10 +84,10 @@ export function DataTableToolbar({
                   variant="ghost"
                   size="sm"
                   onClick={() => exportOptions.onExport?.('csv')}
-                  className="h-8 px-2.5 text-xs font-semibold text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
+                  className="flex-1 sm:flex-initial justify-center h-8 px-2.5 text-xs font-semibold text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
                   title="Download CSV"
                 >
-                  <File className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+                  <File className="mr-1.5 h-3.5 w-3.5 text-blue-600 shrink-0" />
                   CSV
                 </Button>
               )}

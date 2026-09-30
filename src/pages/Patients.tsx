@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play, Upload } from 'lucide-react';
+import { UserPlus, AlertCircle, Calendar, Camera, Eye, Play, Upload, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { DataTable } from '../components/data-table/data-table';
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar';
@@ -20,7 +20,7 @@ import { CameraCapture } from '../components/ui/camera-capture';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
 import { PatientCompleteHistory } from '../components/history/PatientCompleteHistory';
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
 import { useClinicContext } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
@@ -94,6 +94,16 @@ export function PatientsPage() {
   const [activeVisitWarning, setActiveVisitWarning] = useState(false);
   const [visitReason, setVisitReason] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isSavingPatient, setIsSavingPatient] = useState(false);
+  const [duplicatePhoneWarning, setDuplicatePhoneWarning] = useState<{
+    name: string;
+    phone: string;
+  } | null>(null);
+
+  const handleDismissDuplicatePhoneWarning = () => {
+    setDuplicatePhoneWarning(null);
+    setNewPatient(prev => ({ ...prev, phone: '' }));
+  };
 
   const doctors = (staff || []).filter((s: any) => ['Head Doctor', 'Duty Doctor'].includes(s.role));
 
@@ -108,38 +118,39 @@ export function PatientsPage() {
 
 
   const handleSaveNewPatient = async () => {
-    if (!newPatient.name || !newPatient.phone || !newPatient.age || !newPatient.gender) {
-      toast.error('Please fill out all mandatory fields.');
+    if (!newPatient.name || !newPatient.name.trim()) {
+      toast.error('Full Name is required.');
       return;
     }
-    if (newPatient.phone.length !== 10) {
+    const cleanPhone = (newPatient.phone || '').replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
       toast.error('Phone number must be exactly 10 digits.');
+      return;
+    }
+    const ageNum = parseInt(newPatient.age as string, 10);
+    if (!newPatient.age || isNaN(ageNum) || ageNum <= 0) {
+      toast.error('Age is mandatory and must be greater than 0.');
+      return;
+    }
+    if (!newPatient.gender) {
+      toast.error('Gender is required.');
       return;
     }
 
     // Duplicate Protection
-    const normPhone = normalizePhone(newPatient.phone);
+    const normPhone = normalizePhone(cleanPhone);
     const existing = patients.find(p => p.phone && normalizePhone(p.phone) === normPhone);
     if (existing) {
-      MySwal.fire({
-        title: 'Duplicate Phone Number',
-        html: `A patient is already registered with this phone number: <br/><br/><b>${existing.name}</b> (${existing.phone})<br/><br/>Please edit this patient instead of registering a new one to avoid duplicate records.`,
-        icon: 'warning',
-        confirmButtonText: 'Understood',
-        confirmButtonColor: '#0d9488',
-        customClass: {
-          popup: 'rounded-2xl',
-          confirmButton: 'rounded-lg font-semibold px-8 py-2'
-        }
-      });
+      setDuplicatePhoneWarning({ name: existing.name, phone: existing.phone });
       return;
     }
 
     try {
+      setIsSavingPatient(true);
       const created = await addPatient({
-        name: newPatient.name,
-        phone: newPatient.phone,
-        age: parseInt(newPatient.age) || 0,
+        name: newPatient.name.trim(),
+        phone: cleanPhone,
+        age: ageNum,
         gender: newPatient.gender,
         status: 'Active',
         photoUrl: newPatient.photoUrl || undefined,
@@ -155,18 +166,39 @@ export function PatientsPage() {
       setActiveVisitWarning(false);
     } catch (err: any) {
       console.error(err);
-      toast.error(err.response?.data?.error || 'Failed to register patient');
+      const msg = err.response?.data?.details?.[0]?.message || err.response?.data?.error || 'Failed to register patient';
+      toast.error(msg);
+    } finally {
+      setIsSavingPatient(false);
     }
   };
 
   const handleUpdatePatient = async () => {
     if (!selectedPatient) return;
+    const nameVal = newPatient.name?.trim() || selectedPatient.name;
+    if (!nameVal) {
+      toast.error('Full Name is required.');
+      return;
+    }
+    const cleanPhone = (newPatient.phone || selectedPatient.phone || '').replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      toast.error('Phone number must be exactly 10 digits.');
+      return;
+    }
+    const rawAge = newPatient.age !== undefined && newPatient.age !== '' ? newPatient.age : selectedPatient.age?.toString();
+    const ageNum = parseInt(rawAge as string, 10);
+    if (!rawAge || isNaN(ageNum) || ageNum <= 0) {
+      toast.error('Age is mandatory and must be greater than 0.');
+      return;
+    }
+
     try {
+      setIsSavingPatient(true);
       if (updatePatient) {
         await updatePatient(selectedPatient.id, {
-          name: newPatient.name || selectedPatient.name,
-          phone: newPatient.phone || selectedPatient.phone,
-          age: parseInt(newPatient.age) || selectedPatient.age,
+          name: nameVal,
+          phone: cleanPhone,
+          age: ageNum,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
           email: newPatient.email !== undefined ? newPatient.email : selectedPatient.email,
@@ -174,9 +206,9 @@ export function PatientsPage() {
         });
         setSelectedPatient(prev => prev ? {
           ...prev,
-          name: newPatient.name || selectedPatient.name,
-          phone: newPatient.phone || selectedPatient.phone,
-          age: parseInt(newPatient.age) || selectedPatient.age,
+          name: nameVal,
+          phone: cleanPhone,
+          age: ageNum,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
           email: newPatient.email !== undefined ? newPatient.email : selectedPatient.email,
@@ -189,9 +221,12 @@ export function PatientsPage() {
       }
       toast.success('Patient details updated.');
       setDrawerMode('view');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Failed to update patient');
+      const msg = err.response?.data?.details?.[0]?.message || err.response?.data?.error || 'Failed to update patient';
+      toast.error(msg);
+    } finally {
+      setIsSavingPatient(false);
     }
   };
 
@@ -384,7 +419,7 @@ export function PatientsPage() {
           size="lg" 
           className="w-full max-w-[100vw] sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300"
           onInteractOutside={(e) => {
-            if (isCameraOpen) e.preventDefault();
+            if (isCameraOpen || duplicatePhoneWarning) e.preventDefault();
           }}
         >
           
@@ -685,8 +720,8 @@ export function PatientsPage() {
                     <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white shadow-sm">
                       Cancel
                     </Button>
-                    <Button className="w-full sm:w-auto shadow-sm" onClick={handleSaveNewPatient} disabled={!newPatient.name || !newPatient.phone}>
-                      Register Patient
+                    <Button className="w-full sm:w-auto shadow-sm" onClick={handleSaveNewPatient} disabled={isSavingPatient || !newPatient.name || !newPatient.phone || !newPatient.age}>
+                      {isSavingPatient ? 'Registering...' : 'Register Patient'}
                     </Button>
                   </>
                 ) : (
@@ -694,8 +729,8 @@ export function PatientsPage() {
                     <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white shadow-sm">
                       Cancel
                     </Button>
-                    <Button className="w-full sm:w-auto shadow-sm" onClick={handleUpdatePatient}>
-                      Save Changes
+                    <Button className="w-full sm:w-auto shadow-sm" onClick={handleUpdatePatient} disabled={isSavingPatient}>
+                      {isSavingPatient ? 'Saving...' : 'Save Changes'}
                     </Button>
                   </>
                 )}
@@ -745,6 +780,32 @@ export function PatientsPage() {
               }}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Phone Number Warning Dialog */}
+      <Dialog open={!!duplicatePhoneWarning} onOpenChange={open => {
+        if (!open) handleDismissDuplicatePhoneWarning();
+      }}>
+        <DialogContent className="sm:max-w-[420px] p-6 text-center">
+          <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
+          <DialogTitle className="text-xl font-bold text-slate-900 mb-2">Duplicate Phone Number</DialogTitle>
+          <div className="text-sm text-slate-600 space-y-2">
+            <p>A patient is already registered with this phone number:</p>
+            <p className="font-semibold text-slate-800 text-base">{duplicatePhoneWarning?.name} ({duplicatePhoneWarning?.phone})</p>
+            <p className="text-xs text-slate-500">Please edit this patient instead of registering a new one to avoid duplicate records.</p>
+          </div>
+          <DialogFooter className="mt-5 sm:justify-center">
+            <Button
+              type="button"
+              className="w-full sm:w-auto px-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+              onClick={handleDismissDuplicatePhoneWarning}
+            >
+              Understood
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

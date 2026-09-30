@@ -46,10 +46,13 @@ export const getPrescriptionPDF = async (req: Request, res: Response) => {
       patientGender: visit.patient.gender || '',
       patientPhone: visit.patient.phone,
       diagnosis: visit.consultation?.reasonForVisit || visit.reasonForVisit || undefined,
+      notes: visit.prescription.notes || visit.consultation?.clinicalNotes || undefined,
       visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
       doctorName: staff ? staff.name : 'Doctor',
       items: visit.prescription.items.map((item: any) => ({
         medicineName: item.medicine?.name || 'Medicine',
+        form: item.medicine?.form || undefined,
+        unit: item.medicine?.unit || undefined,
         quantity: item.quantity,
         dosage: item.dosage || undefined,
         frequency: item.frequency || undefined,

@@ -53,12 +53,6 @@ export function Topbar() {
             <Sidebar onNavigate={() => setMobileMenuOpen(false)} />
           </SheetContent>
         </Sheet>
-
-        {/* Small screen clinic brand indicator */}
-        <div className="xl:hidden flex items-center gap-2 min-w-0">
-          <img src="/dental-icon.png" alt="Rafi Dental Clinic" className="h-8 w-8 object-contain shrink-0" />
-          <span className="font-bold text-slate-800 text-sm hidden xs:inline truncate">Rafi Dental Clinic</span>
-        </div>
       </div>
 
       <div className="flex items-center gap-3">

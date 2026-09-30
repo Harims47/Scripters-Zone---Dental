@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
@@ -131,7 +131,7 @@ export function calculatePrescriptionQuantity(
   const instList = instructions
     ? instructions.split(',').map(s => s.trim()).filter(Boolean)
     : []
-  
+
   // Non-SOS meal instructions represent daily dosage frequency
   const mealDoses = instList.filter(i => !i.includes('SOS'))
   const dosesPerDay = mealDoses.length > 0 ? mealDoses.length : 1
@@ -167,16 +167,16 @@ const CLINICAL_NOTE_TAGS = [
   'Extraction Advised'
 ]
 
-function RxRow({ 
-  item, 
-  onUpdateField, 
+function RxRow({
+  item,
+  onUpdateField,
   onUpdateFields,
-  onRemove 
-}: { 
-  item: PrescriptionLineItem; 
-  onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void; 
+  onRemove
+}: {
+  item: PrescriptionLineItem;
+  onUpdateField: (id: string, field: keyof PrescriptionLineItem, value: any) => void;
   onUpdateFields?: (id: string, updates: Partial<PrescriptionLineItem>) => void;
-  onRemove: (id: string) => void 
+  onRemove: (id: string) => void
 }) {
   const selectedInstructions = item.instructions
     ? item.instructions.split(',').map(s => s.trim()).filter(Boolean)
@@ -441,7 +441,7 @@ export function DoctorWorkspacePage() {
   useEffect(() => {
     if (consultation) {
       setReason(consultation.reasonForVisit || visit?.reasonForVisit || '')
-      
+
       // Clinical notes strictly contains only clinical notes - strip legacy waiver strings if present
       const rawNotes = consultation.clinicalNotes || '';
       const cleanedNotes = rawNotes
@@ -510,8 +510,8 @@ export function DoctorWorkspacePage() {
   }, [totalCalculatedDue, visit?.amountDue, totalPaid]);
 
 
-  useEffect(() => {
-    if (prescription) {
+  const resetPrescriptionToSaved = useCallback(() => {
+    if (prescription && prescription.items) {
       const mappedItems = prescription.items.map(item => {
         const med = medicines.find(m => m.id === item.medicineId)
         const parts = (item.instructions || '').split(' | ')
@@ -526,6 +526,7 @@ export function DoctorWorkspacePage() {
           unit: med?.unit || 'Units',
           stockWarningLevel: med?.stockWarningLevel || 0,
           currentStock: med?.currentStock || 0,
+          unitPrice: med?.unitPrice || 0,
           quantity: item.quantity,
           dosage: item.dosage,
           frequency: item.frequency,
@@ -538,7 +539,22 @@ export function DoctorWorkspacePage() {
     } else {
       setActivePrescription([])
     }
+    setMedSearch('')
   }, [prescription, medicines])
+
+  useEffect(() => {
+    resetPrescriptionToSaved()
+  }, [resetPrescriptionToSaved])
+
+  const handleOpenPrescriptionModal = () => {
+    resetPrescriptionToSaved()
+    setPrescriptionModalOpen(true)
+  }
+
+  const handleClosePrescriptionModal = () => {
+    resetPrescriptionToSaved()
+    setPrescriptionModalOpen(false)
+  }
 
   const handlePrintPrescription = async () => {
     try {
@@ -645,15 +661,15 @@ export function DoctorWorkspacePage() {
       }
       try {
         const result = await saveConsultation(
-          visitId, 
-          { 
-            reasonForVisit: reason || visit?.reasonForVisit || '', 
+          visitId,
+          {
+            reasonForVisit: reason || visit?.reasonForVisit || '',
             clinicalNotes: notes.trim(),
             consultationFee,
             treatmentFee,
             consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
             treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null
-          }, 
+          },
           true,
           paymentOwner
         )
@@ -854,7 +870,7 @@ export function DoctorWorkspacePage() {
                 </span>
               )}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
+            <Button variant="outline" size="sm" onClick={handleOpenPrescriptionModal} className="h-9 shadow-sm bg-white border-slate-200">
               <Pill className="mr-2 h-4 w-4 text-indigo-600" /> Prescription
             </Button>
           </div>
@@ -1041,9 +1057,9 @@ export function DoctorWorkspacePage() {
                     <div className="whitespace-pre-wrap">
                       {consultation.clinicalNotes
                         ? consultation.clinicalNotes
-                            .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
-                            .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
-                            .trim() || '—'
+                          .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
+                          .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
+                          .trim() || '—'
                         : '—'}
                     </div>
                   </div>
@@ -1074,7 +1090,7 @@ export function DoctorWorkspacePage() {
                     <Button variant="outline" size="sm" onClick={() => setViewPrescriptionModalOpen(true)} className="h-8 px-3 text-indigo-700 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-800">
                       <Eye className="h-4 w-4 mr-1.5" /> View
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={() => setPrescriptionModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                    <Button variant="secondary" size="sm" onClick={handleOpenPrescriptionModal} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
                       <Edit className="h-4 w-4 mr-1.5" /> Edit
                     </Button>
                     <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="h-8 px-3 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
@@ -1138,7 +1154,7 @@ export function DoctorWorkspacePage() {
 
           </div>
 
-          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-4 justify-end items-center">
+          <div className="p-3 sm:p-4 bg-white sm:bg-slate-50/50 rounded-2xl sm:rounded-xl border border-slate-200/80 sm:border-slate-100 shadow-xs sm:shadow-none flex flex-col sm:flex-row sm:flex-wrap gap-2.5 sm:gap-3 sm:justify-end sm:items-center mt-4 sm:mt-0">
             {visit?.paymentOwner === 'DOCTOR' && totalPaid > 0 && (
               <WhatsAppActionButton
                 type="PAYMENT_RECEIPT"
@@ -1153,14 +1169,14 @@ export function DoctorWorkspacePage() {
                 variant="outline"
                 size="lg"
                 label="WhatsApp Receipt"
-                className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-medium"
+                className="w-full sm:w-auto h-11 text-xs sm:text-sm border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-medium"
               />
             )}
             {visit?.paymentOwner === 'DOCTOR' && remainingBalance > 0 && (
               <Button
                 size="lg"
                 variant="outline"
-                className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-medium"
+                className="w-full sm:w-auto h-11 text-xs sm:text-sm border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-medium"
                 onClick={() => {
                   setDoctorPaymentAmount(String(remainingBalance));
                   setDoctorPaymentModalOpen(true);
@@ -1169,94 +1185,103 @@ export function DoctorWorkspacePage() {
                 <CreditCard className="w-4 h-4 mr-2 text-emerald-600" /> Collect Payment (₹{remainingBalance})
               </Button>
             )}
-            <Button size="lg" variant="outline" className="text-slate-700 font-medium bg-white" onClick={() => setTransferModalOpen(true)}>
-              Transfer Patient
-            </Button>
-            <Button
-              size="lg"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
-              onClick={async () => {
-                const hasMedicines = (prescription && prescription.items && prescription.items.length > 0) || activePrescription.length > 0
-                if (!hasMedicines) {
-                  const res = await MySwal.fire({
-                    title: 'No Medicines Prescribed',
-                    text: 'You have not given any medicine for this patient. Do you still want to continue or cancel?',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, Continue',
-                    cancelButtonText: 'Cancel & Add Medicine',
-                    confirmButtonColor: '#4f46e5', // indigo-600
-                    cancelButtonColor: '#94a3b8', // slate-400
-                    customClass: {
-                      popup: 'rounded-2xl',
-                      confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
-                      cancelButton: 'rounded-lg font-semibold px-6 py-2.5'
-                    }
-                  })
-                  if (!res.isConfirmed) {
-                    return
-                  }
 
-                  // Ask for the clinical reason why no medicines were prescribed
-                  const reasonRes = await MySwal.fire({
-                    title: 'Reason for No Medication',
-                    text: 'Please select why no medicines are prescribed for this visit:',
-                    icon: 'question',
-                    input: 'select',
-                    inputOptions: {
-                      'Routine checkup / No medication needed': 'Routine checkup / No medication needed',
-                      'Procedure completed under local anesthesia only (No post-op meds required)': 'Procedure completed under local anesthesia only (No post-op meds required)',
-                      'Patient already on existing medication': 'Patient already on existing medication',
-                      'Referred to specialist / external facility': 'Referred to specialist / external facility',
-                      'Diagnostic only (X-ray / Consultation / Impressions)': 'Diagnostic only (X-ray / Consultation / Impressions)',
-                      'Patient declined medication': 'Patient declined medication',
-                      'Other': 'Other (Clinical judgement)'
-                    },
-                    inputPlaceholder: 'Select a reason...',
-                    showCancelButton: true,
-                    confirmButtonText: 'Continue',
-                    cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#4f46e5',
-                    cancelButtonColor: '#94a3b8',
-                    inputValidator: (value) => {
-                      if (!value) {
-                        return 'Please select a reason to proceed'
+            {/* Core Action Buttons: Side-by-side on mobile, right-aligned on tablet/desktop */}
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <Button
+                size="lg"
+                variant="outline"
+                className="flex-1 sm:flex-initial sm:w-auto h-11 px-3 sm:px-6 text-xs sm:text-sm font-semibold text-slate-700 bg-white border-slate-200 hover:bg-slate-50 shadow-xs"
+                onClick={() => setTransferModalOpen(true)}
+              >
+                Transfer Patient
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1 sm:flex-initial sm:w-auto h-11 px-3 sm:px-6 text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                onClick={async () => {
+                  const hasMedicines = (prescription && prescription.items && prescription.items.length > 0) || activePrescription.length > 0
+                  if (!hasMedicines) {
+                    const res = await MySwal.fire({
+                      title: 'No Medicines Prescribed',
+                      text: 'You have not given any medicine for this patient. Do you still want to continue or cancel?',
+                      icon: 'warning',
+                      showCancelButton: true,
+                      confirmButtonText: 'Yes, Continue',
+                      cancelButtonText: 'Cancel & Add Medicine',
+                      confirmButtonColor: '#4f46e5', // indigo-600
+                      cancelButtonColor: '#94a3b8', // slate-400
+                      customClass: {
+                        popup: 'rounded-2xl',
+                        confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
+                        cancelButton: 'rounded-lg font-semibold px-6 py-2.5'
                       }
-                      return null
-                    },
-                    customClass: {
-                      popup: 'rounded-2xl',
-                      confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
-                      cancelButton: 'rounded-lg font-semibold px-6 py-2.5',
-                      input: 'rounded-lg border-slate-200 text-sm'
-                    }
-                  })
-
-                  if (!reasonRes.isConfirmed || !reasonRes.value) {
-                    return
-                  }
-
-                  const selectedReason = reasonRes.value === 'Other' ? 'Other clinical judgement' : reasonRes.value
-                  const noMedNote = `[No Medication Prescribed: ${selectedReason}]`
-
-                  // Update notes in state and persist to consultation record
-                  const updatedNotes = notes ? (notes.includes('[No Medication Prescribed:') ? notes.replace(/\[No Medication Prescribed:[^\]]+\]/, noMedNote) : `${notes}\n\n${noMedNote}`) : noMedNote
-                  setNotes(updatedNotes)
-
-                  if (visitId) {
-                    await saveConsultation(visitId, {
-                      reasonForVisit: reason || visit?.reasonForVisit || '',
-                      clinicalNotes: updatedNotes,
-                      consultationFee,
-                      treatmentFee
                     })
+                    if (!res.isConfirmed) {
+                      return
+                    }
+
+                    // Ask for the clinical reason why no medicines were prescribed
+                    const reasonRes = await MySwal.fire({
+                      title: 'Reason for No Medication',
+                      text: 'Please select why no medicines are prescribed for this visit:',
+                      icon: 'question',
+                      input: 'select',
+                      inputOptions: {
+                        'Routine checkup / No medication needed': 'Routine checkup / No medication needed',
+                        'Procedure completed under local anesthesia only (No post-op meds required)': 'Procedure completed under local anesthesia only (No post-op meds required)',
+                        'Patient already on existing medication': 'Patient already on existing medication',
+                        'Referred to specialist / external facility': 'Referred to specialist / external facility',
+                        'Diagnostic only (X-ray / Consultation / Impressions)': 'Diagnostic only (X-ray / Consultation / Impressions)',
+                        'Patient declined medication': 'Patient declined medication',
+                        'Other': 'Other (Clinical judgement)'
+                      },
+                      inputPlaceholder: 'Select a reason...',
+                      showCancelButton: true,
+                      confirmButtonText: 'Continue',
+                      cancelButtonText: 'Cancel',
+                      confirmButtonColor: '#4f46e5',
+                      cancelButtonColor: '#94a3b8',
+                      inputValidator: (value) => {
+                        if (!value) {
+                          return 'Please select a reason to proceed'
+                        }
+                        return null
+                      },
+                      customClass: {
+                        popup: 'rounded-2xl',
+                        confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
+                        cancelButton: 'rounded-lg font-semibold px-6 py-2.5',
+                        input: 'rounded-lg border-slate-200 text-sm'
+                      }
+                    })
+
+                    if (!reasonRes.isConfirmed || !reasonRes.value) {
+                      return
+                    }
+
+                    const selectedReason = reasonRes.value === 'Other' ? 'Other clinical judgement' : reasonRes.value
+                    const noMedNote = `[No Medication Prescribed: ${selectedReason}]`
+
+                    // Update notes in state and persist to consultation record
+                    const updatedNotes = notes ? (notes.includes('[No Medication Prescribed:') ? notes.replace(/\[No Medication Prescribed:[^\]]+\]/, noMedNote) : `${notes}\n\n${noMedNote}`) : noMedNote
+                    setNotes(updatedNotes)
+
+                    if (visitId) {
+                      await saveConsultation(visitId, {
+                        reasonForVisit: reason || visit?.reasonForVisit || '',
+                        clinicalNotes: updatedNotes,
+                        consultationFee,
+                        treatmentFee
+                      })
+                    }
                   }
-                }
-                setCompleteModalOpen(true)
-              }}
-            >
-              Complete Consultation
-            </Button>
+                  setCompleteModalOpen(true)
+                }}
+              >
+                Complete Consultation
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -1279,11 +1304,11 @@ export function DoctorWorkspacePage() {
             setTreatmentModalOpen(true);
           }
         }}>
-          <DialogContent className="max-w-7xl w-[96vw] max-h-[96vh] flex flex-col p-0 gap-0 bg-slate-50 overflow-hidden">
-            <DialogHeader className="px-5 py-2.5 bg-white border-b border-slate-100 shrink-0">
+          <DialogContent className="max-w-7xl w-[96vw] max-w-full max-h-[96vh] flex flex-col p-0 gap-0 bg-slate-50 overflow-hidden">
+            <DialogHeader className="px-3.5 sm:px-5 py-2.5 bg-white border-b border-slate-100 shrink-0">
               <DialogTitle className="text-base font-bold text-slate-800">Treatment Plan</DialogTitle>
             </DialogHeader>
-            <div className="p-2.5 sm:p-3 overflow-y-auto flex-1 [scrollbar-gutter:stable]">
+            <div className="p-2 sm:p-3 overflow-y-auto overflow-x-hidden flex-1 w-full min-w-0 [scrollbar-gutter:stable]">
               {treatmentModalOpen && (
                 <TreatmentPlanUI
                   key={`${patient.id}-${visitId || 'no-visit'}`}
@@ -1428,9 +1453,9 @@ export function DoctorWorkspacePage() {
                 <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm text-slate-700 whitespace-pre-wrap min-h-[80px]">
                   {notes
                     ? notes
-                        .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
-                        .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
-                        .trim() || 'No clinical notes recorded.'
+                      .replace(/\n?\[Consultation Fee Waiver Reason:[^\]]*\]/gi, '')
+                      .replace(/\n?\[Treatment Fee Waiver Reason:[^\]]*\]/gi, '')
+                      .trim() || 'No clinical notes recorded.'
                     : 'No clinical notes recorded.'}
                 </div>
               </div>
@@ -1498,8 +1523,8 @@ export function DoctorWorkspacePage() {
                             }
                           }}
                           className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 font-medium ${isIncluded
-                              ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400 hover:text-teal-700 hover:bg-teal-50/50'
+                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400 hover:text-teal-700 hover:bg-teal-50/50'
                             }`}
                         >
                           {isIncluded && <span className="text-[10px]">✓</span>}
@@ -1609,11 +1634,10 @@ export function DoctorWorkspacePage() {
                         setConsultationZeroReason(tag);
                         setConsultationZeroError('');
                       }}
-                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
-                        consultationZeroReason === tag
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${consultationZeroReason === tag
                           ? 'bg-amber-600 text-white border-amber-600 font-semibold shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
-                      }`}
+                        }`}
                     >
                       {tag}
                     </button>
@@ -1633,9 +1657,8 @@ export function DoctorWorkspacePage() {
                     if (e.target.value.trim()) setConsultationZeroError('');
                   }}
                   rows={3}
-                  className={`text-xs bg-white resize-none ${
-                    consultationZeroError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
-                  }`}
+                  className={`text-xs bg-white resize-none ${consultationZeroError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
+                    }`}
                 />
                 {consultationZeroError && (
                   <p className="text-[11px] text-rose-600 font-medium mt-1">{consultationZeroError}</p>
@@ -1674,7 +1697,10 @@ export function DoctorWorkspacePage() {
         </Dialog>
 
         {/* Prescription Modal — DndContext lives INSIDE the Dialog to avoid portal issues */}
-        <Dialog open={prescriptionModalOpen} onOpenChange={setPrescriptionModalOpen}>
+        <Dialog open={prescriptionModalOpen} onOpenChange={(open) => {
+          if (!open) resetPrescriptionToSaved()
+          setPrescriptionModalOpen(open)
+        }}>
           <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0">
             <DialogHeader className="px-6 py-4 bg-white border-b border-slate-100 shrink-0">
               <DialogTitle>Prescription</DialogTitle>
@@ -1742,7 +1768,7 @@ export function DoctorWorkspacePage() {
             </DndContext>
 
             <DialogFooter className="px-6 py-4 bg-white border-t border-slate-100 shrink-0">
-              <Button variant="outline" onClick={() => setPrescriptionModalOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={handleClosePrescriptionModal}>Cancel</Button>
               <Button
                 onClick={handleSavePrescription}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"

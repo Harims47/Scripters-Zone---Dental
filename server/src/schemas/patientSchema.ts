@@ -13,9 +13,9 @@ export const createPatientSchema = z.object({
 
 export const updatePatientSchema = z.object({
   body: z.object({
-    name: z.string().min(1).optional(),
-    phone: z.string().min(1).optional(),
-    age: z.number().int().positive().optional(),
+    name: z.string().min(1, 'Name cannot be empty').optional(),
+    phone: z.string().min(1, 'Phone cannot be empty').optional(),
+    age: z.number().int().positive('Age must be a positive number').optional(),
     gender: z.enum(['Male', 'Female', 'Other']).optional(),
     status: z.enum(['Active', 'Inactive']).optional(),
     photoUrl: z.string().optional(),

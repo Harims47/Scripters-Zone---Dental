@@ -493,31 +493,31 @@ export function InventoryPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-4 sm:gap-6 border-b border-slate-200 overflow-x-auto w-full min-w-0">
+      <div className="flex items-center gap-4 sm:gap-6 border-b border-slate-200 overflow-x-auto w-full min-w-0 no-scrollbar">
         <button
           onClick={() => {
             setActiveTab('items')
             fetchInventory(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterCategory, filterStatus, filterType)
           }}
-          className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'items' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 font-semibold text-sm transition-colors whitespace-nowrap shrink-0 ${activeTab === 'items' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Items & Stock
         </button>
         <button
           onClick={() => setActiveTab('orders')}
-          className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'orders' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 font-semibold text-sm transition-colors whitespace-nowrap shrink-0 ${activeTab === 'orders' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Purchase Orders
         </button>
         <button
           onClick={() => setActiveTab('suppliers')}
-          className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'suppliers' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 font-semibold text-sm transition-colors whitespace-nowrap shrink-0 ${activeTab === 'suppliers' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Suppliers
         </button>
         <button
           onClick={() => setActiveTab('categories')}
-          className={`pb-3 font-semibold text-sm transition-colors ${activeTab === 'categories' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`pb-3 font-semibold text-sm transition-colors whitespace-nowrap shrink-0 ${activeTab === 'categories' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Categories
         </button>
@@ -563,7 +563,7 @@ export function InventoryPage() {
             filterSlot={
               <>
                 <Select value={filterType} onValueChange={(v: any) => setFilterType(v)}>
-                  <SelectTrigger className="w-[145px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                  <SelectTrigger className="flex-1 min-w-[130px] sm:w-[145px] sm:flex-initial h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors">
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
                   <SelectContent>
@@ -582,7 +582,7 @@ export function InventoryPage() {
                   </SelectContent>
                 </Select> */}
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="w-[140px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectTrigger className="flex-1 min-w-[130px] sm:w-[140px] sm:flex-initial h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all-status">All Statuses</SelectItem>
                     <SelectItem value="in-stock">In Stock</SelectItem>
@@ -646,7 +646,7 @@ export function InventoryPage() {
 
       {/* DRAWER */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="w-full max-w-[100vw] sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
+        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
 
           <div className="px-6 sm:px-8 py-6 border-b bg-slate-50/50 flex flex-col gap-2">
             <h2 className="text-xl font-semibold text-slate-900">
@@ -656,11 +656,11 @@ export function InventoryPage() {
             </h2>
           </div>
 
-          <SheetScrollArea className="p-0 bg-white flex-1">
-            <div className="px-6 sm:px-8 py-8 space-y-10">
+          <SheetScrollArea className="px-6 sm:px-8 py-6 bg-white flex-1">
+            <div className="space-y-10">
 
               {(drawerMode === 'view' || drawerMode === 'edit' || drawerMode === 'create') && (
-                <DrawerSection title="Basic Information">
+                <DrawerSection title="">
                   {drawerMode === 'view' && selectedItem ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
                       <div className="sm:col-span-2 flex items-center gap-2">
@@ -853,7 +853,7 @@ export function InventoryPage() {
             </div>
           </SheetScrollArea>
 
-          <DrawerFooterActions>
+          <DrawerFooterActions className="px-6 sm:px-8 py-4 sm:py-5">
             {drawerMode === 'view' ? (
               <Button onClick={() => setDrawerMode('edit')} className="w-full sm:w-auto shadow-sm font-medium transition-all hover:shadow-md">
                 <Edit2 className="mr-2 h-4 w-4" /> Edit Item

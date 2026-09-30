@@ -60,11 +60,11 @@ export function StaffPage() {
   useEffect(() => {
     fetchStaff(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch, filterRole)
   }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, filterRole, fetchStaff])
-  
+
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create')
-  
+
   // Edit/Create form state
   const [activeItem, setActiveItem] = useState<Partial<Staff>>({})
 
@@ -211,12 +211,12 @@ export function StaffPage() {
       accessorKey: "attendance",
       cell: ({ row }) => {
         if (row.original.status !== 'Active') return <span className="text-slate-400 text-sm">—</span>;
-        
+
         const canEditAttendance = currentUser?.role === 'Head Doctor';
-        
+
         return (
-          <Select 
-            value={row.original.attendance || 'Present'} 
+          <Select
+            value={row.original.attendance || 'Present'}
             onValueChange={(val) => handleAttendanceChange(row.original.id, val)}
             disabled={!canEditAttendance}
           >
@@ -256,10 +256,10 @@ export function StaffPage() {
 
   // Derived for drawer
   const isCreating = drawerMode === 'create'
-  
+
   return (
     <div className="h-full flex flex-col gap-6 max-w-[1400px] mx-auto pb-8 w-full min-w-0">
-      
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -288,9 +288,9 @@ export function StaffPage() {
             <option value="Receptionist">Receptionist</option>
           </select>
         }
-        exportOptions={{ 
-          pdf: true, 
-          excel: true, 
+        exportOptions={{
+          pdf: true,
+          excel: true,
           csv: true,
           onExport: (format) => {
             const query = new URLSearchParams({
@@ -305,8 +305,8 @@ export function StaffPage() {
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-slate-100/60 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex-1 w-full min-w-0">
-        <DataTable 
-          columns={columns} 
+        <DataTable
+          columns={columns}
           data={data}
           manualPagination={true}
           pageCount={meta.totalPages}
@@ -321,16 +321,16 @@ export function StaffPage() {
           }}
           emptyState={
             search !== '' ? (
-              <DataTableEmpty 
-                icon={Search} 
-                title="No staff found" 
+              <DataTableEmpty
+                icon={Search}
+                title="No staff found"
                 description={`There are no staff matching "${search}".`}
               />
             ) : (
-              <DataTableEmpty 
+              <DataTableEmpty
                 icon={User}
-                title="No staff members" 
-                description="Add staff members to get started." 
+                title="No staff members"
+                description="Add staff members to get started."
                 action={<Button onClick={handleOpenCreate} className="shadow-sm">Add Staff</Button>}
               />
             )
@@ -357,7 +357,7 @@ export function StaffPage() {
       {/* Staff Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" size="lg" className="w-full max-w-[100vw] sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col gap-0 transition-transform duration-300">
-          
+
           {/* Drawer Header */}
           <div className="px-6 py-6 bg-white border-b border-slate-100">
             <div className="flex items-start justify-between">
@@ -377,17 +377,17 @@ export function StaffPage() {
 
           {/* Drawer Body */}
           <SheetScrollArea className="p-0 bg-white flex-1">
-            <div className="px-6 sm:px-8 py-8 space-y-8">
-              
+            <div className=" space-y-8">
+
               {/* Form Fields */}
               <div className="space-y-6">
-                
+
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Full Name <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input 
-                      className="pl-9 bg-slate-50" 
+                    <Input
+                      className="pl-9 bg-slate-50"
                       placeholder="e.g. Dr. John Doe"
                       value={activeItem.name || ''}
                       onChange={e => setActiveItem(prev => ({ ...prev, name: e.target.value }))}
@@ -400,8 +400,8 @@ export function StaffPage() {
                   <label className="text-sm font-semibold text-slate-700">Phone Number <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input 
-                      className="pl-9 bg-slate-50" 
+                    <Input
+                      className="pl-9 bg-slate-50"
                       placeholder="10 digit number"
                       value={activeItem.phone || ''}
                       onChange={e => {
@@ -417,8 +417,8 @@ export function StaffPage() {
                 {isCreating && (
                   <div className="pt-2 pb-1">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
                         checked={(activeItem as any).hasAccess || false}
                         onChange={e => setActiveItem(prev => ({ ...prev, hasAccess: e.target.checked }))}
@@ -433,8 +433,8 @@ export function StaffPage() {
                   <div className="grid grid-cols-2 gap-4 ml-6 pl-4 border-l-2 border-indigo-100">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">System Username <span className="text-red-500">*</span></label>
-                      <Input 
-                        className="bg-white border-slate-200" 
+                      <Input
+                        className="bg-white border-slate-200"
                         placeholder="e.g. jdoe"
                         value={(activeItem as any).username || ''}
                         onChange={e => setActiveItem(prev => ({ ...prev, username: e.target.value }))}
@@ -442,9 +442,9 @@ export function StaffPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">Initial Password <span className="text-red-500">*</span></label>
-                      <Input 
+                      <Input
                         type="password"
-                        className="bg-white border-slate-200" 
+                        className="bg-white border-slate-200"
                         placeholder="Enter password"
                         value={(activeItem as any).password || ''}
                         onChange={e => setActiveItem(prev => ({ ...prev, password: e.target.value }))}
@@ -455,7 +455,7 @@ export function StaffPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Assigned Role <span className="text-red-500">*</span></label>
-                  <select 
+                  <select
                     className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:opacity-50"
                     value={activeItem.role || ''}
                     onChange={e => {
@@ -479,8 +479,8 @@ export function StaffPage() {
                 {(activeItem.role === 'Head Doctor' || activeItem.role === 'Duty Doctor') && (
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Room Number</label>
-                    <Input 
-                      className="bg-white border-slate-200" 
+                    <Input
+                      className="bg-white border-slate-200"
                       placeholder="e.g. Room 101"
                       value={activeItem.roomNumber || ''}
                       onChange={e => setActiveItem(prev => ({ ...prev, roomNumber: e.target.value }))}
@@ -504,7 +504,7 @@ export function StaffPage() {
                 )}
 
               </div>
-              
+
               {/* Module Access Control */}
               <div className="pt-4 border-t">
                 <ModuleAccessEditor
@@ -517,7 +517,7 @@ export function StaffPage() {
 
             </div>
           </SheetScrollArea>
-          
+
           {/* Drawer Footer */}
           <div className="bg-slate-50 border-t px-6 py-4">
             {drawerMode === 'view' ? (
@@ -532,8 +532,8 @@ export function StaffPage() {
             ) : (
               <DrawerFooterActions>
                 <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto bg-white">Cancel</Button>
-                <Button 
-                  className="w-full sm:w-auto" 
+                <Button
+                  className="w-full sm:w-auto"
                   onClick={handleSave}
                   disabled={!activeItem.name}
                 >

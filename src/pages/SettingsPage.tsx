@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Building2, Phone, Mail, MapPin, Edit2, Globe, MessageSquare, CheckCircle2, ShieldCheck, Clock } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -9,6 +9,7 @@ import {
   DEMO_CLINIC_PROFILE, 
   type ClinicProfile
 } from '../lib/mock-data'
+import { api } from '../lib/api'
 import toast from 'react-hot-toast'
 
 const STORAGE_KEY = 'dentalcore_clinic_profile'
@@ -31,13 +32,45 @@ export function SettingsPage() {
   // Drawer state for editing clinic profile
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editFormData, setEditFormData] = useState<ClinicProfile>(clinic)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Fetch authoritative clinic profile from backend on mount
+  useEffect(() => {
+    let isMounted = true
+    api.get<{ success: boolean; data: any }>('/api/settings/clinic')
+      .then(res => {
+        if (!isMounted) return
+        const serverData = res.data || (res as any)
+        if (serverData && serverData.name) {
+          const profile: ClinicProfile = {
+            name: serverData.name,
+            phone: serverData.phone || '',
+            email: serverData.email || '',
+            address: serverData.address || '',
+            city: serverData.city || '',
+            pin: serverData.pin || '',
+            language: serverData.language || 'English'
+          }
+          setClinic(profile)
+          setEditFormData(profile)
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
+          } catch {}
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to fetch clinic profile from server, using local cache:', err)
+      })
+
+    return () => { isMounted = false }
+  }, [])
 
   const handleOpenEdit = () => {
     setEditFormData({ ...clinic })
     setDrawerOpen(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editFormData.name.trim()) {
       toast.error('Clinic Name is required.')
       return
@@ -47,15 +80,39 @@ export function SettingsPage() {
       return
     }
 
-    setClinic(editFormData)
+    setIsSaving(true)
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(editFormData))
-    } catch (err) {
-      console.error('Failed to save clinic profile to localStorage', err)
-    }
+      const res = await api.put<{ success: boolean; data: any }>('/api/settings/clinic', editFormData)
+      const serverData = res.data || editFormData
+      const updatedProfile: ClinicProfile = {
+        name: serverData.name || editFormData.name,
+        phone: serverData.phone || editFormData.phone,
+        email: serverData.email || editFormData.email,
+        address: serverData.address || editFormData.address,
+        city: serverData.city || editFormData.city,
+        pin: serverData.pin || editFormData.pin,
+        language: serverData.language || editFormData.language || 'English'
+      }
 
-    setDrawerOpen(false)
-    toast.success('Clinic profile updated successfully.')
+      setClinic(updatedProfile)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProfile))
+      } catch {}
+
+      setDrawerOpen(false)
+      toast.success('Clinic profile updated successfully.')
+    } catch (err: any) {
+      console.error('Failed to save clinic profile to server:', err)
+      // Fallback: save locally
+      setClinic(editFormData)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(editFormData))
+      } catch {}
+      setDrawerOpen(false)
+      toast.success('Clinic profile saved locally.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -382,14 +439,16 @@ export function SettingsPage() {
               variant="outline" 
               onClick={() => setDrawerOpen(false)} 
               className="bg-white w-full sm:w-auto"
+              disabled={isSaving}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleSave} 
-              className="bg-teal-600 hover:bg-teal-700 text-white shadow-sm w-full sm:w-auto"
+              disabled={isSaving}
+              className="bg-teal-600 hover:bg-teal-700 text-white shadow-sm w-full sm:w-auto min-w-[120px]"
             >
-              Save Changes
+              {isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
           </DrawerFooterActions>
         </SheetContent>

@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import path from 'path';
 import fs from 'fs';
 import { PDF_THEME } from './pdf/pdfTheme';
@@ -39,9 +40,13 @@ export interface PrescriptionData {
   visitDate: string;
   visitId?: string; // accepted in data payload, NEVER exposed on PDF
   doctorName?: string;
+  doctorRegNo?: string;
   diagnosis?: string;
+  notes?: string;
   items: {
     medicineName: string;
+    form?: string;
+    unit?: string;
     quantity: number;
     dosage?: string;
     duration?: string;
@@ -162,7 +167,30 @@ export interface ReimbursementPDFData {
 // ══════════════════════════════════════════════════════════════════════════
 // 1. PRESCRIPTION PDF GENERATOR
 // ══════════════════════════════════════════════════════════════════════════
-export const generatePrescriptionPDF = (data: PrescriptionData): Promise<Buffer> => {
+export const generatePrescriptionPDF = async (data: PrescriptionData): Promise<Buffer> => {
+  const branding = getClinicBranding({
+    name: data.clinicName,
+    address: data.clinicAddress,
+    phone: data.clinicPhone
+  });
+
+  // Generate Google Maps QR Code for clinic location
+  const clinicQuery = `${branding.name}, ${branding.address || 'Gobichettipalayam'}`;
+  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(clinicQuery)}`;
+  let qrBuffer: Buffer | null = null;
+  try {
+    qrBuffer = await QRCode.toBuffer(mapsUrl, {
+      width: 180,
+      margin: 1,
+      color: {
+        dark: '#1E3A8A', // Brand navy color
+        light: '#FFFFFF'
+      }
+    });
+  } catch (err) {
+    console.error('Failed to generate clinic QR code for prescription:', err);
+  }
+
   return new Promise((resolve, reject) => {
     const doc = initPDFDocument({ size: 'A4', margin: 0 });
     const buffers: Buffer[] = [];
@@ -171,307 +199,259 @@ export const generatePrescriptionPDF = (data: PrescriptionData): Promise<Buffer>
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', reject);
 
-    const branding = getClinicBranding({
-      name: data.clinicName,
-      address: data.clinicAddress,
-      phone: data.clinicPhone
-    });
+    const margin = 40;
+    let currentY = renderClinicHeader(doc, branding, { margin });
 
-    const W = doc.page.width;   // 595.28
-    const H = doc.page.height;  // 841.89
-    const GRN = '#1A5C1A';      // Dark clinical green matching physical sheet
-    const GRN_LIGHT = '#E6F4E6';
-    const BDR = 12;             // Page border inset
+    // Document Title Banner with Rx Accent Badge
+    currentY = renderDocumentTitle(
+      doc,
+      'MEDICAL PRESCRIPTION',
+      undefined,
+      { text: 'Rx', color: PDF_THEME.colors.primaryTeal, bg: PDF_THEME.colors.headerBg },
+      currentY,
+      margin
+    );
+    currentY += 8;
 
-    // Frequency / Instructions -> time slot resolver
-    const resolveSlots = (freq: string, dosage: string, instructions?: string) => {
-      const f = (freq || '').toLowerCase().trim();
-      const inst = (instructions || '').toLowerCase().trim();
-      const qty = (dosage || '').match(/^(\d+)/)?.[1] ?? '1';
-      const e = (s: string) => s ? qty : '';
+    const docName = data.doctorName && data.doctorName !== 'Doctor' && data.doctorName !== 'N/A'
+      ? cleanDoctorName(data.doctorName)
+      : 'Dr. N MOHAMED RAFI B D S';
 
-      const hasBreakfast = /breakfast/i.test(inst);
-      const hasLunch = /lunch/i.test(inst);
-      const hasDinner = /dinner/i.test(inst);
-
-      if (hasBreakfast || hasLunch || hasDinner) {
-        return {
-          m: hasBreakfast ? qty : '',
-          a: hasLunch ? qty : '',
-          ev: '',
-          n: hasDinner ? qty : ''
-        };
-      }
-
-      if (/four|qid|4.time|1-1-1-1/i.test(f)) return { m: qty, a: qty, ev: qty, n: qty };
-      if (/three|tds|tid|thrice|1-1-1/i.test(f)) return { m: qty, a: qty, ev: '', n: qty };
-      if (/twice|two|bd|bid|1-0-1/i.test(f)) return { m: qty, a: '', ev: '', n: qty };
-      if (/once|od|morning only|1-0-0/i.test(f)) return { m: qty, a: '', ev: '', n: '' };
-      if (/night|bedtime|hs/i.test(f)) return { m: '', a: '', ev: '', n: qty };
-      if (/morning/i.test(f)) return { m: qty, a: '', ev: '', n: '' };
-      if (/afternoon/i.test(f)) return { m: '', a: qty, ev: '', n: '' };
-      if (/evening/i.test(f)) return { m: '', a: '', ev: qty, n: '' };
-      return { m: e(qty), a: '', ev: '', n: '' };
-    };
-
-    const resolveFood = (instructions: string) => {
-      const i = (instructions || '').toLowerCase();
-      const hasBefore = /before/i.test(i) || /empty|bf/i.test(i);
-      const hasAfter = /after/i.test(i) || /pc|af/i.test(i);
-      return {
-        bf: hasBefore ? '\u2714' : '',
-        af: hasAfter ? '\u2714' : ''
-      };
-    };
-
-    const drEn = cleanDoctorName(data.doctorName);
-
-    // ── PAGE 1: PRESCRIPTION FRONT ──────────────────────────────────────────
-    // Double clinical border
-    doc.rect(BDR, BDR, W - BDR * 2, H - BDR * 2).lineWidth(2.0).strokeColor(GRN).stroke();
-    doc.rect(BDR + 3, BDR + 3, W - BDR * 2 - 6, H - BDR * 2 - 6).lineWidth(0.6).strokeColor(GRN).stroke();
-
-    const hLeft = BDR + 8;
-    const hRight = W - BDR - 8;
-    const hY = BDR + 8;
-
-    // Left Header: Doctor & Clinic Details (English)
-    doc.font(PDF_THEME.fonts.bold).fontSize(12).fillColor(GRN).text(drEn, hLeft, hY);
-    doc.font(PDF_THEME.fonts.regular).fontSize(8.5).fillColor(GRN)
-      .text('Dental Surgeon', hLeft, hY + 16)
-      .text(branding.name, hLeft, hY + 28, { width: 210 });
-    if (branding.address) {
-      doc.text(branding.address, hLeft, hY + 40, { width: 210 });
-    }
-    if (branding.phone) {
-      doc.text(`Phone : ${branding.phone}`, hLeft, hY + 54);
-    }
-
-    // Right Header: Doctor & Clinic Details (Tamil)
-    const rW = 210;
-    const rX = hRight - rW;
-    doc.font(PDF_THEME.fonts.tamilBold).fontSize(12).fillColor(GRN).text(drEn, rX, hY, { width: rW, align: 'right' });
-    doc.font(PDF_THEME.fonts.tamilRegular).fontSize(8.5).fillColor(GRN)
-      .text('பல் மருத்துவர்', rX, hY + 16, { width: rW, align: 'right' })
-      .text(branding.name, rX, hY + 28, { width: rW, align: 'right' });
-    if (branding.address) {
-      doc.text(branding.address, rX, hY + 40, { width: rW, align: 'right' });
-    }
-    if (branding.phone) {
-      doc.text(`தொலைபேசி : ${branding.phone}`, rX, hY + 54, { width: rW, align: 'right' });
-    }
-
-    // Center: Clinic Logo if available, else clinical badge
-    const lcx = W / 2;
-    if (branding.logoPath && fs.existsSync(branding.logoPath)) {
-      try {
-        doc.image(branding.logoPath, lcx - 22, hY + 4, { height: 44 });
-      } catch {
-        doc.circle(lcx, hY + 28, 18).lineWidth(1.2).strokeColor(GRN).stroke();
-      }
-    } else {
-      doc.circle(lcx, hY + 28, 18).lineWidth(1.2).strokeColor(GRN).stroke();
-      doc.font(PDF_THEME.fonts.bold).fontSize(20).fillColor(GRN).text('+', lcx - 7, hY + 15, { width: 14 });
-    }
-
-    // Separator line
-    const sep1Y = hY + 74;
-    doc.moveTo(hLeft, sep1Y).lineTo(hRight, sep1Y).lineWidth(1.2).strokeColor(GRN).stroke();
-
-    // Date & Diagnosis Row
-    const dateY = sep1Y + 5;
-    doc.font(PDF_THEME.fonts.tamilRegular).fontSize(8.5).fillColor(GRN).text('ஞாயிறு விடுமுறை', hLeft, dateY);
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor(GRN).text('Date :', W / 2 - 70, dateY);
-    doc.font(PDF_THEME.fonts.regular).fontSize(9).fillColor('#000000')
-      .text(formatHumanDate(data.visitDate), W / 2 - 40, dateY, { width: 90 });
-
-    if (data.diagnosis) {
-      doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor(GRN).text('DIAGNOSIS :', W / 2 + 55, dateY);
-      doc.font(PDF_THEME.fonts.regular).fontSize(8.5).fillColor('#111111')
-        .text(data.diagnosis, W / 2 + 120, dateY, { width: W - (W / 2 + 120) - BDR - 8, ellipsis: true });
-    }
-
-    const sep2Y = dateY + 16;
-    doc.moveTo(hLeft, sep2Y).lineTo(hRight, sep2Y).lineWidth(0.8).strokeColor(GRN).stroke();
-
-    // Patient Details Row (Strictly NO database UUID)
-    const patY = sep2Y + 5;
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor(GRN).text('PATIENT NAME :', hLeft, patY);
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor('#000000')
-      .text(data.patientName || 'Patient', hLeft + 96, patY, { width: 190 });
-
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor(GRN).text('AGE :', hLeft + 295, patY);
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor('#000000')
-      .text(String(data.patientAge ? `${data.patientAge} Y` : '—'), hLeft + 325, patY, { width: 35 });
-
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor(GRN).text('GENDER :', hLeft + 365, patY);
-    doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor('#000000')
-      .text(String(data.patientGender || '—'), hLeft + 415, patY, { width: 60 });
-
-    const sep3Y = patY + 16;
-    doc.moveTo(hLeft, sep3Y).lineTo(hRight, sep3Y).lineWidth(0.8).strokeColor(GRN).stroke();
-
-    // Medicine Table Layout
-    const tblTop = sep3Y;
-    const tblLeft = hLeft;
-    const tblRt = hRight;
-    const tblW = tblRt - tblLeft;
-
-    const cT = 50; // time column width (x4 = 200)
-    const cF = 52; // food column (x2 = 104)
-    const cMedW = tblW - cT * 4 - cF * 2;
-
-    const xMed = tblLeft;
-    const xMorn = xMed + cMedW;
-    const xAftn = xMorn + cT;
-    const xEvng = xAftn + cT;
-    const xNgt = xEvng + cT;
-    const xBf = xNgt + cT;
-    const xAf = xBf + cF;
-
-    // Header Row
-    const hdrH = 28;
-    doc.fillColor(GRN_LIGHT).rect(tblLeft, tblTop, tblW, hdrH).fill();
-
-    // Vertical dividers in header
-    [xMorn, xAftn, xEvng, xNgt, xBf, xAf].forEach(x => {
-      doc.moveTo(x, tblTop).lineTo(x, tblTop + hdrH).lineWidth(0.6).strokeColor(GRN).stroke();
-    });
-
-    // Time headers (Tamil)
-    doc.font(PDF_THEME.fonts.tamilBold).fontSize(8.5).fillColor(GRN);
-    doc.text('காலை', xMorn + 2, tblTop + 3, { width: cT, align: 'center' });
-    doc.text('மதியம்', xAftn + 2, tblTop + 3, { width: cT, align: 'center' });
-    doc.text('மாலை', xEvng + 2, tblTop + 3, { width: cT, align: 'center' });
-    doc.text('இரவு', xNgt + 2, tblTop + 3, { width: cT, align: 'center' });
-
-    // Food headers (Tamil)
-    doc.font(PDF_THEME.fonts.tamilBold).fontSize(8).fillColor(GRN)
-      .text('உணவுக்கு', xBf, tblTop + 2, { width: cF * 2, align: 'center' });
-    doc.font(PDF_THEME.fonts.tamilRegular).fontSize(8).fillColor(GRN)
-      .text('முன்', xBf, tblTop + 15, { width: cF, align: 'center' });
-    doc.font(PDF_THEME.fonts.tamilRegular).fontSize(8).fillColor(GRN)
-      .text('பின்', xAf, tblTop + 15, { width: cF, align: 'center' });
-    doc.moveTo(xBf, tblTop + 14).lineTo(xAf + cF, tblTop + 14).lineWidth(0.4).strokeColor(GRN).stroke();
-
-    doc.rect(tblLeft, tblTop, tblW, hdrH).lineWidth(0.8).strokeColor(GRN).stroke();
-
-    // Rx Symbol
-    const rowY = tblTop + hdrH;
-    doc.font(PDF_THEME.fonts.bold).fontSize(18).fillColor(GRN).text('Rx', tblLeft + 3, rowY + 4, { width: 28 });
-
-    // Medicine Rows
-    const bodyBase = rowY;
-    const filled = data.items.length;
-    const availH = H - BDR - 55 - bodyBase;
-    const rowH = filled > 10 ? Math.max(22, Math.floor(availH / Math.min(filled + 1, 16))) : 30;
-    const totalRows = Math.max(filled + 2, Math.min(Math.floor(availH / rowH), 14));
-
-    for (let i = 0; i < totalRows; i++) {
-      const ry = rowY + i * rowH;
-      const item = i < filled ? data.items[i] : null;
-
-      doc.fillColor(i % 2 === 0 ? '#FAFFF8' : '#FFFFFF').rect(tblLeft, ry, tblW, rowH).fill();
-
-      if (item) {
-        const slots = resolveSlots(item.frequency || '', item.dosage || '1', item.instructions || '');
-        const food = resolveFood(item.instructions || '');
-
-        doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor('#111111')
-          .text(`${i + 1}.  ${item.medicineName}`, tblLeft + 32, ry + 5, { width: cMedW - 36 });
-        if (item.dosage || item.duration) {
-          const sub = [item.dosage, item.duration].filter(Boolean).join('  |  ');
-          doc.font(PDF_THEME.fonts.regular).fontSize(7.5).fillColor('#555555')
-            .text(sub, tblLeft + 32, ry + 18, { width: cMedW - 36 });
-        }
-
-        doc.font(PDF_THEME.fonts.bold).fontSize(11).fillColor(GRN);
-        if (slots.m) doc.text(slots.m, xMorn + 2, ry + 9, { width: cT, align: 'center' });
-        if (slots.a) doc.text(slots.a, xAftn + 2, ry + 9, { width: cT, align: 'center' });
-        if (slots.ev) doc.text(slots.ev, xEvng + 2, ry + 9, { width: cT, align: 'center' });
-        if (slots.n) doc.text(slots.n, xNgt + 2, ry + 9, { width: cT, align: 'center' });
-
-        doc.font(PDF_THEME.fonts.bold).fontSize(12).fillColor(GRN);
-        if (food.bf) doc.text(food.bf, xBf, ry + 9, { width: cF, align: 'center' });
-        if (food.af) doc.text(food.af, xAf, ry + 9, { width: cF, align: 'center' });
-      }
-
-      doc.rect(tblLeft, ry, tblW, rowH).lineWidth(0.4).strokeColor(i < filled ? '#aacfaa' : '#cccccc').stroke();
-      [xMorn, xAftn, xEvng, xNgt, xBf, xAf].forEach(x => {
-        doc.moveTo(x, ry).lineTo(x, ry + rowH).lineWidth(0.4).strokeColor(GRN).stroke();
-      });
-    }
-
-    // Signature area
-    const sigY = H - BDR - 48;
-    const sigX = hRight - 170;
-    doc.moveTo(sigX, sigY).lineTo(hRight, sigY).lineWidth(0.8).dash(3, { space: 2 }).strokeColor(GRN).stroke();
-    doc.undash();
-    doc.font(PDF_THEME.fonts.regular).fontSize(8).fillColor(GRN).text(drEn, sigX, sigY + 3, { width: 170, align: 'center' });
-    doc.font(PDF_THEME.fonts.regular).fontSize(7.5).fillColor(GRN).text('Signature & Stamp', sigX, sigY + 15, { width: 170, align: 'center' });
-
-    // Tamil note footer
-    doc.moveTo(hLeft, H - BDR - 26).lineTo(hRight, H - BDR - 26).lineWidth(0.8).strokeColor(GRN).stroke();
-    doc.font(PDF_THEME.fonts.tamilRegular).fontSize(8.5).fillColor(GRN)
-      .text('குறிப்பு : மறுமுறை வரும்போது கண்டிப்பாக இந்த சீட்டை கொண்டு வரவும்', 0, H - BDR - 18, { align: 'center' });
-
-    // ── PAGE 2: POST-CARE INSTRUCTIONS (Back of sheet) ──────────────────────
-    doc.addPage();
-    doc.rect(BDR, BDR, W - BDR * 2, H - BDR * 2).lineWidth(2.0).strokeColor(GRN).stroke();
-    doc.rect(BDR + 3, BDR + 3, W - BDR * 2 - 6, H - BDR * 2 - 6).lineWidth(0.6).strokeColor(GRN).stroke();
-
-    let py = BDR + 16;
-    doc.font(PDF_THEME.fonts.tamilBold).fontSize(13).fillColor(GRN)
-      .text('பல் பிடுங்கிய பின்பு பின்பற்ற வேண்டிய வழிமுறைகள்', BDR + 12, py, {
-        align: 'center',
-        width: W - BDR * 2 - 24,
-        underline: true
-      });
-    py += 26;
-    doc.moveTo(BDR + 8, py).lineTo(W - BDR - 8, py).lineWidth(0.8).strokeColor(GRN).stroke();
-    py += 10;
-
-    const extractionSteps = [
-      'பல் பிடுங்கிய இடத்தில் வைக்கப்படும் பஞ்சை ஒரு மணி நேரம் இறுக்கமாக கடித்திருக்க வேண்டும்.',
-      'கண்டிப்பாக எச்சில் துப்பக்கூடாது; வாயிலும் எச்சிலை வைத்திருக்க கூடாது — முழுங்கி கொள்ளவும்.',
-      'பல் பிடுங்கிய பிறகு ஒருநாள் சூடாக சாப்பிடக்கூடாது. வாயை பலமாகவும் கொப்பளிக்க கூடாது.',
-      'பல் பிடுங்கிய பிறகு ஒரு நாளைக்கு மேல் இரத்தக் கசிவு இருந்தால் மருத்துவரை அணுகவும்.'
+    // Unified Info Card — strictly authentic clinical metadata (no dummy departments or fabricated values)
+    const patientItems = [
+      { label: 'Patient Name :', value: data.patientName },
+      { label: 'Age :', value: data.patientAge ? `${data.patientAge} Yrs` : '—' },
+      { label: 'Gender :', value: data.patientGender || '—' },
+      { label: 'Phone No :', value: data.patientPhone || '—' }
     ];
 
-    extractionSteps.forEach((step, i) => {
-      doc.font(PDF_THEME.fonts.bold).fontSize(10).fillColor(GRN).text(`${i + 1}.`, BDR + 14, py, { width: 20 });
-      doc.font(PDF_THEME.fonts.tamilRegular).fontSize(10).fillColor('#1A1A1A')
-        .text(step, BDR + 36, py, { width: W - BDR * 2 - 50 });
-      py += 44;
-    });
+    const metaItems: { label: string; value: string }[] = [
+      { label: 'Prescription Date :', value: formatHumanDate(data.visitDate) },
+      { label: 'Doctor In-Charge :', value: docName }
+    ];
 
-    py += 10;
-    doc.font(PDF_THEME.fonts.tamilBold).fontSize(13).fillColor(GRN)
-      .text('பர்சிதைவு (அல்லது) பற்குழியை அடைத்த பிறகு பின்பற்ற வேண்டிய வழிமுறைகள்', BDR + 12, py, {
-        align: 'center',
-        width: W - BDR * 2 - 24,
-        underline: true
-      });
-    py += 28;
-    doc.moveTo(BDR + 8, py).lineTo(W - BDR - 8, py).lineWidth(0.8).strokeColor(GRN).stroke();
-    py += 10;
-
-    doc.font(PDF_THEME.fonts.bold).fontSize(10).fillColor(GRN).text('1.', BDR + 14, py, { width: 20 });
-    doc.font(PDF_THEME.fonts.tamilRegular).fontSize(10).fillColor('#1A1A1A')
-      .text('1 மணி நேரம் கழிந்து உணவு அருந்தவும்.', BDR + 36, py, { width: W - BDR * 2 - 50 });
-    py += 30;
-
-    // Handwritten notes space
-    const boxY = py + 10;
-    doc.rect(BDR + 8, boxY, W - BDR * 2 - 16, 100).lineWidth(0.6).strokeColor('#aaaaaa').stroke();
-
-    // Two-pass footer across both pages
-    const totalPages = doc.bufferedPageRange().count;
-    for (let p = 0; p < totalPages; p++) {
-      doc.switchToPage(p);
-      doc.font(PDF_THEME.fonts.regular).fontSize(7.5).fillColor(GRN)
-        .text(`${branding.name}  •  Page ${p + 1} of ${totalPages}`, 0, H - BDR - 8, { align: 'center' });
+    if (data.doctorRegNo) {
+      metaItems.push({ label: 'Doctor Reg. No :', value: data.doctorRegNo });
     }
+
+    if (data.diagnosis && data.diagnosis.trim()) {
+      metaItems.push({ label: 'Chief Complaint :', value: data.diagnosis.trim() });
+    }
+
+    currentY = renderUnifiedInfoCard(doc, {
+      leftItems: patientItems,
+      rightItems: metaItems,
+      y: currentY,
+      margin
+    });
+    currentY += 24;
+
+    // Prescribed Medicines Section Header
+    currentY = renderSectionHeader(doc, 'PRESCRIBED MEDICINES (Rx)', currentY, margin);
+    currentY += 6;
+
+    const tableTop = currentY;
+    const tableWidth = doc.page.width - margin * 2; // 515.28 pt
+
+    // Column widths summing to 515
+    const colW = {
+      num: 24,
+      medicine: 150,
+      dosage: 65,
+      frequency: 95,
+      duration: 55,
+      qty: 35,
+      directions: 91
+    };
+
+    // Table Header Row
+    doc.fillColor(PDF_THEME.colors.headerBg).rect(margin, tableTop, tableWidth, 26).fill();
+    doc.rect(margin, tableTop, tableWidth, 26).lineWidth(0.6).strokeColor(PDF_THEME.colors.border).stroke();
+
+    doc.font(PDF_THEME.fonts.bold).fontSize(8.5).fillColor(PDF_THEME.colors.primaryNavy);
+    doc.text('#', margin + 6, tableTop + 8, { width: colW.num });
+    doc.text('MEDICINE / DRUG', margin + colW.num + 6, tableTop + 8, { width: colW.medicine });
+    doc.text('DOSAGE', margin + colW.num + colW.medicine + 4, tableTop + 8, { width: colW.dosage });
+    doc.text('FREQUENCY / TIMING', margin + colW.num + colW.medicine + colW.dosage + 4, tableTop + 8, { width: colW.frequency });
+    doc.text('DURATION', margin + colW.num + colW.medicine + colW.dosage + colW.frequency + 4, tableTop + 8, { width: colW.duration });
+    doc.text('QTY', margin + colW.num + colW.medicine + colW.dosage + colW.frequency + colW.duration + 4, tableTop + 8, { width: colW.qty, align: 'center' });
+    doc.text('DIRECTIONS / FOOD', margin + colW.num + colW.medicine + colW.dosage + colW.frequency + colW.duration + colW.qty + 4, tableTop + 8, { width: colW.directions });
+
+    let rowY = tableTop + 26;
+
+    if (!data.items || data.items.length === 0) {
+      doc.fillColor(PDF_THEME.colors.bgWhite).rect(margin, rowY, tableWidth, 34).fill();
+      doc.rect(margin, rowY, tableWidth, 34).lineWidth(0.5).strokeColor(PDF_THEME.colors.borderLight).stroke();
+      doc.font(PDF_THEME.fonts.regular).fontSize(9).fillColor(PDF_THEME.colors.textMuted)
+        .text('No prescribed medicines recorded for this consultation.', margin + 14, rowY + 11, { width: tableWidth - 28, align: 'center' });
+      rowY += 34;
+    } else {
+      data.items.forEach((item, idx) => {
+        const rowH = 28;
+
+        // Auto page break if table exceeds printable page area
+        if (rowY + rowH > doc.page.height - 180) {
+          doc.addPage();
+          rowY = margin + 20;
+
+          // Re-render table header on subsequent page
+          doc.fillColor(PDF_THEME.colors.headerBg).rect(margin, rowY, tableWidth, 26).fill();
+          doc.rect(margin, rowY, tableWidth, 26).lineWidth(0.6).strokeColor(PDF_THEME.colors.border).stroke();
+          doc.font(PDF_THEME.fonts.bold).fontSize(8.5).fillColor(PDF_THEME.colors.primaryNavy);
+          doc.text('#', margin + 6, rowY + 8, { width: colW.num });
+          doc.text('MEDICINE / DRUG', margin + colW.num + 6, rowY + 8, { width: colW.medicine });
+          doc.text('DOSAGE', margin + colW.num + colW.medicine + 4, rowY + 8, { width: colW.dosage });
+          doc.text('FREQUENCY / TIMING', margin + colW.num + colW.medicine + colW.dosage + 4, rowY + 8, { width: colW.frequency });
+          doc.text('DURATION', margin + colW.num + colW.medicine + colW.dosage + colW.frequency + 4, rowY + 8, { width: colW.duration });
+          doc.text('QTY', margin + colW.num + colW.medicine + colW.dosage + colW.frequency + colW.duration + 4, rowY + 8, { width: colW.qty, align: 'center' });
+          doc.text('DIRECTIONS / FOOD', margin + colW.num + colW.medicine + colW.dosage + colW.frequency + colW.duration + colW.qty + 4, rowY + 8, { width: colW.directions });
+          rowY += 26;
+        }
+
+        // Row background and outer border
+        doc.fillColor(idx % 2 === 0 ? PDF_THEME.colors.bgWhite : PDF_THEME.colors.bgLight).rect(margin, rowY, tableWidth, rowH).fill();
+        doc.rect(margin, rowY, tableWidth, rowH).lineWidth(0.4).strokeColor(PDF_THEME.colors.borderLight).stroke();
+
+        // 1. Row Index
+        doc.font(PDF_THEME.fonts.regular).fontSize(8.5).fillColor(PDF_THEME.colors.textMuted)
+          .text(String(idx + 1), margin + 6, rowY + 8, { width: colW.num });
+
+        // 2. Medicine Name (Clean, strictly clinical — no inventory units like "20 unit")
+        const medX = margin + colW.num + 6;
+        doc.font(PDF_THEME.fonts.bold).fontSize(8.5).fillColor(PDF_THEME.colors.textDark)
+          .text(item.medicineName, medX, rowY + 8, { width: colW.medicine - 8 });
+
+        // 3. Dosage
+        const dosageX = margin + colW.num + colW.medicine + 4;
+        doc.font(PDF_THEME.fonts.regular).fontSize(8.5).fillColor(PDF_THEME.colors.textDark)
+          .text(item.dosage || '—', dosageX, rowY + 8, { width: colW.dosage - 6 });
+
+        // 4. Frequency / Timing
+        const freqX = dosageX + colW.dosage;
+        doc.font(PDF_THEME.fonts.bold).fontSize(8).fillColor(PDF_THEME.colors.primaryNavy)
+          .text(item.frequency || '—', freqX, rowY + 8, { width: colW.frequency - 6 });
+
+        // 5. Duration
+        const durX = freqX + colW.frequency;
+        doc.font(PDF_THEME.fonts.regular).fontSize(8.5).fillColor(PDF_THEME.colors.textDark)
+          .text(item.duration || '—', durX, rowY + 8, { width: colW.duration - 6 });
+
+        // 6. Quantity
+        const qtyX = durX + colW.duration;
+        doc.font(PDF_THEME.fonts.bold).fontSize(9).fillColor(PDF_THEME.colors.primaryTeal)
+          .text(String(item.quantity || 1), qtyX, rowY + 8, { width: colW.qty, align: 'center' });
+
+        // 7. Directions / Food Instructions
+        const dirX = qtyX + colW.qty;
+        doc.font(PDF_THEME.fonts.regular).fontSize(7.5).fillColor(PDF_THEME.colors.textMuted)
+          .text(item.instructions || 'As advised', dirX, rowY + 8, { width: colW.directions - 6 });
+
+        rowY += rowH;
+      });
+    }
+
+    currentY = rowY + 20;
+
+    // Measure total needed height for Advice Box so text never overlaps
+    const notesW = 260;
+    const noteContentW = notesW - 20;
+    const standardAdvice = [
+      '• Take medications strictly at prescribed timings (Before/After meals as indicated).',
+      '• Complete the full course of prescribed medicines. Do not stop early without advice.',
+      '• In case of any allergy, rash, or unusual symptom, discontinue and contact clinic.',
+      '• Maintain proper oral hygiene: brush twice daily and rinse mouth thoroughly after meals.'
+    ];
+
+    let neededH = 24; // title
+    if (data.notes && data.notes.trim()) {
+      doc.font(PDF_THEME.fonts.bold).fontSize(7.5);
+      neededH += doc.heightOfString(`• Clinical Note: "${data.notes.trim()}"`, { width: noteContentW, lineGap: 2 }) + 6;
+    }
+    doc.font(PDF_THEME.fonts.regular).fontSize(7.5);
+    for (const line of standardAdvice) {
+      neededH += doc.heightOfString(line, { width: noteContentW, lineGap: 2 }) + 5;
+    }
+    const notesH = Math.max(115, neededH + 10);
+
+    // Ensure sufficient room for lower Section
+    if (currentY + notesH + 20 > doc.page.height - 40) {
+      doc.addPage();
+      currentY = margin + 20;
+    }
+
+    const lowerY = currentY;
+
+    // ── 1. Left Box: Patient Advice & Clinical Instructions ──
+    doc.fillColor(PDF_THEME.colors.bgLight).rect(margin, lowerY, notesW, notesH).fill();
+    doc.rect(margin, lowerY, notesW, notesH).lineWidth(0.5).strokeColor(PDF_THEME.colors.borderLight).stroke();
+
+    doc.font(PDF_THEME.fonts.bold).fontSize(8.5).fillColor(PDF_THEME.colors.primaryNavy)
+      .text('ADVICE & GENERAL INSTRUCTIONS', margin + 10, lowerY + 9);
+
+    let curNoteY = lowerY + 24;
+
+    if (data.notes && data.notes.trim()) {
+      doc.font(PDF_THEME.fonts.bold).fontSize(7.5).fillColor(PDF_THEME.colors.primaryNavy);
+      const noteStr = `• Clinical Note: "${data.notes.trim()}"`;
+      const h = doc.heightOfString(noteStr, { width: noteContentW, lineGap: 2 });
+      doc.text(noteStr, margin + 10, curNoteY, { width: noteContentW, lineGap: 2 });
+      curNoteY += h + 5;
+    }
+
+    doc.font(PDF_THEME.fonts.regular).fontSize(7.5).fillColor(PDF_THEME.colors.textMuted);
+    for (const line of standardAdvice) {
+      const h = doc.heightOfString(line, { width: noteContentW, lineGap: 2 });
+      doc.text(line, margin + 10, curNoteY, { width: noteContentW, lineGap: 2 });
+      curNoteY += h + 4.5;
+    }
+
+    // ── 2. Center Box: Google Maps Location QR Code ──
+    const qrX = margin + notesW + 10;
+    const qrW = 100;
+
+    doc.fillColor(PDF_THEME.colors.bgLight).rect(qrX, lowerY, qrW, notesH).fill();
+    doc.rect(qrX, lowerY, qrW, notesH).lineWidth(0.5).strokeColor(PDF_THEME.colors.borderLight).stroke();
+
+    doc.font(PDF_THEME.fonts.bold).fontSize(7.5).fillColor(PDF_THEME.colors.primaryNavy)
+      .text('CLINIC LOCATION', qrX, lowerY + 8, { width: qrW, align: 'center' });
+
+    if (qrBuffer) {
+      const qrSize = 64;
+      const imgX = qrX + (qrW - qrSize) / 2;
+      const imgY = lowerY + 20;
+      doc.image(qrBuffer, imgX, imgY, { width: qrSize, height: qrSize });
+    }
+
+    doc.font(PDF_THEME.fonts.bold).fontSize(6.5).fillColor(PDF_THEME.colors.primaryTeal)
+      .text('SCAN FOR GOOGLE\nLOCATION', qrX, lowerY + 88, { width: qrW, align: 'center', lineGap: 1 });
+
+    // ── 3. Right Box: Authorized Signatory Block ──
+    const sigX = qrX + qrW + 10;
+    const sigW = doc.page.width - margin - sigX;
+
+    doc.font(PDF_THEME.fonts.regular).fontSize(8.5).fillColor(PDF_THEME.colors.textMuted)
+      .text('Authorized Signatory', sigX, lowerY + 9, { width: sigW, align: 'right' });
+
+    const sigLineY = lowerY + 54;
+    doc.moveTo(sigX + 10, sigLineY).lineTo(sigX + sigW, sigLineY).lineWidth(0.6).strokeColor(PDF_THEME.colors.border).stroke();
+
+    doc.font(PDF_THEME.fonts.bold).fontSize(9.5).fillColor(PDF_THEME.colors.primaryNavy)
+      .text(docName, sigX, sigLineY + 6, { width: sigW, align: 'right' });
+
+    doc.font(PDF_THEME.fonts.regular).fontSize(8).fillColor(PDF_THEME.colors.textMuted)
+      .text('Dental Surgeon', sigX, sigLineY + 19, { width: sigW, align: 'right' })
+      .text(branding.name, sigX, sigLineY + 30, { width: sigW, align: 'right' });
+
+    if (branding.phone) {
+      doc.font(PDF_THEME.fonts.regular).fontSize(7.5).fillColor(PDF_THEME.colors.textLight)
+        .text(`Ph: ${branding.phone}`, sigX, sigLineY + 41, { width: sigW, align: 'right' });
+    }
+
+    // Finalize with two-pass footers (Clinic info, disclaimer & Page X of Y)
+    finalizeDocumentWithFooters(doc, branding, {
+      disclaimer: 'This prescription is valid under registered medical/dental supervision. Please adhere strictly to prescribed dosages.',
+      margin
+    });
 
     doc.end();
   });

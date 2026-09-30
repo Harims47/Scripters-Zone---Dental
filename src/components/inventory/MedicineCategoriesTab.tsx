@@ -280,7 +280,7 @@ export function MedicineCategoriesTab({ onCategoriesChanged }: MedicineCategorie
         onSearchChange={setSearch}
         filterSlot={
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+            <SelectTrigger className="w-full sm:w-[140px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -366,8 +366,8 @@ export function MedicineCategoriesTab({ onCategoriesChanged }: MedicineCategorie
             </p>
           </div>
 
-          <SheetScrollArea className="p-0 bg-white flex-1">
-            <div className="px-6 sm:px-8 py-8 space-y-8">
+          <SheetScrollArea className="px-6 sm:px-8 py-6 bg-white flex-1">
+            <div className="space-y-8">
               {drawerMode === 'view' && selectedCategory ? (
                 <DrawerSection title="Category Information">
                   <div className="space-y-6">
@@ -428,7 +428,7 @@ export function MedicineCategoriesTab({ onCategoriesChanged }: MedicineCategorie
             </div>
           </SheetScrollArea>
 
-          <DrawerFooterActions>
+          <DrawerFooterActions className="px-6 sm:px-8 py-4 sm:py-5">
             {drawerMode === 'view' ? (
               <>
                 <Button variant="outline" onClick={() => setDrawerOpen(false)} className="w-full sm:w-auto font-medium">

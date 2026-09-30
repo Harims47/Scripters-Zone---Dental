@@ -39,10 +39,10 @@ router.patch(
   updateDentalImage
 );
 
-// 4. Delete Image (Head Doctor & Admin only - strictly safeguarded)
+// 4. Delete Image (Doctors & Admin)
 router.delete(
   ['/:patientId/dental-images/:imageId', '/:patientId/images/:imageId'],
-  requireRole('Head Doctor', 'Admin'),
+  requireRole('Head Doctor', 'Duty Doctor', 'Admin'),
   deleteDentalImage
 );
 

@@ -130,18 +130,18 @@ export function LowStockAlertModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleDismissCurrent(); }}>
-      <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-amber-200 shadow-2xl rounded-2xl">
+      <DialogContent className="sm:max-w-[460px] p-0 sm:p-0 gap-0 flex flex-col overflow-hidden border border-amber-200 shadow-2xl rounded-2xl bg-white">
         {/* Header with high-visibility amber accent */}
-        <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 text-white flex items-center justify-between">
+        <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-5 py-3.5 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-white/20 rounded-lg backdrop-blur-xs">
-              <AlertTriangle className="w-5 h-5 text-white" />
+            <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-xs">
+              <AlertTriangle className="w-4 h-4 text-white" />
             </div>
             <div>
-              <DialogTitle className="text-white text-lg font-bold tracking-tight">
+              <DialogTitle className="text-white text-base font-bold tracking-tight">
                 Low Stock Alert
               </DialogTitle>
-              <DialogDescription className="text-amber-100 text-xs font-medium">
+              <DialogDescription className="text-amber-100 text-[11px] font-medium">
                 {alerts.length > 1
                   ? `Item ${currentIndex + 1} of ${alerts.length} requiring reorder`
                   : 'Operational inventory threshold reached'}
@@ -149,52 +149,52 @@ export function LowStockAlertModal() {
             </div>
           </div>
           {alerts.length > 1 && (
-            <Badge className="bg-amber-700/60 hover:bg-amber-700/60 text-white border-amber-400/40 text-xs font-semibold px-2.5 py-0.5">
+            <Badge className="bg-amber-700/60 hover:bg-amber-700/60 text-white border-amber-400/40 text-xs font-semibold px-2 py-0.5 mr-6">
               {currentIndex + 1} / {alerts.length}
             </Badge>
           )}
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-5 bg-white">
+        <div className="p-5 space-y-3.5 bg-white">
           <div>
-            <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight">
               {currentItem.name}
             </h3>
             {currentItem.genericName && (
-              <p className="text-sm font-medium text-slate-500 mt-0.5">
+              <p className="text-xs font-medium text-slate-500 mt-0.5">
                 {currentItem.genericName}
               </p>
             )}
-            <p className="text-xs text-amber-700 font-medium mt-1">
-              Category: {currentItem.categoryName}
+            <p className="text-xs text-amber-700 font-semibold mt-1">
+              Category: <span className="font-normal text-slate-600">{currentItem.categoryName}</span>
             </p>
           </div>
 
           {/* Stock Metrics Card */}
-          <div className="grid grid-cols-2 gap-3 p-4 bg-amber-50/60 border border-amber-200/80 rounded-xl">
-            <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="grid grid-cols-2 gap-3 p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Current Stock
               </span>
-              <div className="text-2xl font-black text-rose-600">
+              <div className="text-xl font-black text-rose-600">
                 {currentItem.currentStock} <span className="text-xs font-semibold text-slate-600">{currentItem.unit}</span>
               </div>
             </div>
-            <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Minimum Stock
               </span>
-              <div className="text-2xl font-black text-slate-700">
+              <div className="text-xl font-black text-slate-700">
                 {currentItem.stockWarningLevel} <span className="text-xs font-semibold text-slate-600">{currentItem.unit}</span>
               </div>
             </div>
           </div>
 
           {/* Action guidance */}
-          <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3">
             <p className="font-semibold text-slate-800">Please order the stock now.</p>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
               Stock has reached or fallen below the configured minimum threshold. An hourly reminder will continue until a purchase order is placed.
             </p>
           </div>
@@ -202,7 +202,7 @@ export function LowStockAlertModal() {
           {/* Multiple alerts navigation */}
           {alerts.length > 1 && (
             <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs text-slate-500">
-              <span>Navigate pending alerts:</span>
+              <span className="text-[11px]">Navigate pending alerts:</span>
               <div className="flex items-center gap-1">
                 <Button
                   size="icon"
@@ -228,13 +228,13 @@ export function LowStockAlertModal() {
         </div>
 
         {/* Footer Actions */}
-        <DialogFooter className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-row items-center justify-between gap-2">
+        <DialogFooter className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex flex-row items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleDismissCurrent}
-              className="text-slate-600 hover:bg-slate-100 text-xs font-medium"
+              className="text-slate-600 hover:bg-slate-100 text-xs font-medium h-9"
             >
               Remind in 1 hr
             </Button>
@@ -243,7 +243,7 @@ export function LowStockAlertModal() {
                 variant="ghost"
                 size="sm"
                 onClick={handleDismissAll}
-                className="text-slate-500 hover:text-slate-800 text-xs font-medium hidden sm:inline-flex"
+                className="text-slate-500 hover:text-slate-800 text-xs font-medium hidden sm:inline-flex h-9"
               >
                 Dismiss All
               </Button>
@@ -254,7 +254,7 @@ export function LowStockAlertModal() {
             {canCreatePO ? (
               <Button
                 onClick={handleCreatePurchaseOrder}
-                className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5"
+                className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 h-9 px-4"
               >
                 <ShoppingCart className="w-3.5 h-3.5" />
                 Create Purchase Order

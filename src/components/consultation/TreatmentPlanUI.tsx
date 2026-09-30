@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -70,22 +70,26 @@ export function TreatmentPlanUI({
   const imagingRollbackRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const imagingCommitRef = useRef<() => void>(() => {});
 
-  const rollback = async () => {
+  const rollback = useCallback(async () => {
     if (sessionCreatedItemIds.current.length > 0) {
       const idsToDelete = [...sessionCreatedItemIds.current];
       sessionCreatedItemIds.current = [];
-      await Promise.all(
-        idsToDelete.map(id =>
-          api.delete(`/api/patients/${patientId}/treatment-plan/items/${id}`).catch(console.error)
-        )
-      );
+      try {
+        await Promise.all(
+          idsToDelete.map(id =>
+            api.delete(`/api/patients/${patientId}/treatment-plan/items/${id}`)
+          )
+        );
+      } catch (err) {
+        console.error('Failed to rollback treatment items:', err);
+      }
     }
     await imagingRollbackRef.current();
-  };
+  }, [patientId]);
 
   useEffect(() => {
     onRegisterRollback?.(rollback);
-  }, [onRegisterRollback]);
+  }, [onRegisterRollback, rollback]);
 
   useEffect(() => {
     return () => {
@@ -93,7 +97,7 @@ export function TreatmentPlanUI({
         rollback();
       }
     };
-  }, []);
+  }, [rollback]);
 
   const ZERO_FEE_REASONS = [
     'Follow-up / Review',
@@ -398,34 +402,35 @@ export function TreatmentPlanUI({
   const primaryToothInfo = selectedTeeth.length === 1 ? getToothInfo(selectedTeeth[0]) : null;
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 w-full min-w-0 max-w-full overflow-hidden">
       {/* Top Workspace View Switcher */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-        <div className="flex items-center gap-1.5 bg-slate-100 p-0.5 rounded-xl">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 w-full min-w-0">
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 bg-slate-100 p-0.5 rounded-xl w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setWorkspaceView('planning')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
               workspaceView === 'planning'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <span>Treatment Planning & FDI Chart</span>
+            <span className="hidden sm:inline">Treatment Planning & FDI Chart</span>
+            <span className="sm:hidden">Planning & FDI</span>
           </button>
           <button
             type="button"
             onClick={() => setWorkspaceView('imaging')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
               workspaceView === 'imaging'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Camera className="w-3.5 h-3.5 text-teal-600" />
+            <Camera className="w-3.5 h-3.5 text-teal-600 shrink-0" />
             <span>Dental Imaging</span>
             {dentalImages.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-100 text-teal-800 font-bold">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-100 text-teal-800 font-bold shrink-0">
                 {dentalImages.length}
               </span>
             )}
@@ -433,7 +438,7 @@ export function TreatmentPlanUI({
         </div>
       </div>
 
-      <div className={workspaceView === 'imaging' ? 'bg-slate-50/50 p-2 rounded-2xl' : 'hidden'}>
+      <div className={workspaceView === 'imaging' ? 'bg-slate-50/50 p-1 sm:p-2 rounded-2xl w-full min-w-0 max-w-full overflow-hidden' : 'hidden'}>
         <DentalImagingSection
           patientId={patientId}
           currentVisitId={currentVisitId}

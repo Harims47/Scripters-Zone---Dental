@@ -67,6 +67,8 @@ export function ReceptionDeskPage() {
   const [editDrawerMode, setEditDrawerMode] = useState<'edit' | 'view'>('edit');
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  const [isSavingPatientEdit, setIsSavingPatientEdit] = useState(false);
+  const [isSubmittingRegister, setIsSubmittingRegister] = useState(false);
 
 
   const [regType, setRegType] = useState<'walk-in' | 'appointment'>('walk-in');
@@ -78,6 +80,7 @@ export function ReceptionDeskPage() {
   const [isNewPatient, setIsNewPatient] = useState(false);
   const [selectedExistingPatientId, setSelectedExistingPatientId] = useState('');
   const [patientSearch, setPatientSearch] = useState('');
+  const [draftPatientId, setDraftPatientId] = useState<string | null>(null);
 
   const resetRegistrationForm = () => {
     setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
@@ -87,6 +90,17 @@ export function ReceptionDeskPage() {
     setPatientSearch('');
     setRegType('walk-in');
     setIsCameraOpen(false);
+    setDraftPatientId(null);
+  };
+
+  const [duplicatePhoneWarning, setDuplicatePhoneWarning] = useState<{
+    name: string;
+    phone: string;
+  } | null>(null);
+
+  const handleDismissDuplicatePhoneWarning = () => {
+    setDuplicatePhoneWarning(null);
+    setRegData(prev => ({ ...prev, phone: '' }));
   };
 
   // Payment States
@@ -605,8 +619,8 @@ export function ReceptionDeskPage() {
                   setRegData({
                     name: patient.name,
                     phone: patient.phone || '',
-                    age: patient.age != null ? patient.age.toString() : '',
-                    gender: patient.gender || '',
+                    age: patient.age != null && patient.age > 0 ? patient.age.toString() : '',
+                    gender: patient.gender || 'Male',
                     address: patient.address || '',
                     reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
                     photoUrl: patient.photoUrl || ''
@@ -634,8 +648,8 @@ export function ReceptionDeskPage() {
                   setRegData({
                     name: patient.name,
                     phone: patient.phone || '',
-                    age: patient.age != null ? patient.age.toString() : '',
-                    gender: patient.gender || '',
+                    age: patient.age != null && patient.age > 0 ? patient.age.toString() : '',
+                    gender: patient.gender || 'Male',
                     address: patient.address || '',
                     reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
                     photoUrl: patient.photoUrl || ''
@@ -739,44 +753,66 @@ export function ReceptionDeskPage() {
   };
 
   const handleRegister = async () => {
-    let finalPatientId = selectedExistingPatientId;
+    let finalPatientId = selectedExistingPatientId || draftPatientId;
 
-    if (isNewPatient) {
-      if (!regData.name || !regData.phone) {
-        toast.error("Name and Phone are required");
+    // 1. Upfront Patient Validation (if new patient and not yet created)
+    if (isNewPatient && !draftPatientId) {
+      if (!regData.name || !regData.name.trim()) {
+        toast.error("Name is required");
         return;
       }
 
-      const normPhone = regData.phone.replace(/\D/g, '').slice(-10);
+      const cleanPhone = regData.phone ? regData.phone.replace(/\D/g, '') : '';
+      if (!cleanPhone || cleanPhone.length !== 10) {
+        toast.error("Valid 10-digit Phone Number is required");
+        return;
+      }
+
+      const parsedAge = parseInt(regData.age as string, 10);
+      if (!regData.age || isNaN(parsedAge) || parsedAge <= 0) {
+        toast.error("Age is mandatory and must be greater than 0");
+        return;
+      }
+
+      const normPhone = cleanPhone.slice(-10);
       const existing = patients.find(p => p.phone && p.phone.replace(/\D/g, '').slice(-10) === normPhone);
       if (existing) {
-        MySwal.fire({
-          title: 'Duplicate Phone Number',
-          html: `A patient is already registered with this phone number: <br/><br/><b>${existing.name}</b> (${existing.phone})<br/><br/>Please search for this patient instead of registering a new one to avoid duplicate records.`,
-          icon: 'warning',
-          confirmButtonText: 'Understood',
-          confirmButtonColor: '#0d9488',
-          customClass: {
-            popup: 'rounded-2xl',
-            confirmButton: 'rounded-lg font-semibold px-8 py-2'
-          }
-        });
+        setDuplicatePhoneWarning({ name: existing.name, phone: existing.phone });
         return;
       }
+    }
 
+    // 2. Upfront Appointment Validation (BEFORE creating patient!)
+    if (regType === 'appointment') {
+      if (!apptData.date || !apptData.date.trim()) {
+        toast.error("Appointment date is required");
+        return;
+      }
+      if (!apptData.time || !apptData.time.trim()) {
+        toast.error("Appointment time is required");
+        return;
+      }
+    }
+
+    // 3. Register Patient (only if not already created in this draft attempt)
+    if (isNewPatient && !draftPatientId) {
+      const cleanPhone = regData.phone.replace(/\D/g, '');
+      const parsedAge = parseInt(regData.age as string, 10);
       try {
         const newPatient = await addPatient({
-          name: regData.name,
-          phone: regData.phone,
-          age: parseInt(regData.age) || 30,
+          name: regData.name.trim(),
+          phone: cleanPhone,
+          age: parsedAge,
           gender: regData.gender as any,
           status: 'Active',
           address: (regData as any).address || '',
           photoUrl: (regData as any).photoUrl || ''
         });
         finalPatientId = newPatient.id;
+        setDraftPatientId(newPatient.id);
       } catch (err: any) {
-        toast.error(err.response?.data?.error || "Failed to register patient");
+        const msg = err.response?.data?.details?.[0]?.message || err.response?.data?.error || "Failed to register patient";
+        toast.error(msg);
         return;
       }
     }
@@ -786,7 +822,9 @@ export function ReceptionDeskPage() {
       return;
     }
 
+    // 4. Create Visit or Appointment
     try {
+      setIsSubmittingRegister(true);
       let patientDetails = patients.find(p => p.id === finalPatientId);
       if (!patientDetails && isNewPatient) {
         patientDetails = { name: regData.name, phone: regData.phone } as any;
@@ -847,7 +885,11 @@ export function ReceptionDeskPage() {
         resetRegistrationForm();
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to start walk-in visit");
+      const defaultMsg = regType === 'appointment' ? "Failed to create appointment" : "Failed to start walk-in visit";
+      const msg = err.response?.data?.details?.[0]?.message || err.response?.data?.error || defaultMsg;
+      toast.error(msg);
+    } finally {
+      setIsSubmittingRegister(false);
     }
   };
 
@@ -1127,30 +1169,32 @@ export function ReceptionDeskPage() {
 
   return (
     <div className="flex-1 bg-slate-50/50 flex flex-col min-w-0 w-full">
-      <div className="h-auto py-3 shrink-0 px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 sm:gap-4 border-b border-slate-200/80 bg-white/60 backdrop-blur-xs">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reception Desk</h1>
+      <div className="h-auto py-2.5 sm:py-3 shrink-0 px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/80 bg-white/60 backdrop-blur-xs">
+        {/* Left: Title & Subtitle */}
+        <div className="min-w-0 shrink">
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight whitespace-nowrap">Reception Desk</h1>
             {selectedDate !== todayStr && (
-              <Badge className="bg-purple-100 text-purple-800 border-purple-200 font-semibold px-2.5 py-0.5 animate-pulse">
+              <Badge className="bg-purple-100 text-purple-800 border-purple-200 font-semibold px-2.5 py-0.5 text-xs animate-pulse">
                 Viewing: {selectedDate === tomorrowStr ? 'Tomorrow' : selectedDate}
               </Badge>
             )}
           </div>
-          <p className="text-sm text-slate-500">
+          <p className="text-xs sm:text-sm text-slate-500 truncate max-w-xs sm:max-w-md xl:max-w-xl">
             {selectedDate === todayStr
               ? "Register patients, manage today's visits, and complete reception tasks."
               : `Reviewing scheduled queue and transferred patients for ${selectedDate}.`}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+        {/* Right: Date Switcher & Register Patient */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 w-full md:w-auto shrink-0">
           {/* Quick Date Switcher */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+          <div className="flex items-center justify-between sm:justify-start bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold w-full sm:w-auto shrink-0">
             <button
               type="button"
               onClick={() => setSelectedDate(todayStr)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${selectedDate === todayStr
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg transition-all text-center ${selectedDate === todayStr
                 ? 'bg-white text-teal-700 shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -1160,7 +1204,7 @@ export function ReceptionDeskPage() {
             <button
               type="button"
               onClick={() => setSelectedDate(tomorrowStr)}
-              className={`px-3 py-1.5 rounded-lg transition-all ${selectedDate === tomorrowStr
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 rounded-lg transition-all text-center ${selectedDate === tomorrowStr
                 ? 'bg-white text-purple-700 shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -1175,7 +1219,7 @@ export function ReceptionDeskPage() {
                 onChange={(e) => {
                   if (e.target.value) setSelectedDate(e.target.value);
                 }}
-                className="pl-7 pr-2 py-1 bg-transparent text-slate-700 font-medium text-xs focus:outline-none cursor-pointer"
+                className="pl-7 pr-2 py-1 bg-transparent text-slate-700 font-medium text-xs focus:outline-none cursor-pointer w-28 sm:w-auto"
                 title="Choose custom date"
               />
             </div>
@@ -1186,7 +1230,7 @@ export function ReceptionDeskPage() {
               resetRegistrationForm();
               setIsRegisterOpen(true);
             }}
-            className="bg-teal-600 hover:bg-teal-700 shadow-sm text-white shrink-0 font-medium"
+            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 shadow-sm text-white shrink-0 font-medium h-9"
           >
             <Users className="w-4 h-4 mr-2" />
             Register Patient
@@ -1700,16 +1744,44 @@ export function ReceptionDeskPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Duplicate Phone Number Warning Dialog */}
+      <Dialog open={!!duplicatePhoneWarning} onOpenChange={open => {
+        if (!open) handleDismissDuplicatePhoneWarning();
+      }}>
+        <DialogContent className="sm:max-w-[420px] p-6 text-center">
+          <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
+          <DialogTitle className="text-xl font-bold text-slate-900 mb-2">Duplicate Phone Number</DialogTitle>
+          <div className="text-sm text-slate-600 space-y-2">
+            <p>A patient is already registered with this phone number:</p>
+            <p className="font-semibold text-slate-800 text-base">{duplicatePhoneWarning?.name} ({duplicatePhoneWarning?.phone})</p>
+            <p className="text-xs text-slate-500">Please search for this patient instead of registering a new one to avoid duplicate records.</p>
+          </div>
+          <DialogFooter className="mt-5 sm:justify-center">
+            <Button
+              type="button"
+              className="w-full sm:w-auto px-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+              onClick={handleDismissDuplicatePhoneWarning}
+            >
+              Understood
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Register Patient Sheet */}
       <Sheet open={isRegisterOpen} onOpenChange={(open) => {
         setIsRegisterOpen(open);
-        resetRegistrationForm();
+        if (!open) {
+          resetRegistrationForm();
+        }
       }}>
         <SheetContent
           side="right"
           className="w-full max-w-[100vw] sm:max-w-[540px] p-0 flex flex-col bg-slate-50 h-full"
           onInteractOutside={(e) => {
-            if (isCameraOpen) e.preventDefault();
+            if (isCameraOpen || duplicatePhoneWarning) e.preventDefault();
           }}
         >
           <SheetTitle className="sr-only">Register Patient</SheetTitle>
@@ -1974,8 +2046,16 @@ export function ReceptionDeskPage() {
             }}>
               Cancel
             </Button>
-            <Button onClick={handleRegister} className="bg-teal-600 hover:bg-teal-700">
-              {regType === 'appointment' ? 'Create Appointment' : 'Register Patient'}
+            <Button
+              onClick={handleRegister}
+              disabled={
+                isSubmittingRegister ||
+                (isNewPatient && (!regData.name?.trim() || !regData.phone || !regData.age)) ||
+                (regType === 'appointment' && !apptData.date)
+              }
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {isSubmittingRegister ? 'Processing...' : regType === 'appointment' ? 'Create Appointment' : 'Register Patient'}
             </Button>
           </div>
         </SheetContent>
@@ -2131,27 +2211,51 @@ export function ReceptionDeskPage() {
                 <Button
                   className="flex-1 bg-teal-600 hover:bg-teal-700"
                   onClick={async () => {
+                    if (!regData.name || !regData.name.trim()) {
+                      toast.error("Full Name is required");
+                      return;
+                    }
+                    const cleanPhone = regData.phone ? regData.phone.replace(/\D/g, '') : '';
+                    if (!cleanPhone || cleanPhone.length !== 10) {
+                      toast.error("Valid 10-digit Phone Number is required");
+                      return;
+                    }
+                    const parsedAge = parseInt(regData.age as string, 10);
+                    if (!regData.age || isNaN(parsedAge) || parsedAge <= 0) {
+                      toast.error("Age is mandatory and must be greater than 0");
+                      return;
+                    }
+
                     if (editingPatientId && updatePatient) {
-                      await updatePatient(editingPatientId, {
-                        name: regData.name,
-                        phone: regData.phone,
-                        age: parseInt(regData.age as string) || 0,
-                        gender: regData.gender as any,
-                        photoUrl: (regData as any).photoUrl,
-                        address: (regData as any).address
-                      });
-                      if (editingVisitId && updateVisit) {
-                        await updateVisit(editingVisitId, {
-                          reasonForVisit: regData.reasonForVisit
+                      try {
+                        setIsSavingPatientEdit(true);
+                        await updatePatient(editingPatientId, {
+                          name: regData.name.trim(),
+                          phone: cleanPhone,
+                          age: parsedAge,
+                          gender: regData.gender as any,
+                          photoUrl: (regData as any).photoUrl,
+                          address: (regData as any).address
                         });
+                        if (editingVisitId && updateVisit) {
+                          await updateVisit(editingVisitId, {
+                            reasonForVisit: regData.reasonForVisit
+                          });
+                        }
+                        toast.success('Patient details updated successfully!');
+                        setIsEditPatientOpen(false);
+                      } catch (err: any) {
+                        console.error("Failed to update patient:", err);
+                        const msg = err.response?.data?.details?.[0]?.message || err.response?.data?.error || "Failed to update patient details";
+                        toast.error(msg);
+                      } finally {
+                        setIsSavingPatientEdit(false);
                       }
-                      toast.success('Patient details updated successfully!');
-                      setIsEditPatientOpen(false);
                     }
                   }}
-                  disabled={!regData.name || !regData.phone}
+                  disabled={isSavingPatientEdit || !regData.name?.trim() || !regData.phone || !regData.age}
                 >
-                  Save Details
+                  {isSavingPatientEdit ? 'Saving...' : 'Save Details'}
                 </Button>
               )}
             </div>

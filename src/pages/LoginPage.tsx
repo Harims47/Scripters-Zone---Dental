@@ -41,14 +41,14 @@ export function LoginPage() {
 
   return (
     <div
-      className="min-h-screen w-full relative bg-slate-100 flex flex-col justify-between overflow-y-auto lg:h-screen lg:overflow-hidden bg-cover bg-center bg-no-repeat selection:bg-teal-500 selection:text-white"
+      className="h-[100dvh] w-full relative bg-slate-100 flex flex-col justify-between overflow-hidden bg-cover bg-center bg-no-repeat selection:bg-teal-500 selection:text-white"
       style={{ backgroundImage: "url('/dental-bg.png')" }}
     >
       {/* Main Content Grid */}
-      <div className="relative z-10 w-full flex-1 max-w-7xl mx-auto px-6 sm:px-10 lg:px-14 py-3 sm:py-5 flex flex-col lg:flex-row items-center justify-between gap-8 min-h-0">
+      <div className="relative z-10 w-full flex-1 max-w-7xl mx-auto px-4 sm:px-8 lg:px-14 py-2 sm:py-4 flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-4 lg:gap-8 min-h-0">
 
-        {/* Left Hero & Branding Section - Shifted to the left side */}
-        <div className="w-full lg:max-w-[450px] xl:max-w-[480px] flex flex-col items-start text-left space-y-4 sm:space-y-5 lg:h-full justify-start pt-1 sm:pt-3 pb-2 z-10">
+        {/* Left Hero & Branding Section - Visible only on large laptop/desktop */}
+        <div className="hidden lg:flex w-full lg:max-w-[450px] xl:max-w-[480px] flex-col items-start text-left space-y-4 sm:space-y-5 lg:h-full justify-start pt-1 sm:pt-3 pb-2 z-10">
 
           {/* Top: Broad Logo - Exactly -55px left shift */}
           <div className="w-72 sm:w-80 md:w-[350px] max-w-full transition-transform hover:scale-[1.01] duration-300" style={{ marginLeft: '-55px' }}>
@@ -115,32 +115,41 @@ export function LoginPage() {
           </div>
         </div>
 
-        {/* Right Floating Card */}
-        <div className="w-full lg:w-auto lg:min-w-[420px] xl:min-w-[450px] max-w-lg">
-          <div className="bg-white/95 backdrop-blur-xl rounded-[28px] p-6 sm:p-7 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.22)] border border-white/80 transition-all">
+        {/* Right / Centered Floating Card */}
+        <div className="w-full sm:w-[400px] lg:w-auto lg:min-w-[420px] xl:min-w-[450px] max-w-sm sm:max-w-md lg:max-w-lg my-auto">
+          <div className="bg-white/95 backdrop-blur-xl rounded-[20px] sm:rounded-[28px] p-4 sm:p-7 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.22)] border border-white/80 transition-all">
+
+            {/* Mobile/Tablet Clinic Logo */}
+            <div className="lg:hidden flex justify-center mb-2 sm:mb-3">
+              <img
+                src="/dental-logo.png"
+                alt="Rafi Dental Clinic"
+                className="h-8 sm:h-11 w-auto object-contain drop-shadow-xs"
+              />
+            </div>
 
             {/* Card Header */}
-            <div className="text-center space-y-1.5 mb-6">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+            <div className="text-center space-y-0.5 sm:space-y-1 mb-3 sm:mb-5">
+              <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
                 Welcome Back
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium">
+              <p className="text-[11px] sm:text-sm text-slate-500 font-medium">
                 Sign in to your Rafi Dental Clinic account
               </p>
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="mb-4 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+              <div className="mb-3 p-2 sm:p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                 <span className="font-medium">{error}</span>
               </div>
             )}
 
             {/* Login Form */}
-            <form onSubmit={handleLogin} className="space-y-3.5">
+            <form onSubmit={handleLogin} className="space-y-2.5 sm:space-y-3.5">
               {/* Username Input */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label htmlFor="username" className="text-xs font-semibold text-slate-700">
                   Username
                 </Label>
@@ -155,14 +164,14 @@ export function LoginPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     disabled={isSubmitting}
-                    className="pl-10 h-11 bg-white border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:border-teal-600 focus:ring-teal-600/20 shadow-xs"
+                    className="pl-10 h-9 sm:h-11 bg-white border-slate-200 rounded-xl text-xs sm:text-sm placeholder:text-slate-400 focus:border-teal-600 focus:ring-teal-600/20 shadow-xs"
                     required
                   />
                 </div>
               </div>
 
               {/* Password Input */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label htmlFor="password" className="text-xs font-semibold text-slate-700">
                   Password
                 </Label>
@@ -177,7 +186,7 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isSubmitting}
-                    className="pl-10 pr-10 h-11 bg-white border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:border-teal-600 focus:ring-teal-600/20 shadow-xs"
+                    className="pl-10 pr-10 h-9 sm:h-11 bg-white border-slate-200 rounded-xl text-xs sm:text-sm placeholder:text-slate-400 focus:border-teal-600 focus:ring-teal-600/20 shadow-xs"
                     required
                   />
                   <button
@@ -192,11 +201,11 @@ export function LoginPage() {
               </div>
 
               {/* Submit Button */}
-              <div className="pt-1.5">
+              <div className="pt-1">
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full h-11 bg-[#008b8b] hover:bg-[#007575] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all text-sm cursor-pointer disabled:opacity-70"
+                  className="w-full h-9 sm:h-11 bg-[#008b8b] hover:bg-[#007575] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all text-xs sm:text-sm cursor-pointer disabled:opacity-70"
                 >
                   {isSubmitting ? 'Signing in...' : 'Sign in'}
                 </Button>
@@ -204,11 +213,11 @@ export function LoginPage() {
             </form>
 
             {/* Motivational Quote & Mini Smile */}
-            <div className="text-center mt-6 pt-1 select-none">
-              <p className="text-xs italic text-slate-500 font-serif">
+            <div className="text-center mt-2.5 sm:mt-5 pt-0.5 select-none">
+              <p className="text-[10px] sm:text-xs italic text-slate-500 font-serif">
                 “Caring for smiles today, tomorrow and always.”
               </p>
-              <svg className="w-13 h-3 mx-auto text-teal-600 mt-0.5" viewBox="0 0 60 14" fill="none">
+              <svg className="w-10 h-2 sm:w-13 sm:h-3 mx-auto text-teal-600 mt-0.5" viewBox="0 0 60 14" fill="none">
                 <path d="M6 3C22 11 38 11 54 3" stroke="#008b8b" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
             </div>
@@ -219,17 +228,10 @@ export function LoginPage() {
       </div>
 
       {/* Footer Bar */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 lg:px-14 pb-2.5 pt-1 flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-slate-700 font-medium gap-1 shrink-0">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-10 lg:px-14 pb-2 pt-0.5 flex items-center justify-center sm:justify-between text-[10px] sm:text-xs text-slate-700 font-medium gap-1 shrink-0">
         <div>
           © 2026 Scripters Zone. All rights reserved.
         </div>
-        {/* <div className="flex items-center gap-4 text-slate-700">
-          <button type="button" className="hover:text-slate-950 transition-colors cursor-pointer">Privacy</button>
-          <span>|</span>
-          <button type="button" className="hover:text-slate-950 transition-colors cursor-pointer">Terms</button>
-          <span>|</span>
-          <button type="button" className="hover:text-slate-950 transition-colors cursor-pointer">Help</button>
-        </div> */}
       </div>
 
     </div>
