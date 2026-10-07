@@ -148,22 +148,45 @@ export interface TreatmentCatalog {
   isActive: boolean
 }
 
+export interface TreatmentSession {
+  id: string;
+  treatmentPlanItemId: string;
+  sittingNumber: number;
+  stage?: string | null;
+  status: 'Planned' | 'In Progress' | 'Completed' | 'Cancelled';
+  plannedDate?: string | null;
+  actualDate?: string | null;
+  visitId?: string | null;
+  doctorId?: string | null;
+  doctor?: { id: string; name: string; role: string } | null;
+  clinicalNotes?: string | null;
+  workPerformed?: string | null;
+  materialsUsed?: string | null;
+  nextSittingDate?: string | null;
+  followUpInstructions?: string | null;
+  fee?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface TreatmentPlanItem {
-  id: string
-  treatmentPlanId: string
-  treatmentCatalogId: string
-  toothNumber?: number | null
-  status: 'Planned' | 'Completed'
-  notes: string | null
-  completedVisitId: string | null
-  completedAt: string | null
-  catalogItem?: TreatmentCatalog
+  id: string;
+  treatmentPlanId: string;
+  treatmentCatalogId: string;
+  toothNumber?: number | null;
+  status: 'Planned' | 'In Progress' | 'Completed';
+  notes: string | null;
+  totalSittings: number;
+  completedVisitId: string | null;
+  completedAt: string | null;
+  catalogItem?: TreatmentCatalog;
+  sessions?: TreatmentSession[];
 }
 
 export interface TreatmentPlan {
-  id: string
-  patientId: string
-  items: TreatmentPlanItem[]
+  id: string;
+  patientId: string;
+  items: TreatmentPlanItem[];
 }
 
 export type DentalImageType = 'OPG' | 'RVG';
@@ -334,12 +357,17 @@ export interface HistoricalVisit extends Visit {
   completedTreatmentItems?: Array<TreatmentPlanItem & {
     catalogItem?: TreatmentCatalog
   }>
+  treatmentSessions?: Array<TreatmentSession & {
+    treatmentPlanItem?: TreatmentPlanItem & { catalogItem?: TreatmentCatalog }
+    doctor?: { id: string; name: string; role: string } | null
+  }>
   payments: Payment[]
   financialSummary: HistoricalVisitFinancialSummary
+  dentalImages?: DentalImage[]
 }
 
 export interface PatientHistoryData {
-  patient: Patient
+  patient: Patient & { dentalImages?: DentalImage[] }
   treatmentPlan: (TreatmentPlan & {
     items: Array<TreatmentPlanItem & {
       catalogItem?: TreatmentCatalog
@@ -347,6 +375,7 @@ export interface PatientHistoryData {
     }>
   }) | null
   visits: HistoricalVisit[]
+  dentalImages?: DentalImage[]
 }
 
 export interface ExternalDoctorAdvice {

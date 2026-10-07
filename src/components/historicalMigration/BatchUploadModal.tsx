@@ -3,6 +3,7 @@ import { Upload, FileText, Image as ImageIcon, AlertCircle, CheckCircle2, X } fr
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'react-hot-toast';
+import { api } from '../../lib/api';
 
 interface BatchUploadModalProps {
   isOpen: boolean;
@@ -109,19 +110,7 @@ export const BatchUploadModal: React.FC<BatchUploadModalProps> = ({ isOpen, onCl
         }))
       };
 
-      const res = await fetch('/api/historical-migration/batches', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create batch');
-      }
-
-      const data = await res.json();
+      const data = await api.post<{ batchId: string; totalPages: number }>('/api/historical-migration/batches', payload);
       toast.success(`Batch #${data.batchId.slice(0, 8)} uploaded successfully (${data.totalPages} pages).`);
       onSuccess(data.batchId);
       onClose();

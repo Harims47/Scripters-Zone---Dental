@@ -14,7 +14,8 @@ import {
   Edit2,
   AlertCircle,
   CheckCircle2,
-  Camera
+  Camera,
+  Clock
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
@@ -30,6 +31,7 @@ import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem, DentalImage } 
 import { FdiToothChart } from './FdiToothChart';
 import { getToothInfo } from '../../lib/toothMetadata';
 import { DentalImagingSection } from './DentalImagingSection';
+import { TreatmentSessionsSection } from './TreatmentSessionsSection';
 
 export function TreatmentPlanUI({
   patientId,
@@ -40,17 +42,23 @@ export function TreatmentPlanUI({
   onDone,
   onCancel,
   onRegisterRollback,
-  initialEdit = false
+  initialEdit = false,
+  initialView,
+  targetItemId,
+  targetSessionId
 }: {
   patientId: string;
   currentVisitId?: string;
   treatmentFee?: number;
   initialTreatmentZeroReason?: string;
   onSaveTreatmentFee?: (fee: number, zeroReason?: string) => void;
-  onDone?: () => void;
+  onDone?: (noProcedureReason?: string) => void;
   onCancel?: () => void;
   onRegisterRollback?: (rollbackFn: () => Promise<void>) => void;
   initialEdit?: boolean;
+  initialView?: 'planning' | 'imaging' | 'sessions';
+  targetItemId?: string | null;
+  targetSessionId?: string | null;
 }) {
   const [plan, setPlan] = useState<TreatmentPlan | null>(null);
   const [catalog, setCatalog] = useState<TreatmentCatalog[]>([]);
@@ -63,6 +71,11 @@ export function TreatmentPlanUI({
   const [treatmentZeroReason, setTreatmentZeroReason] = useState<string>(initialTreatmentZeroReason || '');
   const [treatmentZeroError, setTreatmentZeroError] = useState<string>('');
   const [isZeroFeeModalOpen, setIsZeroFeeModalOpen] = useState<boolean>(false);
+
+  // Mandatory Procedure reason state
+  const [noProcedureReason, setNoProcedureReason] = useState<string>(initialTreatmentZeroReason || '');
+  const [noProcedureError, setNoProcedureError] = useState<string>('');
+  const [isNoProcedureModalOpen, setIsNoProcedureModalOpen] = useState<boolean>(false);
 
   // Session tracking to ensure closing without "Done" does NOT keep saved items
   const sessionCreatedItemIds = useRef<string[]>([]);
@@ -107,6 +120,17 @@ export function TreatmentPlanUI({
     'Observation Only'
   ];
 
+  const NO_PROCEDURE_REASONS = [
+    'Consultation / Examination Only',
+    'Diagnostic & Advice Only',
+    'Prescription & Medication Only',
+    'Patient Refused / Deferred Treatment',
+    'Awaiting Diagnostics (X-Ray/Lab)',
+    'Referred to Specialist / External Facility',
+    'Routine Follow-up / Post-op Review',
+    'Other Clinical Judgement'
+  ];
+
   // Tooth Selection state
   const [selectedTeeth, setSelectedTeeth] = useState<number[]>([]);
 
@@ -118,10 +142,18 @@ export function TreatmentPlanUI({
 
   // Editing state for an existing planned item
   const [editingItem, setEditingItem] = useState<TreatmentPlanItem | null>(null);
+  const [plannedSittings, setPlannedSittings] = useState<number>(1);
+  const [customSittingsInput, setCustomSittingsInput] = useState<string>('');
 
-  // Workspace View Switcher (Treatment Planning vs Dental Imaging)
-  const [workspaceView, setWorkspaceView] = useState<'planning' | 'imaging'>('planning');
+  // Workspace View Switcher (Treatment Planning vs Dental Imaging vs Treatment Sessions)
+  const [workspaceView, setWorkspaceView] = useState<'planning' | 'imaging' | 'sessions'>(initialView || 'planning');
   const [dentalImages, setDentalImages] = useState<DentalImage[]>([]);
+
+  useEffect(() => {
+    if (initialView) {
+      setWorkspaceView(initialView);
+    }
+  }, [initialView]);
 
   // Past visits history toggle
   const [showPastHistory, setShowPastHistory] = useState(false);
@@ -240,7 +272,8 @@ export function TreatmentPlanUI({
           {
             treatmentCatalogId: selectedProcedure,
             toothNumber: singleTooth,
-            notes: notes || null
+            notes: notes || null,
+            totalSittings: plannedSittings
           }
         );
 
@@ -254,6 +287,7 @@ export function TreatmentPlanUI({
         );
 
         setEditingItem(null);
+        setPlannedSittings(1);
       } else {
         // Create new item(s)
         if (selectedTeeth.length > 1) {
@@ -264,6 +298,7 @@ export function TreatmentPlanUI({
               treatmentCatalogId: selectedProcedure,
               toothNumbers: selectedTeeth,
               notes: notes || undefined,
+              totalSittings: plannedSittings,
               completedVisitId: currentVisitId
             }
           );
@@ -282,6 +317,7 @@ export function TreatmentPlanUI({
               treatmentCatalogId: selectedProcedure,
               toothNumber: singleTooth,
               notes: notes || undefined,
+              totalSittings: plannedSittings,
               completedVisitId: currentVisitId
             }
           );
@@ -298,6 +334,8 @@ export function TreatmentPlanUI({
       setSelectedProcedure('');
       setNotes('');
       setSelectedTeeth([]);
+      setPlannedSittings(1);
+      setCustomSittingsInput('');
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Failed to save treatment procedure.');
@@ -313,6 +351,9 @@ export function TreatmentPlanUI({
     setSelectedProcedure(item.treatmentCatalogId);
     setNotes(item.notes || '');
     setSelectedTeeth(item.toothNumber ? [item.toothNumber] : []);
+    const sittingsCount = item.totalSittings !== undefined && item.totalSittings !== null ? item.totalSittings : (item.sessions?.length || 1);
+    setPlannedSittings(sittingsCount);
+    setCustomSittingsInput(sittingsCount === 0 || sittingsCount > 3 ? String(sittingsCount) : '');
     setErrorMsg(null);
   };
 
@@ -322,6 +363,8 @@ export function TreatmentPlanUI({
     setSelectedProcedure('');
     setNotes('');
     setSelectedTeeth([]);
+    setPlannedSittings(1);
+    setCustomSittingsInput('');
     setErrorMsg(null);
   };
 
@@ -377,17 +420,28 @@ export function TreatmentPlanUI({
   };
 
   // Categorize items by visit context
+  const ongoingItems = plan?.items.filter((item) =>
+    item.status === 'In Progress' ||
+    (item.status !== 'Completed' && (item.sessions || []).some((s: any) => s.status === 'Planned' || s.status === 'In Progress'))
+  ) || [];
+
   const currentVisitItems = currentVisitId
     ? plan?.items.filter((item) => item.completedVisitId === currentVisitId) || []
     : plan?.items || [];
+
   const plannedItems = currentVisitId
-    ? plan?.items.filter((item) => item.status === 'Planned') || []
+    ? plan?.items.filter((item) => item.status === 'Planned' && !ongoingItems.some((o) => o.id === item.id)) || []
     : [];
+
   const pastCompletedItems = currentVisitId
     ? plan?.items.filter(
       (item) => item.status === 'Completed' && item.completedVisitId !== currentVisitId
     ) || []
     : [];
+
+  const pendingSessionsCount = (plan?.items || []).reduce((acc, item) => {
+    return acc + (item.sessions || []).filter((s: any) => s.status === 'Planned' || s.status === 'In Progress').length;
+  }, 0);
 
   if (loading) {
     return (
@@ -405,7 +459,7 @@ export function TreatmentPlanUI({
     <div className="space-y-2.5 w-full min-w-0 max-w-full overflow-hidden">
       {/* Top Workspace View Switcher */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 w-full min-w-0">
-        <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 bg-slate-100 p-0.5 rounded-xl w-full sm:w-auto">
+        <div className="grid grid-cols-3 sm:flex sm:items-center gap-1 bg-slate-100 p-0.5 rounded-xl w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setWorkspaceView('planning')}
@@ -417,6 +471,23 @@ export function TreatmentPlanUI({
           >
             <span className="hidden sm:inline">Treatment Planning & FDI Chart</span>
             <span className="sm:hidden">Planning & FDI</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceView('sessions')}
+            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
+              workspaceView === 'sessions'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span>Treatment Sessions</span>
+            {pendingSessionsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold border border-amber-300 shrink-0">
+                {pendingSessionsCount} Pending
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -438,6 +509,21 @@ export function TreatmentPlanUI({
         </div>
       </div>
 
+      <div className={workspaceView === 'sessions' ? 'bg-slate-50/50 p-1 sm:p-2 rounded-2xl w-full min-w-0 max-w-full overflow-hidden' : 'hidden'}>
+        <TreatmentSessionsSection
+          patientId={patientId}
+          currentVisitId={currentVisitId}
+          plan={plan}
+          onRefresh={async () => {
+            const planRes = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+            setPlan(planRes?.data || planRes);
+          }}
+          onUpdatePlan={(updater) => setPlan(updater)}
+          targetItemId={targetItemId}
+          targetSessionId={targetSessionId}
+        />
+      </div>
+
       <div className={workspaceView === 'imaging' ? 'bg-slate-50/50 p-1 sm:p-2 rounded-2xl w-full min-w-0 max-w-full overflow-hidden' : 'hidden'}>
         <DentalImagingSection
           patientId={patientId}
@@ -450,18 +536,49 @@ export function TreatmentPlanUI({
         />
       </div>
 
-      <div className={workspaceView === 'planning' ? 'grid grid-cols-1 min-[1440px]:grid-cols-12 gap-3 items-start w-full min-w-0' : 'hidden'}>
-        {/* =================================================================== */}
-        {/* LEFT COLUMN (min-[1440px]:col-span-5): Interactive FDI Tooth Chart   */}
-        {/* =================================================================== */}
-        <div className="w-full min-[1440px]:col-span-5 space-y-2">
-          <FdiToothChart
-            selectedTeeth={selectedTeeth}
-            onToggleTooth={handleToggleTooth}
-            plannedTeeth={plannedTeeth}
-            completedTeeth={completedTeeth}
-          />
-        </div>
+      <div className={workspaceView === 'planning' ? 'space-y-3 w-full min-w-0' : 'hidden'}>
+        {/* Active Multi-Sitting Treatment In Progress Banner */}
+        {ongoingItems.length > 0 && (
+          <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/90 shadow-2xs flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="text-xs font-bold text-slate-900">Active Multi-Sitting Treatment:</span>
+                {ongoingItems.map((item) => {
+                  const completedS = (item.sessions || []).filter((s: any) => s.status === 'Completed').length;
+                  return (
+                    <span key={item.id} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                      {item.catalogItem?.name} {item.toothNumber ? `(Tooth ${item.toothNumber})` : ''} — Sitting {completedS + 1} of {item.totalSittings || 1} Due
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-7.5 px-3 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shrink-0 shadow-2xs cursor-pointer"
+              onClick={() => setWorkspaceView('sessions')}
+            >
+              Manage Sittings &rarr;
+            </Button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 min-[1440px]:grid-cols-12 gap-3 items-start w-full min-w-0">
+          {/* =================================================================== */}
+          {/* LEFT COLUMN (min-[1440px]:col-span-5): Interactive FDI Tooth Chart   */}
+          {/* =================================================================== */}
+          <div className="w-full min-[1440px]:col-span-5 space-y-2">
+            <FdiToothChart
+              selectedTeeth={selectedTeeth}
+              onToggleTooth={handleToggleTooth}
+              plannedTeeth={plannedTeeth}
+              completedTeeth={completedTeeth}
+            />
+          </div>
 
         {/* =================================================================== */}
         {/* MIDDLE COLUMN (min-[1440px]:col-span-3): Selected Tooth Details & Form */}
@@ -612,6 +729,68 @@ export function TreatmentPlanUI({
               </Select>
             </div>
 
+            {/* Expected Sittings: Numeric 1, 2, 3, or custom number */}
+            <div className="space-y-1.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                  Expected Sittings
+                </label>
+                <span className="text-[11px] font-semibold text-indigo-700">
+                  {plannedSittings === 0 ? '0 sittings' : plannedSittings === 1 ? '1 sitting' : `${plannedSittings} sittings`}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                {[0, 1, 2, 3].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => {
+                      setPlannedSittings(num);
+                      setCustomSittingsInput('');
+                    }}
+                    className={`flex-1 h-7 rounded-lg text-xs font-bold border transition-all ${
+                      plannedSittings === num && customSittingsInput === ''
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {num}
+                  </button>
+                ))}
+                <div className="flex-[1.2] min-w-[52px] relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Custom"
+                    value={customSittingsInput}
+                    onChange={(e) => {
+                      const str = e.target.value.replace(/[^0-9]/g, '');
+                      setCustomSittingsInput(str);
+                      const val = parseInt(str, 10);
+                      if (str === '0' || val === 0) {
+                        setPlannedSittings(0);
+                      } else if (!isNaN(val) && val >= 1) {
+                        setPlannedSittings(Math.min(50, val));
+                      } else if (str === '') {
+                        setPlannedSittings(1);
+                      }
+                    }}
+                    onFocus={() => {
+                      if (plannedSittings > 3 && !customSittingsInput) {
+                        setCustomSittingsInput(String(plannedSittings));
+                      }
+                    }}
+                    className={`w-full h-7 px-1 text-xs font-bold text-center rounded-lg border transition-all outline-none ${
+                      customSittingsInput !== '' || (plannedSittings > 3 && customSittingsInput === '')
+                        ? 'bg-indigo-600 text-white border-indigo-600 placeholder:text-indigo-200 ring-2 ring-indigo-500/20'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 placeholder:text-slate-400'
+                    }`}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Doctor Clinical Notes (Strictly Separate from Tooth Number) */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">
@@ -653,13 +832,82 @@ export function TreatmentPlanUI({
         {/* =================================================================== */}
         {/* RIGHT COLUMN (min-[1440px]:col-span-4): Planned & Active Treatments */}
         {/* =================================================================== */}
-        <div className="w-full min-[1440px]:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5 max-h-[410px] overflow-y-auto">
+        <div className="w-full min-[1440px]:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-3 max-h-[440px] overflow-y-auto">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h4 className="text-sm font-bold text-slate-900">Planned Treatments</h4>
+            <h4 className="text-sm font-bold text-slate-900">Treatments & Sessions</h4>
             <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-              {currentVisitItems.length + plannedItems.length} items
+              {ongoingItems.length + currentVisitItems.length + plannedItems.length} items
             </span>
           </div>
+
+          {/* 1. Active Ongoing Multi-Sitting Treatments */}
+          {ongoingItems.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  Active Ongoing Treatments ({ongoingItems.length})
+                </h5>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                  In Progress
+                </span>
+              </div>
+
+              {ongoingItems.map((item) => {
+                const completedSessions = (item.sessions || []).filter((s: any) => s.status === 'Completed');
+                const nextSessionNum = completedSessions.length + 1;
+                const totalS = item.totalSittings || 1;
+                return (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl border bg-gradient-to-r from-amber-50/70 to-orange-50/50 border-amber-200 text-xs space-y-2 shadow-2xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {item.toothNumber ? (
+                            <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
+                              Tooth {item.toothNumber}
+                            </span>
+                          ) : (
+                            <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
+                              General
+                            </span>
+                          )}
+                          <span className="font-bold text-slate-900">
+                            {item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {item.catalogItem?.category}
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                        Sitting {completedSessions.length}/{totalS}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200/70 flex-wrap">
+                      <span className="text-[11px] font-semibold text-amber-900">
+                        👉 Next: Sitting {nextSessionNum} (Due Today)
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-6 px-2.5 text-[11px] font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs cursor-pointer"
+                        onClick={() => {
+                          setWorkspaceView('sessions');
+                        }}
+                      >
+                        Record Sitting {nextSessionNum} &rarr;
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Current Visit Procedures */}
           {currentVisitId ? (
@@ -669,9 +917,15 @@ export function TreatmentPlanUI({
               </h5>
 
               {currentVisitItems.length === 0 ? (
-                <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                  No procedures recorded for this visit yet.
-                </div>
+                ongoingItems.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                    No procedures recorded for this visit yet.
+                  </div>
+                ) : (
+                  <div className="text-center py-2 text-[11px] text-slate-400 bg-slate-50/40 rounded-lg border border-dashed border-slate-200">
+                    No additional procedures recorded. Active sitting shown above.
+                  </div>
+                )
               ) : (
                 currentVisitItems.map((item) => (
                   <div
@@ -698,6 +952,20 @@ export function TreatmentPlanUI({
                         <div className="text-[11px] text-slate-500 mt-0.5">
                           {item.catalogItem?.category}
                         </div>
+                        {((item.totalSittings ?? 1) > 0) && (
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              {item.sessions?.filter(s => s.status === 'Completed').length || 0} / {item.totalSittings ?? 1} Sittings
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setWorkspaceView('sessions')}
+                              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold underline"
+                            >
+                              Manage Sittings &rarr;
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-0.5">
@@ -833,6 +1101,20 @@ export function TreatmentPlanUI({
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {item.catalogItem?.category}
                       </div>
+                    {((item.totalSittings ?? 1) > 0) && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {item.sessions?.filter(s => s.status === 'Completed').length || 0} / {item.totalSittings ?? 1} Sittings
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setWorkspaceView('sessions')}
+                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold underline"
+                        >
+                          Manage Sittings &rarr;
+                        </button>
+                      </div>
+                    )}
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -927,6 +1209,7 @@ export function TreatmentPlanUI({
           )}
         </div>
       </div>
+    </div>
 
       {/* =================================================================== */}
       {/* BOTTOM BAR: Total Treatment Fee & Done Action                       */}
@@ -989,15 +1272,24 @@ export function TreatmentPlanUI({
                   className="h-8 px-5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
                   onClick={async () => {
                     const feeNum = Number(localTreatmentFee) || 0;
-                    if (feeNum === 0 && !treatmentZeroReason.trim() && currentVisitItems.length > 0) {
+                    const totalProcedures = currentVisitItems.length + plannedItems.length + ongoingItems.length;
+
+                    if (totalProcedures === 0) {
+                      if (!noProcedureReason.trim()) {
+                        setIsNoProcedureModalOpen(true);
+                        return;
+                      }
+                    } else if (feeNum === 0 && !treatmentZeroReason.trim() && currentVisitItems.length > 0) {
                       setIsZeroFeeModalOpen(true);
                       return;
                     }
+
                     isConfirmed.current = true;
                     sessionCreatedItemIds.current = [];
                     imagingCommitRef.current();
-                    if (onDone) onDone();
-                    if (onSaveTreatmentFee) await onSaveTreatmentFee(feeNum, treatmentZeroReason);
+                    const finalReason = totalProcedures === 0 ? noProcedureReason.trim() : treatmentZeroReason;
+                    if (onDone) onDone(totalProcedures === 0 ? noProcedureReason.trim() : undefined);
+                    if (onSaveTreatmentFee) await onSaveTreatmentFee(feeNum, finalReason);
                   }}
                 >
                   Done
@@ -1006,7 +1298,27 @@ export function TreatmentPlanUI({
             </div>
           </div>
 
-          {Number(localTreatmentFee) === 0 && currentVisitItems.length > 0 && (
+          {(currentVisitItems.length + plannedItems.length + ongoingItems.length) === 0 ? (
+            <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
+              {noProcedureReason ? (
+                <span className="inline-flex items-center gap-1 text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 font-medium">
+                  No Procedure Reason: {noProcedureReason}
+                  <button
+                    type="button"
+                    onClick={() => setIsNoProcedureModalOpen(true)}
+                    className="underline text-teal-900 ml-1 hover:text-teal-950 font-bold"
+                  >
+                    Edit
+                  </button>
+                </span>
+              ) : (
+                <span className="text-rose-600 font-semibold flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Adding a procedure is mandatory. Clicking Done without a procedure requires a clinical reason.
+                </span>
+              )}
+            </div>
+          ) : Number(localTreatmentFee) === 0 && currentVisitItems.length > 0 && (
             <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
               {treatmentZeroReason ? (
                 <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
@@ -1122,6 +1434,108 @@ export function TreatmentPlanUI({
               }}
             >
               Confirm Reason
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal for No Procedure Reason (opens when Done is clicked with 0 procedures) */}
+      <Dialog open={isNoProcedureModalOpen} onOpenChange={setIsNoProcedureModalOpen}>
+        <DialogContent className="max-w-md w-full p-5 gap-3.5 bg-white rounded-2xl shadow-xl">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-rose-100 text-rose-700">
+                <AlertCircle className="w-4 h-4" />
+              </span>
+              Clinical Reason Required
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Adding a procedure is mandatory for treatment planning. If no procedure was performed or planned during this visit, please specify the clinical reason to proceed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3.5 py-1">
+            {/* Quick Tags */}
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                Select Reason Tag
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {NO_PROCEDURE_REASONS.map((tag) => (
+                  <button
+                    type="button"
+                    key={tag}
+                    onClick={() => {
+                      setNoProcedureReason(tag);
+                      setNoProcedureError('');
+                    }}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                      noProcedureReason === tag
+                        ? 'bg-teal-600 text-white border-teal-600 font-semibold shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-teal-50 hover:border-teal-300'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Detailed Reason Text Box */}
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Clinical Reason Details / Notes <span className="text-rose-500">*</span>
+              </label>
+              <Textarea
+                placeholder="Enter clinical reason why no procedure was added (e.g. Patient came for diagnostic consultation only, deferred procedure due to fever)..."
+                value={noProcedureReason}
+                onChange={(e) => {
+                  setNoProcedureReason(e.target.value);
+                  if (e.target.value.trim()) setNoProcedureError('');
+                }}
+                rows={3}
+                className={`text-xs bg-white resize-none ${
+                  noProcedureError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
+                }`}
+              />
+              {noProcedureError && (
+                <p className="text-[11px] text-rose-600 font-medium mt-1">{noProcedureError}</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => {
+                setNoProcedureError('');
+                setIsNoProcedureModalOpen(false);
+              }}
+            >
+              Cancel (Add Procedure)
+            </Button>
+            <Button
+              size="sm"
+              className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
+              onClick={async () => {
+                if (!noProcedureReason.trim()) {
+                  setNoProcedureError('Please select or provide a reason why no procedure was added.');
+                  return;
+                }
+                setIsNoProcedureModalOpen(false);
+                const feeNum = Number(localTreatmentFee) || 0;
+                isConfirmed.current = true;
+                sessionCreatedItemIds.current = [];
+                imagingCommitRef.current();
+                if (onDone) onDone(noProcedureReason.trim());
+                if (onSaveTreatmentFee) {
+                  await onSaveTreatmentFee(feeNum, noProcedureReason.trim());
+                }
+              }}
+            >
+              Confirm Reason & Done
             </Button>
           </DialogFooter>
         </DialogContent>

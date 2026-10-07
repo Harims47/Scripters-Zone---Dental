@@ -103,6 +103,13 @@ export const createAppointment = async (req: Request, res: Response, next: NextF
       }
     }
 
+    let photoUrl = data.photoUrl || null;
+    if (photoUrl && photoUrl.startsWith('data:')) {
+      const { saveImageToDisk } = await import('../services/fileStorageService');
+      const saved = await saveImageToDisk(photoUrl, 'patient-photos', data.patientId || 'appointment', 'appt_attachment');
+      photoUrl = saved.urlPath;
+    }
+
     const appointment = await prisma.appointment.create({
       data: {
         patientId: data.patientId,
@@ -112,7 +119,7 @@ export const createAppointment = async (req: Request, res: Response, next: NextF
         type: data.type,
         status: data.status || 'Scheduled',
         notes: data.notes,
-        photoUrl: data.photoUrl
+        photoUrl
       }
     });
 

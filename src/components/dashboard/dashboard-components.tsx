@@ -130,7 +130,23 @@ export interface WaitingPatientItem {
   position: number
   assignedDoctorId: string | null
   doctorName: string | null
+  pendingTreatments?: {
+    itemId: string
+    treatmentName: string
+    variant?: string | null
+    toothNumber?: number | null
+    totalSittings: number
+    completedCount: number
+    nextSession?: {
+      id: string
+      sittingNumber: number
+      stage?: string | null
+      plannedDate?: string | null
+      status: string
+    }
+  }[]
 }
+
 
 export function WaitingPatientsTable({ 
   items, 
@@ -187,6 +203,29 @@ export function WaitingPatientsTable({
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="font-semibold text-slate-900">{item.patientName}</div>
+                    {item.pendingTreatments && item.pendingTreatments.length > 0 && (
+                      <div className="mt-1 space-y-1">
+                        {item.pendingTreatments.map((pt, pIdx) => {
+                          const nextNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
+                          const schedDate = pt.nextSession?.plannedDate
+                            ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                            : null;
+                          return (
+                            <div
+                              key={pIdx}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs max-w-full truncate"
+                              title={`Unfinished treatment: ${pt.treatmentName}${pt.toothNumber ? ` (Tooth ${pt.toothNumber})` : ''} • Sitting ${nextNum}/${pt.totalSittings}${schedDate ? ` • Scheduled: ${schedDate}` : ''}`}
+                            >
+                              <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span className="truncate">
+                                {pt.treatmentName}{pt.toothNumber ? ` #${pt.toothNumber}` : ''} • Sitting {nextNum}/{pt.totalSittings}
+                                {schedDate ? ` • ${schedDate}` : ''}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     {item.priority && (
                       <Badge variant="outline" className="bg-rose-50 text-rose-600 border-rose-200 text-[10px] px-1.5 py-0 mt-0.5">
                         Urgent

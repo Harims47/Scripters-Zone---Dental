@@ -9,12 +9,19 @@ export const getPatientHistory = async (req: Request, res: Response, next: NextF
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
       include: {
+        dentalImages: {
+          orderBy: { createdAt: 'desc' }
+        },
         treatmentPlan: {
           include: {
             items: {
               include: {
                 catalogItem: true,
-                completedVisit: true
+                completedVisit: true,
+                sessions: {
+                  include: { doctor: { select: { id: true, name: true, role: true } } },
+                  orderBy: { sittingNumber: 'asc' }
+                }
               },
               orderBy: { createdAt: 'desc' }
             }
@@ -34,6 +41,9 @@ export const getPatientHistory = async (req: Request, res: Response, next: NextF
       include: {
         appointment: true,
         consultation: true,
+        dentalImages: {
+          orderBy: { createdAt: 'desc' }
+        },
         prescription: {
           include: { items: { include: { medicine: true } } }
         },
@@ -41,7 +51,20 @@ export const getPatientHistory = async (req: Request, res: Response, next: NextF
           include: { items: { include: { medicine: true } } }
         },
         completedTreatmentItems: {
-          include: { catalogItem: true }
+          include: {
+            catalogItem: true,
+            sessions: {
+              include: { doctor: { select: { id: true, name: true, role: true } } },
+              orderBy: { sittingNumber: 'asc' }
+            }
+          }
+        },
+        treatmentSessions: {
+          include: {
+            treatmentPlanItem: { include: { catalogItem: true } },
+            doctor: { select: { id: true, name: true, role: true } }
+          },
+          orderBy: { sittingNumber: 'asc' }
         },
         payments: {
           orderBy: { createdAt: 'asc' }
@@ -113,8 +136,10 @@ export const getPatientHistory = async (req: Request, res: Response, next: NextF
         photoUrl: patient.photoUrl,
         address: patient.address,
         createdAt: patient.createdAt,
-        updatedAt: patient.updatedAt
+        updatedAt: patient.updatedAt,
+        dentalImages: (patient as any).dentalImages || []
       },
+      dentalImages: (patient as any).dentalImages || [],
       treatmentPlan: patient.treatmentPlan || null,
       visits: formattedVisits
     });
@@ -136,6 +161,9 @@ export const getHistoricalVisit = async (req: Request, res: Response, next: Next
       include: {
         appointment: true,
         consultation: true,
+        dentalImages: {
+          orderBy: { createdAt: 'desc' }
+        },
         prescription: {
           include: { items: { include: { medicine: true } } }
         },
@@ -143,7 +171,20 @@ export const getHistoricalVisit = async (req: Request, res: Response, next: Next
           include: { items: { include: { medicine: true } } }
         },
         completedTreatmentItems: {
-          include: { catalogItem: true }
+          include: {
+            catalogItem: true,
+            sessions: {
+              include: { doctor: { select: { id: true, name: true, role: true } } },
+              orderBy: { sittingNumber: 'asc' }
+            }
+          }
+        },
+        treatmentSessions: {
+          include: {
+            treatmentPlanItem: { include: { catalogItem: true } },
+            doctor: { select: { id: true, name: true, role: true } }
+          },
+          orderBy: { sittingNumber: 'asc' }
         },
         payments: {
           orderBy: { createdAt: 'asc' }

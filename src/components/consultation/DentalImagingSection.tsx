@@ -59,7 +59,7 @@ const ALL_FDI_TEETH = [
 ];
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
 export function DentalImagingSection({
   patientId,
@@ -187,7 +187,7 @@ export function DentalImagingSection({
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      toast.error('File size exceeds the 10 MB maximum limit.');
+      toast.error('File size exceeds the 2 MB maximum limit.');
       return;
     }
 
@@ -358,7 +358,7 @@ export function DentalImagingSection({
         </div>
 
         <div className="text-[11px] sm:text-xs text-slate-500 font-medium shrink-0">
-          Supported: <span className="font-semibold text-slate-700">JPEG, PNG, WEBP</span> (Max 10 MB)
+          Supported: <span className="font-semibold text-slate-700">JPEG, PNG, WEBP</span> (Max 2 MB)
         </div>
       </div>
 
@@ -439,7 +439,7 @@ export function DentalImagingSection({
                       Click to browse or drag & drop {activeTab} radiograph
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      High-resolution JPEG, PNG, or WEBP up to 10 MB
+                      High-resolution JPEG, PNG, or WEBP up to 2 MB
                     </p>
                   </div>
                 )}

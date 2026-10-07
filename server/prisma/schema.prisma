@@ -29,6 +29,7 @@ model Staff {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User?
+  treatmentSessions TreatmentSession[]
 }
 
 model Patient {
@@ -100,6 +101,7 @@ model Visit {
   importedHistoricalRecords HistoricalMigrationRecord[] @relation("ImportedHistoricalVisit")
   dentalImages              DentalImage[]
   externalAdvices           ExternalDoctorAdvice[]
+  treatmentSessions         TreatmentSession[]
 
   @@index([visitDate])
 }
@@ -253,21 +255,50 @@ model TreatmentPlan {
 }
 
 model TreatmentPlanItem {
-  id                 String           @id @default(uuid())
+  id                 String             @id @default(uuid())
   treatmentPlanId    String
   treatmentCatalogId String
   toothNumber        Int?
-  status             String           @default("Planned") // "Planned" | "Completed"
+  status             String             @default("Planned") // "Planned" | "In Progress" | "Completed"
   notes              String?
+  totalSittings      Int                @default(1)
   completedVisitId   String?
   completedAt        DateTime?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  treatmentPlan      TreatmentPlan    @relation(fields: [treatmentPlanId], references: [id])
-  catalogItem        TreatmentCatalog @relation(fields: [treatmentCatalogId], references: [id])
-  completedVisit     Visit?           @relation(fields: [completedVisitId], references: [id])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  treatmentPlan      TreatmentPlan      @relation(fields: [treatmentPlanId], references: [id])
+  catalogItem        TreatmentCatalog   @relation(fields: [treatmentCatalogId], references: [id])
+  completedVisit     Visit?             @relation(fields: [completedVisitId], references: [id])
+  sessions           TreatmentSession[]
 
   @@index([toothNumber])
+}
+
+model TreatmentSession {
+  id                    String            @id @default(uuid())
+  treatmentPlanItemId   String
+  treatmentPlanItem     TreatmentPlanItem @relation(fields: [treatmentPlanItemId], references: [id], onDelete: Cascade)
+  sittingNumber         Int
+  stage                 String?
+  status                String            @default("Planned") // "Planned" | "In Progress" | "Completed" | "Cancelled"
+  plannedDate           DateTime?
+  actualDate            DateTime?
+  visitId               String?
+  visit                 Visit?            @relation(fields: [visitId], references: [id])
+  doctorId              String?
+  doctor                Staff?            @relation(fields: [doctorId], references: [id])
+  clinicalNotes         String?           @db.Text
+  workPerformed         String?           @db.Text
+  materialsUsed         String?           @db.Text
+  nextSittingDate       DateTime?
+  followUpInstructions String?           @db.Text
+  fee                   Float?            @default(0)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@unique([treatmentPlanItemId, sittingNumber])
+  @@index([treatmentPlanItemId])
+  @@index([visitId])
 }
 
 model Supplier {

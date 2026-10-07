@@ -16,7 +16,8 @@ import {
   HardDrive,
   FileText,
   X,
-  Contrast
+  Contrast,
+  Download
 } from 'lucide-react';
 
 interface DentalImageViewerModalProps {
@@ -45,6 +46,15 @@ export function DentalImageViewerModal({
   };
   const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
   const handleToggleInvert = () => setIsInverted((prev) => !prev);
+  const handleDownload = () => {
+    if (!image?.imageUrl) return;
+    const link = document.createElement('a');
+    link.href = image.imageUrl;
+    link.download = image.fileName || `radiograph-${image.type}-${image.id}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const formatFileSize = (bytes: number) => {
     if (!bytes) return '0 B';
@@ -143,6 +153,16 @@ export function DentalImageViewerModal({
               title="Reset View"
             >
               <Maximize2 className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleDownload}
+              className="h-8 w-8 p-0 text-slate-300 hover:text-emerald-400 hover:bg-slate-800"
+              title="Download Full-Size Radiograph"
+            >
+              <Download className="w-4 h-4" />
             </Button>
             <Button
               type="button"

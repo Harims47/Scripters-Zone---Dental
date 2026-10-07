@@ -60,9 +60,19 @@ export const getPatientById = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+import { saveImageToDisk, deleteStoredFile } from '../services/fileStorageService';
+
 export const createPatient = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = req.body;
+    let photoUrl = data.photoUrl || null;
+
+    if (photoUrl && photoUrl.startsWith('data:')) {
+      const subId = data.phone ? data.phone.replace(/[^a-zA-Z0-9]/g, '') : `pat_${Date.now()}`;
+      const saved = await saveImageToDisk(photoUrl, 'patient-photos', subId, 'profile');
+      photoUrl = saved.urlPath;
+    }
+
     const patient = await prisma.patient.create({
       data: {
         name: data.name,
@@ -70,7 +80,7 @@ export const createPatient = async (req: Request, res: Response, next: NextFunct
         age: data.age,
         gender: data.gender,
         status: data.status || 'Active',
-        photoUrl: data.photoUrl,
+        photoUrl,
         address: data.address,
         email: data.email || null,
         preferredCommunicationChannel: data.preferredCommunicationChannel || 'AUTO'
@@ -91,6 +101,18 @@ export const updatePatient = async (req: Request, res: Response, next: NextFunct
     const existing = await prisma.patient.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ error: 'Patient not found' });
+    }
+
+    if (data.photoUrl && data.photoUrl.startsWith('data:')) {
+      const saved = await saveImageToDisk(data.photoUrl, 'patient-photos', id, 'profile');
+      if (existing.photoUrl && existing.photoUrl.startsWith('/uploads/')) {
+        deleteStoredFile(existing.photoUrl);
+      }
+      data.photoUrl = saved.urlPath;
+    } else if (data.photoUrl === '' || data.photoUrl === null) {
+      if (existing.photoUrl && existing.photoUrl.startsWith('/uploads/')) {
+        deleteStoredFile(existing.photoUrl);
+      }
     }
 
     const patient = await prisma.patient.update({

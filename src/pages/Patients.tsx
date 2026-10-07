@@ -738,7 +738,7 @@ export function PatientsPage() {
     </Sheet>
 
       <Dialog open={!!historicalVisitId} onOpenChange={(open) => !open && setHistoricalVisitId(null)}>
-        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto p-0">
           <DialogHeader>
             <DialogTitle>Historical Visit Details</DialogTitle>
             <DialogDescription>

@@ -17,6 +17,7 @@ import { HistoricalReviewWorkspace } from '../components/historicalMigration/His
 import type { MigrationRecordItem } from '../components/historicalMigration/HistoricalReviewWorkspace';
 import { BatchResultsSummaryModal } from '../components/historicalMigration/BatchResultsSummaryModal';
 import { toast } from 'react-hot-toast';
+import { api } from '../lib/api';
 
 interface MigrationBatch {
   id: string;
@@ -51,12 +52,8 @@ export const HistoricalMigrationPage: React.FC = () => {
   const fetchBatches = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/historical-migration/batches', {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Failed to fetch migration batches');
-      const data = await res.json();
-      setBatches(data);
+      const data = await api.get<MigrationBatch[]>('/api/historical-migration/batches');
+      setBatches(data || []);
     } catch (err: any) {
       toast.error(err.message || 'Error loading batches');
     } finally {
@@ -72,12 +69,8 @@ export const HistoricalMigrationPage: React.FC = () => {
     setActiveBatch(batch);
     setIsLoadingRecords(true);
     try {
-      const res = await fetch(`/api/historical-migration/batches/${batch.id}/records`, {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Failed to load batch records');
-      const data = await res.json();
-      setActiveRecords(data);
+      const data = await api.get<MigrationRecordItem[]>(`/api/historical-migration/batches/${batch.id}/records`);
+      setActiveRecords(data || []);
     } catch (err: any) {
       toast.error(err.message || 'Error loading records');
       setActiveBatch(null);
@@ -103,15 +96,7 @@ export const HistoricalMigrationPage: React.FC = () => {
     if (!confirmImport) return;
 
     try {
-      const res = await fetch(`/api/historical-migration/batches/${batch.id}/import`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Import failed');
-      }
-      const summary = await res.json();
+      const summary = await api.post<any>(`/api/historical-migration/batches/${batch.id}/import`);
       setImportSummary(summary);
       fetchBatches();
       if (activeBatch) {

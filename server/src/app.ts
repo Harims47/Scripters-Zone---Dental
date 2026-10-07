@@ -38,7 +38,7 @@ import { QueueRunner } from './services/communication/queueRunner';
 import { HistoricalBatchService } from './services/historicalMigration/HistoricalBatchService';
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = Number(process.env.PORT) || 3001;
 
 // Trust reverse proxy (e.g. Render) for accurate client IP in express-rate-limit and secure cookies
 app.set('trust proxy', 1);
@@ -56,6 +56,13 @@ app.use(cors({
     }
   },
   credentials: true,
+}));
+
+// Static uploads serving for dental images & patient photos
+import { getUploadsRootDir } from './services/fileStorageService';
+app.use('/uploads', express.static(getUploadsRootDir(), {
+  maxAge: '7d',
+  immutable: true
 }));
 
 app.use('/api/auth', authRoutes);
@@ -100,7 +107,7 @@ app.use(errorHandler);
 
 import { prisma } from './db';
 
-const server = app.listen(port, () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(`Server is running on port ${port}`);
   QueueRunner.start().catch((err) => {
     console.error('Failed to start communication QueueRunner:', err.message);

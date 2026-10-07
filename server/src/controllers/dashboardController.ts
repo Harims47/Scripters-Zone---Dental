@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
+import { getPendingTreatmentsForPatients } from './treatmentController';
 
 /**
  * Controller providing consolidated, authoritative, role-aware daily clinic operations data.
@@ -218,6 +219,14 @@ export const getDashboardData = async (req: Request, res: Response, next: NextFu
       };
     });
 
+    // Query pending treatments for all queue patients
+    const allQueuePatientIds = Array.from(new Set([
+      ...waitingQueueEntries.map(q => q.patientId),
+      ...inProgressQueueEntries.map(q => q.patientId),
+      ...calledQueueEntries.map(q => q.patientId)
+    ]));
+    const pendingTreatmentsMap = await getPendingTreatmentsForPatients(allQueuePatientIds);
+
     // Format Waiting Queue entries
     const waitingPatients = waitingQueueEntries.map((q, idx) => {
       const doc = q.assignedDoctorId ? doctorMap.get(q.assignedDoctorId) : null;
@@ -237,7 +246,8 @@ export const getDashboardData = async (req: Request, res: Response, next: NextFu
         waitingSinceMinutes: elapsedMinutes,
         position: q.position || idx + 1,
         assignedDoctorId: q.assignedDoctorId || null,
-        doctorName: doc ? doc.name : null
+        doctorName: doc ? doc.name : null,
+        pendingTreatments: pendingTreatmentsMap.get(q.patientId) || []
       };
     });
 
@@ -287,7 +297,8 @@ export const getDashboardData = async (req: Request, res: Response, next: NextFu
           patientId: currentPatientEntry.patientId,
           patientName: currentPatientEntry.visit?.patient?.name || 'Patient',
           patientPhone: currentPatientEntry.visit?.patient?.phone || '',
-          status: currentPatientEntry.status
+          status: currentPatientEntry.status,
+          pendingTreatments: pendingTreatmentsMap.get(currentPatientEntry.patientId) || []
         } : null,
         completedTodayCount: myCompletedCount,
         consultationsTodayCount: myCompletedCount + (myActive ? 1 : 0)

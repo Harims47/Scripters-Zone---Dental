@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle, Stethoscope } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle, Stethoscope } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { ExternalDoctorAdviceModal } from '../components/consultation/ExternalDoctorAdviceModal'
@@ -385,6 +385,9 @@ export function DoctorWorkspacePage() {
   const rollbackTreatmentPlan = useRef<() => Promise<void>>(() => Promise.resolve())
   const [treatmentZeroReason, setTreatmentZeroReason] = useState<string>('')
   const [treatmentModalInitialEdit, setTreatmentModalInitialEdit] = useState(false)
+  const [treatmentModalInitialView, setTreatmentModalInitialView] = useState<'planning' | 'imaging' | 'sessions'>('planning')
+  const [treatmentModalTargetItemId, setTreatmentModalTargetItemId] = useState<string | null>(null)
+  const [treatmentModalTargetSessionId, setTreatmentModalTargetSessionId] = useState<string | null>(null)
   const [viewTreatmentModalOpen, setViewTreatmentModalOpen] = useState(false)
   const [consultationModalOpen, setConsultationModalOpen] = useState(false)
   const [viewConsultationModalOpen, setViewConsultationModalOpen] = useState(false)
@@ -465,6 +468,40 @@ export function DoctorWorkspacePage() {
     if (!treatmentPlan?.items || !visitId) return []
     return treatmentPlan.items.filter((item: any) => item.completedVisitId === visitId)
   }, [treatmentPlan, visitId])
+
+  // Unfinished treatments with pending sittings (for Ongoing Treatment banner)
+  const pendingTreatments = useMemo(() => {
+    if (!treatmentPlan?.items) return []
+    const list: any[] = []
+    for (const item of treatmentPlan.items) {
+      if (item.status === 'Completed') continue
+      const completedSessions = (item.sessions || []).filter((s: any) => s.status === 'Completed')
+      const pendingSessions = (item.sessions || []).filter((s: any) => s.status === 'Planned' || s.status === 'In Progress')
+      if (pendingSessions.length > 0) {
+        const nextSession = pendingSessions[0]
+        list.push({
+          item,
+          itemId: item.id,
+          treatmentName: item.catalogItem?.name || item.treatmentName || 'Treatment Procedure',
+          variant: item.catalogItem?.variant,
+          toothNumber: item.toothNumber,
+          totalSittings: Math.max(item.totalSittings || 1, (item.sessions || []).length),
+          completedCount: completedSessions.length,
+          nextSession
+        })
+      }
+    }
+    return list
+  }, [treatmentPlan])
+
+  const handleContinueTreatment = (itemId: string, sessionId?: string) => {
+    setTreatmentModalTargetItemId(itemId)
+    setTreatmentModalTargetSessionId(sessionId || null)
+    setTreatmentModalInitialView('sessions')
+    setTreatmentModalInitialEdit(false)
+    setTreatmentModalOpen(true)
+  }
+
 
   useEffect(() => {
     if (consultation) {
@@ -992,6 +1029,80 @@ export function DoctorWorkspacePage() {
           </div>
         </div>
 
+        {/* Compact Noticeable Ongoing Treatment Banner */}
+        {pendingTreatments.length > 0 && (
+          <div className="mb-6 bg-gradient-to-r from-amber-50/95 via-orange-50/60 to-amber-50/90 border border-amber-200/90 rounded-2xl p-4 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-amber-200/60 mb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-700 shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-amber-950 uppercase tracking-wider">
+                    Ongoing Treatment{pendingTreatments.length > 1 ? 's' : ''}
+                  </h3>
+                  <p className="text-xs text-amber-800/80">
+                    Patient has unfinished treatment sittings requiring continuation.
+                  </p>
+                </div>
+              </div>
+              <Badge variant="outline" className="bg-amber-100/90 text-amber-900 border-amber-300 font-bold text-xs px-2.5 py-0.5">
+                {pendingTreatments.length} Unfinished
+              </Badge>
+            </div>
+
+            <div className="space-y-2.5">
+              {pendingTreatments.map((pt) => {
+                const nextSittingNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
+                const scheduledDate = pt.nextSession?.plannedDate
+                  ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                  : null;
+
+                return (
+                  <div
+                    key={pt.itemId}
+                    className="bg-white/95 rounded-xl border border-amber-200/80 p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-amber-300 transition-colors"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-slate-900">
+                          {pt.treatmentName}
+                          {pt.variant ? ` (${pt.variant})` : ''}
+                        </span>
+                        <span className="text-slate-400 font-normal">—</span>
+                        <span className="font-bold text-xs bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
+                          {pt.toothNumber ? `Tooth ${pt.toothNumber}` : 'General'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
+                        <span className="font-medium text-slate-700">
+                          <span className="font-bold text-emerald-700">{pt.completedCount}</span> of <span className="font-bold text-slate-900">{pt.totalSittings}</span> sittings completed
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70">
+                          Next: Sitting {nextSittingNum}
+                          {scheduledDate ? ` • Scheduled: ${scheduledDate}` : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleContinueTreatment(pt.itemId, pt.nextSession?.id)}
+                      className="h-8 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shrink-0 shadow-xs flex items-center gap-1.5"
+                    >
+                      <span>Continue Treatment</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Workspace Sections */}
         <div>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[400px] content-start">
@@ -1033,6 +1144,16 @@ export function DoctorWorkspacePage() {
                               <span className="font-medium text-slate-900">{procedure} {variant}</span>
                               {category && <span className="text-xs text-slate-500 ml-1">({category})</span>}
                             </div>
+                            {item.sessions && item.sessions.filter((s: any) => s.visitId === visitId).length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {item.sessions.filter((s: any) => s.visitId === visitId).map((s: any) => (
+                                  <span key={s.id} className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                                    Sitting {s.sittingNumber}/{item.totalSittings || 1}: {s.stage || 'Completed'}
+                                    {s.workPerformed ? ` • ${s.workPerformed}` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             {notes && (
                               <div className="text-xs text-slate-600 mt-0.5 ml-1">
                                 Notes: {notes}
@@ -1180,22 +1301,6 @@ export function DoctorWorkspacePage() {
                     <Button variant="secondary" size="sm" onClick={handleOpenPrescriptionModal} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
                       <Edit className="h-4 w-4 mr-1.5" /> Edit
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handlePrintPrescription} className="h-8 px-3 text-indigo-600 border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
-                      <Printer className="h-4 w-4 mr-1.5" /> Print
-                    </Button>
-                    <WhatsAppActionButton
-                      type="PRESCRIPTION"
-                      entityType="VISIT"
-                      entityId={visit.id}
-                      patientId={patient.id}
-                      recipientName={patient.name}
-                      recipientPhone={patient.phone}
-                      preferredCommunicationChannel={patient.preferredCommunicationChannel}
-                      whatsappAvailable={patient.whatsappAvailable}
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3"
-                    />
                   </div>
                 </div>
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100">
@@ -1379,6 +1484,76 @@ export function DoctorWorkspacePage() {
                       })
                     }
                   }
+
+                  // Procedure Check: Adding a procedure is mandatory unless clinical reason provided
+                  const currentProcs = (treatmentPlan?.items || []).filter(
+                    (item: any) => item.completedVisitId === visitId || item.status === 'Planned'
+                  );
+                  const hasProcedures = currentProcs.length > 0;
+                  const hasProcReason = Boolean(
+                    treatmentZeroReason?.trim() ||
+                    (consultation as any)?.treatmentWaiverReason?.trim() ||
+                    notes.includes('[No Procedure Added:')
+                  );
+
+                  if (!hasProcedures && !hasProcReason) {
+                    const procRes = await MySwal.fire({
+                      title: 'No Treatment Procedure Added',
+                      text: 'Adding a procedure is mandatory. If no dental procedure was done or planned for this visit, please select a reason to proceed:',
+                      icon: 'warning',
+                      input: 'select',
+                      inputOptions: {
+                        'Consultation / Examination Only': 'Consultation / Examination Only',
+                        'Diagnostic & Advice Only': 'Diagnostic & Advice Only',
+                        'Prescription & Medication Only': 'Prescription & Medication Only',
+                        'Patient Refused / Deferred Treatment': 'Patient Refused / Deferred Treatment',
+                        'Awaiting Diagnostics (X-Ray/Lab)': 'Awaiting Diagnostics (X-Ray/Lab)',
+                        'Referred to Specialist / External Facility': 'Referred to Specialist / External Facility',
+                        'Routine Follow-up / Post-op Review': 'Routine Follow-up / Post-op Review',
+                        'Other Clinical Judgement': 'Other Clinical Judgement'
+                      },
+                      inputPlaceholder: 'Select a reason...',
+                      showCancelButton: true,
+                      confirmButtonText: 'Continue',
+                      cancelButtonText: 'Cancel & Add Procedure',
+                      confirmButtonColor: '#0d9488',
+                      cancelButtonColor: '#94a3b8',
+                      inputValidator: (value) => {
+                        if (!value) {
+                          return 'Please select a reason to proceed';
+                        }
+                        return null;
+                      },
+                      customClass: {
+                        popup: 'rounded-2xl',
+                        confirmButton: 'rounded-lg font-semibold px-6 py-2.5',
+                        cancelButton: 'rounded-lg font-semibold px-6 py-2.5',
+                        input: 'rounded-lg border-slate-200 text-sm'
+                      }
+                    });
+
+                    if (!procRes.isConfirmed || !procRes.value) {
+                      setTreatmentModalOpen(true);
+                      return;
+                    }
+
+                    const selectedProcReason = procRes.value;
+                    setTreatmentZeroReason(selectedProcReason);
+                    const noProcNote = `[No Procedure Added: ${selectedProcReason}]`;
+                    const procUpdatedNotes = notes ? (notes.includes('[No Procedure Added:') ? notes.replace(/\[No Procedure Added:[^\]]+\]/, noProcNote) : `${notes}\n\n${noProcNote}`) : noProcNote;
+                    setNotes(procUpdatedNotes);
+
+                    if (visitId) {
+                      await saveConsultation(visitId, {
+                        reasonForVisit: reason || visit?.reasonForVisit || '',
+                        clinicalNotes: procUpdatedNotes,
+                        consultationFee,
+                        treatmentFee,
+                        treatmentWaiverReason: selectedProcReason
+                      });
+                    }
+                  }
+
                   setCompleteModalOpen(true)
                 }}
               >
@@ -1420,6 +1595,9 @@ export function DoctorWorkspacePage() {
                   treatmentFee={treatmentFee}
                   initialTreatmentZeroReason={treatmentZeroReason}
                   initialEdit={treatmentModalInitialEdit}
+                  initialView={treatmentModalInitialView}
+                  targetItemId={treatmentModalTargetItemId}
+                  targetSessionId={treatmentModalTargetSessionId}
                   onRegisterRollback={(fn) => { rollbackTreatmentPlan.current = fn; }}
                   onSaveTreatmentFee={async (newFee, zeroReason) => {
                     setTreatmentFee(newFee);
@@ -1438,8 +1616,31 @@ export function DoctorWorkspacePage() {
                       await refreshClinicOperations();
                     }
                   }}
-                  onDone={async () => {
+                  onDone={async (noProcedureReason) => {
                     setTreatmentModalOpen(false);
+                    setTreatmentModalInitialView('planning');
+                    setTreatmentModalTargetItemId(null);
+                    setTreatmentModalTargetSessionId(null);
+                    if (noProcedureReason) {
+                      setTreatmentZeroReason(noProcedureReason);
+                      const noProcNote = `[No Procedure Added: ${noProcedureReason}]`;
+                      const updatedNotes = notes
+                        ? (notes.includes('[No Procedure Added:')
+                            ? notes.replace(/\[No Procedure Added:[^\]]+\]/, noProcNote)
+                            : `${notes}\n\n${noProcNote}`)
+                        : noProcNote;
+                      setNotes(updatedNotes);
+                      if (visitId) {
+                        await saveConsultation(visitId, {
+                          reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
+                          clinicalNotes: updatedNotes,
+                          consultationFee,
+                          treatmentFee: 0,
+                          consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+                          treatmentWaiverReason: noProcedureReason.trim()
+                        });
+                      }
+                    }
                     if (patientId) {
                       try {
                         const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
@@ -1452,6 +1653,9 @@ export function DoctorWorkspacePage() {
                   onCancel={async () => {
                     await rollbackTreatmentPlan.current();
                     setTreatmentModalOpen(false);
+                    setTreatmentModalInitialView('planning');
+                    setTreatmentModalTargetItemId(null);
+                    setTreatmentModalTargetSessionId(null);
                     if (patientId) {
                       try {
                         const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
@@ -2346,7 +2550,7 @@ export function DoctorWorkspacePage() {
 
         {/* Read-only Historical Visit Details Dialog */}
         <Dialog open={!!viewingHistoricalVisitId} onOpenChange={(open) => !open && setViewingHistoricalVisitId(null)}>
-          <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto p-0">
+          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto p-0">
             <DialogHeader className="p-6 pb-4 border-b border-slate-200 bg-white">
               <DialogTitle className="flex items-center gap-2 text-slate-900">
                 <History className="w-5 h-5 text-indigo-600" />

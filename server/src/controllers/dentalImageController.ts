@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
 import { VALID_FDI_NUMBERS } from './treatmentController';
+import { saveImageToDisk, deleteStoredFile } from '../services/fileStorageService';
 
 export const getDentalImages = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -84,6 +85,20 @@ export const createDentalImage = async (req: Request, res: Response, next: NextF
 
     const uploadedById = (req as any).user?.staffId || (req as any).user?.id || null;
 
+    // Save image binary to disk under /uploads/dental-images/:patientId/
+    let storedImageUrl = imageUrl;
+    let storedFileSize = fileSize;
+    let storedMimeType = mimeType;
+    let storedFileName = fileName;
+
+    if (imageUrl && (imageUrl.startsWith('data:') || !imageUrl.startsWith('/uploads/'))) {
+      const saved = await saveImageToDisk(imageUrl, 'dental-images', patientId, fileName);
+      storedImageUrl = saved.urlPath;
+      if (saved.fileSize > 0) storedFileSize = saved.fileSize;
+      if (saved.mimeType) storedMimeType = saved.mimeType;
+      if (saved.fileName) storedFileName = saved.fileName;
+    }
+
     const dentalImage = await prisma.dentalImage.create({
       data: {
         patientId,
@@ -91,10 +106,10 @@ export const createDentalImage = async (req: Request, res: Response, next: NextF
         type,
         toothNumber: validatedToothNumber,
         title: title || null,
-        fileName,
-        mimeType,
-        fileSize,
-        imageUrl,
+        fileName: storedFileName,
+        mimeType: storedMimeType,
+        fileSize: storedFileSize,
+        imageUrl: storedImageUrl,
         notes: notes || null,
         uploadedById
       }
@@ -175,6 +190,11 @@ export const deleteDentalImage = async (req: Request, res: Response, next: NextF
     }
 
     await prisma.dentalImage.delete({ where: { id: imageId } });
+
+    // Clean up physical file on disk if stored locally
+    if (image.imageUrl) {
+      deleteStoredFile(image.imageUrl);
+    }
 
     return res.status(200).json({
       message: 'Dental image deleted successfully',

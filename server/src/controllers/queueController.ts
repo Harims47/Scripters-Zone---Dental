@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
+import { getPendingTreatmentsForPatients } from './treatmentController';
 
 export const getQueue = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -16,25 +17,30 @@ export const getQueue = async (req: Request, res: Response, next: NextFunction) 
       include: { visit: { include: { patient: true } } }
     });
 
-    const sanitizedQueue = req.user?.role === 'Receptionist'
-      ? queue.map((entry: any) => {
-          if (entry.visit?.paymentOwner === 'DOCTOR') {
-            return {
-              ...entry,
-              visit: {
-                ...entry.visit,
-                amountDue: 0,
-                consultationFee: null,
-                treatmentFee: null,
-                medicineCost: null,
-              }
-            };
+    const patientIds = Array.from(new Set(queue.map(q => q.patientId)));
+    const pendingTreatmentsMap = await getPendingTreatmentsForPatients(patientIds);
+
+    const sanitizedQueue = queue.map((entry: any) => {
+      const pendingTreatments = pendingTreatmentsMap.get(entry.patientId) || [];
+      const item = { ...entry, pendingTreatments };
+
+      if (req.user?.role === 'Receptionist' && entry.visit?.paymentOwner === 'DOCTOR') {
+        return {
+          ...item,
+          visit: {
+            ...entry.visit,
+            amountDue: 0,
+            consultationFee: null,
+            treatmentFee: null,
+            medicineCost: null,
           }
-          return entry;
-        })
-      : queue;
+        };
+      }
+      return item;
+    });
 
     return res.json(sanitizedQueue);
+
   } catch (error) {
     next(error);
   }
@@ -286,11 +292,21 @@ export const assignDoctor = async (req: Request, res: Response, next: NextFuncti
         throw new Error('Patient is not eligible for assignment');
       }
 
-      // Check if doctor is available
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Check if doctor is available today
       const activePatient = await tx.queueEntry.findFirst({
         where: {
           assignedDoctorId: doctorId,
-          status: { in: ['In Progress', 'With Doctor'] }
+          status: { in: ['In Progress', 'With Doctor'] },
+          createdAt: { gte: startOfDay, lte: endOfDay },
+          visit: {
+            status: { notIn: ['COMPLETED', 'CANCELLED'] }
+          },
+          id: { not: id }
         }
       });
 

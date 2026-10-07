@@ -88,8 +88,17 @@ async function seedRealDashboardData() {
     }
   }
 
+  // Treatment catalogs
+  const rctCatalog = await prisma.treatmentCatalog.findFirst({
+    where: { name: { contains: 'Root Canal', mode: 'insensitive' } }
+  }) || await prisma.treatmentCatalog.findFirst();
+
+  const crownCatalog = await prisma.treatmentCatalog.findFirst({
+    where: { name: { contains: 'Crown', mode: 'insensitive' } }
+  }) || rctCatalog;
+
   // 4. Scenario A: In-Progress Patient with Duty Doctor (Dr. Carter)
-  // Patient: Ananya Iyer
+  // Patient: Ananya Iyer — Returning for Sitting 2 of 3 (Root Canal Treatment Tooth 14)
   const ananya = patientMap['Ananya Iyer'];
   const ananyaVisit = await prisma.visit.create({
     data: {
@@ -97,7 +106,7 @@ async function seedRealDashboardData() {
       doctorId: dutyDoc?.id || null,
       status: 'WITH_DOCTOR',
       amountDue: 2500,
-      reasonForVisit: 'Acute toothache lower molar',
+      reasonForVisit: 'RCT Sitting 2 (Obturation)',
       consultationFee: 500,
       treatmentFee: 2000
     }
@@ -115,16 +124,73 @@ async function seedRealDashboardData() {
     }
   });
 
+  // Treatment Plan for Ananya Iyer (Returning for Sitting 2 of 3)
+  const ananyaPlan = await prisma.treatmentPlan.create({
+    data: { patientId: ananya.id }
+  });
+
+  const ananyaRctItem = await prisma.treatmentPlanItem.create({
+    data: {
+      treatmentPlanId: ananyaPlan.id,
+      treatmentCatalogId: rctCatalog!.id,
+      toothNumber: 14,
+      totalSittings: 3,
+      status: 'In Progress',
+      notes: 'Irreversible pulpitis on tooth 14. 3 sittings planned.'
+    }
+  });
+
+  const prevWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  // Sitting 1: Completed previously
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: ananyaRctItem.id,
+      sittingNumber: 1,
+      stage: 'Sitting 1 - Access & Chemo-mechanical preparation',
+      status: 'Completed',
+      actualDate: prevWeek,
+      plannedDate: prevWeek,
+      clinicalNotes: 'Access cavity prepared. Canals irrigated with 3% NaOCl and EDTA. Calcium hydroxide paste placed.',
+      workPerformed: 'Access cavity & canal cleaning'
+    }
+  });
+
+  // Sitting 2: Planned for today!
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: ananyaRctItem.id,
+      sittingNumber: 2,
+      stage: 'Sitting 2 - Canal Obturation',
+      status: 'Planned',
+      plannedDate: now,
+      clinicalNotes: 'Dry canals and obturate with gutta-percha cones and AH Plus sealer.'
+    }
+  });
+
+  // Sitting 3: Planned next week
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: ananyaRctItem.id,
+      sittingNumber: 3,
+      stage: 'Sitting 3 - Permanent Core Build-up & Crown Evaluation',
+      status: 'Planned',
+      plannedDate: nextWeek,
+      clinicalNotes: 'Post-endo restoration with nanohybrid composite resin.'
+    }
+  });
+
   // 5. Scenario B: Waiting Patients in Queue
-  // Patient: Vikram Patel (Assigned to Dr. Carter)
+  // Patient: Vikram Patel (Assigned to Dr. Carter) — Returning for Sitting 3 of 4 (Crown & Bridge Tooth 21)
   const vikram = patientMap['Vikram Patel'];
   const vikramVisit = await prisma.visit.create({
     data: {
       patientId: vikram.id,
       doctorId: dutyDoc?.id || null,
       status: 'WAITING',
-      amountDue: 1800,
-      reasonForVisit: 'Deep scaling & cleaning'
+      amountDue: 4500,
+      reasonForVisit: 'Crown Try-in (Sitting 3/4)'
     }
   });
 
@@ -139,6 +205,74 @@ async function seedRealDashboardData() {
       arrivalTime: '10:05 AM'
     }
   });
+
+  // Treatment Plan for Vikram Patel (Returning for Sitting 3 of 4)
+  const vikramPlan = await prisma.treatmentPlan.create({
+    data: { patientId: vikram.id }
+  });
+
+  const vikramCrownItem = await prisma.treatmentPlanItem.create({
+    data: {
+      treatmentPlanId: vikramPlan.id,
+      treatmentCatalogId: crownCatalog!.id,
+      toothNumber: 21,
+      totalSittings: 4,
+      status: 'In Progress',
+      notes: 'Zirconia crown on upper central incisor #21'
+    }
+  });
+
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: vikramCrownItem.id,
+      sittingNumber: 1,
+      stage: 'Sitting 1 - Tooth Preparation',
+      status: 'Completed',
+      actualDate: tenDaysAgo,
+      plannedDate: tenDaysAgo,
+      clinicalNotes: 'Circumferential chamfer finish line prepared. Gingival retraction cord #00 placed.',
+      workPerformed: 'Tooth prep & provisional crown'
+    }
+  });
+
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: vikramCrownItem.id,
+      sittingNumber: 2,
+      stage: 'Sitting 2 - Precision Impression',
+      status: 'Completed',
+      actualDate: fiveDaysAgo,
+      plannedDate: fiveDaysAgo,
+      clinicalNotes: 'Dual-phase PVS impression sent to laboratory for CAD/CAM milling.',
+      workPerformed: 'Impression & shade selection (A2)'
+    }
+  });
+
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: vikramCrownItem.id,
+      sittingNumber: 3,
+      stage: 'Sitting 3 - Zirconia Coping Try-in',
+      status: 'Planned',
+      plannedDate: now,
+      clinicalNotes: 'Verify marginal fit, proximal contacts, and bite clearance with articulating paper.'
+    }
+  });
+
+  await prisma.treatmentSession.create({
+    data: {
+      treatmentPlanItemId: vikramCrownItem.id,
+      sittingNumber: 4,
+      stage: 'Sitting 4 - Final Cementation',
+      status: 'Planned',
+      plannedDate: nextWeek,
+      clinicalNotes: 'Resin-modified glass ionomer cementation and post-op care instructions.'
+    }
+  });
+
 
   // Patient: Deepa Nair (Unassigned walk-in / waiting)
   const deepa = patientMap['Deepa Nair'];

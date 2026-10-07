@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, PlayCircle, Users, Tag } from 'lucide-react'
+import { Search, PlayCircle, Users, Tag, Clock } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
@@ -31,7 +31,9 @@ type QueueRow = {
   discount: number
   discountReason?: string | null
   amountDue?: number
+  pendingTreatments?: any[]
 }
+
 
 export function QueuePage() {
   const { queue, patients, visits, consultations, appointments, updateVisit } = useClinicContext()
@@ -73,7 +75,8 @@ export function QueuePage() {
         medicineCost: v?.medicineCost || 0,
         discount: v?.discount || 0,
         discountReason: v?.discountReason || null,
-        amountDue: v?.amountDue || 0
+        amountDue: v?.amountDue || 0,
+        pendingTreatments: (q as any).pendingTreatments || []
       }
     })
   }, [queue, patients, visits, appointments])
@@ -138,7 +141,32 @@ export function QueuePage() {
       accessorKey: "name",
       header: "Patient Name",
       cell: ({ row }) => (
-        <span className="font-semibold text-slate-900 block">{row.original.name}</span>
+        <div>
+          <span className="font-semibold text-slate-900 block">{row.original.name}</span>
+          {row.original.pendingTreatments && row.original.pendingTreatments.length > 0 && (
+            <div className="mt-1 space-y-1">
+              {row.original.pendingTreatments.map((pt: any, idx: number) => {
+                const nextNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
+                const schedDate = pt.nextSession?.plannedDate
+                  ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                  : null;
+                return (
+                  <div
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs max-w-full truncate"
+                    title={`Unfinished treatment: ${pt.treatmentName}${pt.toothNumber ? ` (Tooth ${pt.toothNumber})` : ''} • Sitting ${nextNum}/${pt.totalSittings}${schedDate ? ` • Scheduled: ${schedDate}` : ''}`}
+                  >
+                    <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                    <span className="truncate">
+                      {pt.treatmentName}{pt.toothNumber ? ` #${pt.toothNumber}` : ''} • Sitting {nextNum}/{pt.totalSittings}
+                      {schedDate ? ` • ${schedDate}` : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )
     },
     {

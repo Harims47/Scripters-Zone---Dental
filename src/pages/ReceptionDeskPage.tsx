@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText, Tag } from 'lucide-react';
+import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText, Tag, Pill } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { soundService } from '../lib/soundUtils';
 import { api } from '../lib/api';
@@ -18,7 +18,6 @@ import { CameraCapture } from '../components/ui/camera-capture';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'react-hot-toast';
 import { WhatsAppActionButton } from '../components/communication/WhatsAppActionButton';
-import type { QueueEntry } from '../types/domain';
 
 import { PaymentMethodSelector } from '../components/payment/payment-components';
 import type { PaymentMethod } from '../components/payment/payment-components';
@@ -29,6 +28,30 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 
 const MySwal = withReactContent(Swal);
+
+function isVisitOnDate(v: any, targetDate: string): boolean {
+  if (!v || !targetDate) return false;
+  if (v.createdAt) {
+    const d = new Date(v.createdAt);
+    if (!isNaN(d.getTime())) {
+      const iso = d.toISOString().split('T')[0];
+      const local = d.toLocaleDateString('en-CA');
+      if (iso === targetDate || local === targetDate) return true;
+    }
+  }
+  if (v.visitDate) {
+    const d = new Date(v.visitDate);
+    if (!isNaN(d.getTime())) {
+      const iso = d.toISOString().split('T')[0];
+      const local = d.toLocaleDateString('en-CA');
+      if (iso === targetDate || local === targetDate) return true;
+    }
+  }
+  if (v.date && (v.date === targetDate || v.date.startsWith(targetDate))) {
+    return true;
+  }
+  return false;
+}
 
 export function ReceptionDeskPage() {
   const { queue, visits, patients, staff, refreshClinicOperations, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations, transferVisitsToNextDay } = useClinicContext();
@@ -287,14 +310,136 @@ export function ReceptionDeskPage() {
   const unifiedData = useMemo(() => {
     const isViewingToday = selectedDate === todayStr;
 
-    // If viewing a future date (e.g. Tomorrow), show appointments scheduled for that date
-    if (!isViewingToday) {
-      const dateAppointments = appointments.filter(a => a.date === selectedDate && a.status !== 'Cancelled');
-      let data = dateAppointments.map((appt, idx) => {
-        const p = patients.find(pat => pat.id === appt.patientId);
-        const d = doctors.find(doc => doc.id === appt.providerId);
-        const isPriority = appt.notes?.includes('[Transferred');
+    // Helper map for fast queue lookup
+    const queueByVisitId = new Map<string, any>();
+    queue.forEach(q => {
+      if (q.visitId) queueByVisitId.set(q.visitId, q);
+    });
 
+    let data: any[] = [];
+
+    if (isViewingToday) {
+      // 1. Live Queue Entries
+      const queueItems = queue.map(q => {
+        const v = visits.find(v => v.id === q.visitId);
+        const p = patients.find(p => p.id === q.patientId);
+        const d = doctors.find(doc => doc.id === q.assignedDoctorId) || staff.find(s => s.id === q.assignedDoctorId);
+        const isAppointment = v?.appointmentId != null;
+        const isTransferred = v?.reasonForVisit?.startsWith('[Transferred') || q.status === 'Transferred';
+
+        let stage = 'Waiting';
+        if (isTransferred) stage = 'Next Day';
+        else if (q.status === 'Waiting') stage = 'Waiting';
+        else if (q.status === 'In Progress' || q.status === 'With Doctor' || q.status === 'Called') stage = 'With Doctor';
+        else if (q.status === 'Completed' && v?.status !== 'COMPLETED') stage = 'Ready at Reception';
+        else if (q.status === 'Dispensing' || q.status === 'Payment' || q.status === 'Ready at Reception') stage = 'Ready at Reception';
+        else if (q.status === 'Cancelled') stage = 'Cancelled';
+        else stage = q.status;
+
+        const isDoctorHandled = v?.paymentOwner === 'DOCTOR';
+        const visitPayments = payments.filter(pay => pay.visitId === v?.id);
+        const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
+        const amountDue = v?.amountDue || 0;
+
+        let paymentStatus = '—';
+        if (isDoctorHandled) {
+          paymentStatus = 'Handled by Doctor';
+        } else if (stage === 'Ready at Reception' || stage === 'Completed') {
+          paymentStatus = 'Unpaid';
+          if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) paymentStatus = 'Paid';
+          else if (v?.status === 'COMPLETED') paymentStatus = 'Paid';
+          else if (totalPaid > 0) paymentStatus = 'Partial';
+          else if (amountDue === 0 && v) paymentStatus = 'Paid';
+        } else if (totalPaid > 0) {
+          paymentStatus = 'Partial';
+        }
+
+        return {
+          id: q.id,
+          visitId: q.visitId,
+          patientId: p?.id,
+          patientName: p?.name || 'Unknown',
+          patientPhone: p?.phone || '',
+          visitType: isAppointment ? 'Appointment' : 'Walk-in',
+          token: q.position || '-',
+          doctor: d?.name || '-',
+          reasonForVisit: v?.reasonForVisit,
+          stage,
+          paymentStatus,
+          rawStatus: isTransferred ? 'Transferred' : q.status,
+          arrivalTime: q.arrivalTime,
+          rawVisit: v,
+          rawQueue: q,
+        };
+      });
+
+      // 2. Visits for Today not in active queue (completed, cancelled, or finished)
+      const activeVisitIds = new Set(queue.map(q => q.visitId));
+      const todayInactiveVisits = visits.filter(v => isVisitOnDate(v, selectedDate) && !activeVisitIds.has(v.id));
+
+      const inactiveItems = todayInactiveVisits.map(v => {
+        const p = patients.find(p => p.id === v.patientId);
+        const d = doctors.find(doc => doc.id === v.doctorId) || staff.find(s => s.id === v.doctorId);
+        const isAppointment = v.appointmentId != null;
+        const isTransferred = v.reasonForVisit?.startsWith('[Transferred');
+        const oldQueueEntry = queueByVisitId.get(v.id);
+
+        const isDoctorHandled = v.paymentOwner === 'DOCTOR';
+        const visitPayments = payments.filter(pay => pay.visitId === v.id);
+        const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
+        const amountDue = v.amountDue || 0;
+
+        let paymentStatus = '—';
+        if (isDoctorHandled) {
+          paymentStatus = 'Handled by Doctor';
+        } else if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) {
+          paymentStatus = 'Paid';
+        } else if (v.status === 'COMPLETED') {
+          paymentStatus = 'Paid';
+        } else if (totalPaid > 0) {
+          paymentStatus = 'Partial';
+        } else if (v.status === 'READY_FOR_RECEPTION' || amountDue > 0) {
+          paymentStatus = 'Unpaid';
+        }
+
+        let stage = 'Completed';
+        if (isTransferred) stage = 'Next Day';
+        else if (v.status === 'CANCELLED') stage = 'Cancelled';
+        else if (v.status === 'COMPLETED') stage = 'Completed';
+        else if (v.status === 'READY_FOR_RECEPTION') stage = 'Ready at Reception';
+        else if (v.status === 'WITH_DOCTOR' || (v.status as any) === 'IN_PROGRESS') stage = 'With Doctor';
+        else if (v.status === 'WAITING') stage = 'Waiting';
+
+        return {
+          id: v.id,
+          visitId: v.id,
+          patientId: p?.id,
+          patientName: p?.name || 'Unknown',
+          patientPhone: p?.phone || '',
+          visitType: isAppointment ? 'Appointment' : 'Walk-in',
+          token: oldQueueEntry?.position || '-',
+          doctor: d?.name || '-',
+          reasonForVisit: v.reasonForVisit,
+          stage,
+          paymentStatus,
+          rawStatus: isTransferred ? 'Transferred' : v.status,
+          arrivalTime: oldQueueEntry?.arrivalTime || '-',
+          rawVisit: v,
+          rawQueue: oldQueueEntry || null,
+        };
+      });
+
+      // 3. Appointments scheduled for today that haven't arrived/checked in
+      const todayVisitApptIds = new Set(visits.filter(v => isVisitOnDate(v, selectedDate) && v.appointmentId).map(v => v.appointmentId));
+      const todayPendingAppointments = appointments.filter(a =>
+        a.date === selectedDate &&
+        a.status !== 'Cancelled' &&
+        !todayVisitApptIds.has(a.id) &&
+        !queue.some(q => q.patientId === a.patientId)
+      ).map((appt, idx) => {
+        const p = patients.find(pat => pat.id === appt.patientId);
+        const d = doctors.find(doc => doc.id === appt.providerId) || staff.find(s => s.id === appt.providerId);
+        const isPriority = appt.notes?.includes('[Transferred');
         return {
           id: appt.id,
           visitId: '',
@@ -302,12 +447,12 @@ export function ReceptionDeskPage() {
           patientName: p?.name || 'Unknown',
           patientPhone: p?.phone || '',
           visitType: 'Appointment',
-          token: `${idx + 1}`,
+          token: `${queueItems.length + inactiveItems.length + idx + 1}`,
           doctor: d?.name || 'Unassigned',
           reasonForVisit: appt.notes || appt.type || 'Consultation',
-          stage: isPriority ? 'Transferred' : 'Scheduled',
+          stage: isPriority ? 'Next Day' : 'Waiting',
           paymentStatus: '—',
-          rawStatus: appt.status,
+          rawStatus: 'Waiting',
           arrivalTime: appt.time || '09:00',
           rawVisit: null,
           rawQueue: null,
@@ -315,128 +460,110 @@ export function ReceptionDeskPage() {
         };
       });
 
-      if (stageFilter && stageFilter !== 'all') {
-        data = data.filter(d => d.stage.toLowerCase().includes(stageFilter.toLowerCase()));
-      }
+      data = [...queueItems, ...inactiveItems, ...todayPendingAppointments];
+    } else {
+      // Viewing Previous Days (selectedDate < todayStr) or Future Days (selectedDate > todayStr)
+      // 1. All actual visits that took place on this date
+      const dateVisits = visits.filter(v => isVisitOnDate(v, selectedDate));
+      const visitedApptIds = new Set(dateVisits.map(v => v.appointmentId).filter(Boolean));
 
-      if (search) {
-        const s = search.toLowerCase();
-        data = data.filter(d =>
-          d.patientName.toLowerCase().includes(s) ||
-          d.patientPhone.includes(s) ||
-          d.doctor.toLowerCase().includes(s)
-        );
-      }
+      const visitItems = dateVisits.map((v, idx) => {
+        const p = patients.find(p => p.id === v.patientId);
+        const d = doctors.find(doc => doc.id === v.doctorId) || staff.find(s => s.id === v.doctorId);
+        const isAppointment = v.appointmentId != null;
+        const isTransferred = v.reasonForVisit?.startsWith('[Transferred') || (v.status as any) === 'TRANSFERRED';
+        const oldQueueEntry = queueByVisitId.get(v.id);
 
-      return data;
-    }
+        const isDoctorHandled = v.paymentOwner === 'DOCTOR';
+        const visitPayments = payments.filter(pay => pay.visitId === v.id);
+        const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
+        const amountDue = v.amountDue || 0;
 
-    // Default: Today's live queue
-    let data = queue.map(q => {
-      const v = visits.find(v => v.id === q.visitId);
-      const p = patients.find(p => p.id === q.patientId);
-      const d = doctors.find(doc => doc.id === q.assignedDoctorId);
-      const isAppointment = v?.appointmentId != null;
-      const isTransferred = v?.reasonForVisit?.startsWith('[Transferred') || q.status === 'Transferred';
+        let paymentStatus = '—';
+        if (isDoctorHandled) {
+          paymentStatus = 'Handled by Doctor';
+        } else if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) {
+          paymentStatus = 'Paid';
+        } else if ((v.status as any) === 'COMPLETED') {
+          paymentStatus = 'Paid';
+        } else if (totalPaid > 0) {
+          paymentStatus = 'Partial';
+        } else if (v.status === 'READY_FOR_RECEPTION' || amountDue > 0) {
+          paymentStatus = 'Unpaid';
+        } else if (amountDue === 0 && ((v.status as any) === 'COMPLETED' || (v.status as any) === 'READY_FOR_RECEPTION')) {
+          paymentStatus = 'Paid';
+        }
 
-      // Translate queue status to receptionist stage
-      let stage = 'Waiting';
-      if (isTransferred) stage = 'Next Day';
-      else if (q.status === 'Waiting') stage = 'Waiting';
-      else if (q.status === 'In Progress' || q.status === 'With Doctor' || q.status === 'Called') stage = 'With Doctor';
-      else if (q.status === 'Completed' && v?.status !== 'COMPLETED') stage = 'Ready at Reception';
-      else if (q.status === 'Dispensing' || q.status === 'Payment' || q.status === 'Ready at Reception') stage = 'Ready at Reception';
-      else if (q.status === 'Cancelled') stage = 'Cancelled';
-      else stage = q.status; // fallback to raw status instead of incorrectly showing Waiting
+        let stage = 'Completed';
+        if (isTransferred) stage = 'Next Day';
+        else if (v.status === 'CANCELLED') stage = 'Cancelled';
+        else if ((v.status as any) === 'COMPLETED') stage = 'Completed';
+        else if (v.status === 'READY_FOR_RECEPTION') stage = 'Ready at Reception';
+        else if (v.status === 'WITH_DOCTOR' || (v.status as any) === 'IN_PROGRESS') stage = 'With Doctor';
+        else if (v.status === 'WAITING') stage = 'Waiting';
 
-      const isDoctorHandled = v?.paymentOwner === 'DOCTOR';
-      const visitPayments = payments.filter(pay => pay.visitId === v?.id);
-      const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
-      const amountDue = v?.amountDue || 0;
+        const tokenDisplay = oldQueueEntry?.position || (v as any).queueEntry?.position || `${idx + 1}`;
+        const arrivalDisplay = oldQueueEntry?.arrivalTime || (v as any).queueEntry?.arrivalTime ||
+          (v.createdAt ? new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-');
 
-      let paymentStatus = '—';
-      if (isDoctorHandled) {
-        paymentStatus = 'Handled by Doctor';
-      } else if (stage === 'Ready at Reception' || stage === 'Completed') {
-        paymentStatus = 'Unpaid';
-        if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) paymentStatus = 'Paid';
-        else if (v?.status === 'COMPLETED') paymentStatus = 'Paid';
-        else if (totalPaid > 0) paymentStatus = 'Partial';
-        else if (amountDue === 0 && v) paymentStatus = 'Paid';
-      } else if (totalPaid > 0) {
-        paymentStatus = 'Partial';
-      }
-
-      return {
-        id: q.id,
-        visitId: q.visitId,
-        patientId: p?.id,
-        patientName: p?.name || 'Unknown',
-        patientPhone: p?.phone || '',
-        visitType: isAppointment ? 'Appointment' : 'Walk-in',
-        token: q.position || '-',
-        doctor: d?.name || '-',
-        reasonForVisit: v?.reasonForVisit,
-        stage: stage,
-        paymentStatus,
-        rawStatus: isTransferred ? 'Transferred' : q.status, // keep raw for action logic
-        arrivalTime: q.arrivalTime,
-        rawVisit: v,
-        rawQueue: q as (QueueEntry | null),
-      };
-    });
-
-    // Also add completed and cancelled visits for today that are no longer in active queue
-    const activeVisitIds = new Set(queue.map(q => q.visitId));
-    const inactiveVisits = visits.filter(v => {
-      if (v.status !== 'COMPLETED' && v.status !== 'CANCELLED') return false;
-      if (activeVisitIds.has(v.id)) return false;
-      const vIso = v.createdAt ? new Date(v.createdAt).toISOString().split('T')[0] : '';
-      const vLocal = v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-CA') : '';
-      return vIso === selectedDate || vLocal === selectedDate;
-    });
-
-    inactiveVisits.forEach(v => {
-      const p = patients.find(p => p.id === v.patientId);
-      const d = doctors.find(doc => doc.id === v.doctorId);
-      const isAppointment = v.appointmentId != null;
-      const isTransferred = v.reasonForVisit?.startsWith('[Transferred');
-      const oldQueueEntry = queue.find(q => q.visitId === v.id);
-
-      const isDoctorHandled = v.paymentOwner === 'DOCTOR';
-      const visitPayments = payments.filter(pay => pay.visitId === v.id);
-      const totalPaid = visitPayments.reduce((sum, pay) => sum + pay.amount, 0);
-      const amountDue = v.amountDue || 0;
-
-      let paymentStatus = '—';
-      if (isDoctorHandled) {
-        paymentStatus = 'Handled by Doctor';
-      } else if (v.status === 'COMPLETED') {
-        paymentStatus = 'Paid';
-      } else if (amountDue > 0 && (totalPaid >= amountDue || Math.abs(amountDue - totalPaid) < 1)) {
-        paymentStatus = 'Paid';
-      } else if (totalPaid > 0) {
-        paymentStatus = 'Partial';
-      }
-
-      data.push({
-        id: v.id,
-        visitId: v.id,
-        patientId: p?.id,
-        patientName: p?.name || 'Unknown',
-        patientPhone: p?.phone || '',
-        visitType: isAppointment ? 'Appointment' : 'Walk-in',
-        token: oldQueueEntry?.position || '-',
-        doctor: d?.name || '-',
-        reasonForVisit: v.reasonForVisit,
-        stage: isTransferred ? 'Next Day' : (v.status === 'CANCELLED' ? 'Cancelled' : 'Completed'),
-        paymentStatus,
-        rawStatus: isTransferred ? 'Transferred' : (v.status === 'CANCELLED' ? 'Cancelled' : 'Completed'),
-        arrivalTime: '-',
-        rawVisit: v,
-        rawQueue: oldQueueEntry || null,
+        return {
+          id: v.id,
+          visitId: v.id,
+          patientId: p?.id,
+          patientName: p?.name || 'Unknown',
+          patientPhone: p?.phone || '',
+          visitType: isAppointment ? 'Appointment' : 'Walk-in',
+          token: tokenDisplay,
+          doctor: d?.name || '-',
+          reasonForVisit: v.reasonForVisit,
+          stage,
+          paymentStatus,
+          rawStatus: isTransferred ? 'Transferred' : v.status,
+          arrivalTime: arrivalDisplay,
+          rawVisit: v,
+          rawQueue: oldQueueEntry || (v as any).queueEntry || null,
+        };
       });
-    });
+
+      // 2. Standalone appointments on selectedDate:
+      // Only for future days (selectedDate > todayStr) do we display upcoming scheduled appointments as Waiting.
+      // For past days (selectedDate < todayStr), we ONLY show actual recorded visits that took place.
+      if (selectedDate > todayStr) {
+        const futureAppointments = appointments.filter(a =>
+          a.date === selectedDate &&
+          a.status !== 'Cancelled' &&
+          !visitedApptIds.has(a.id)
+        ).map((appt, idx) => {
+          const p = patients.find(pat => pat.id === appt.patientId);
+          const d = doctors.find(doc => doc.id === appt.providerId) || staff.find(s => s.id === appt.providerId);
+          const isPriority = appt.notes?.includes('[Transferred');
+
+          return {
+            id: appt.id,
+            visitId: '',
+            patientId: appt.patientId,
+            patientName: p?.name || 'Unknown',
+            patientPhone: p?.phone || '',
+            visitType: 'Appointment',
+            token: `${visitItems.length + idx + 1}`,
+            doctor: d?.name || 'Unassigned',
+            reasonForVisit: appt.notes || appt.type || 'Consultation',
+            stage: isPriority ? 'Next Day' : 'Waiting',
+            paymentStatus: '—',
+            rawStatus: 'Waiting',
+            arrivalTime: appt.time || '09:00',
+            rawVisit: null,
+            rawQueue: null,
+            isTransferred: isPriority
+          };
+        });
+
+        data = [...visitItems, ...futureAppointments];
+      } else {
+        // Past days: ONLY actual visits that took place on this date
+        data = visitItems;
+      }
+    }
 
     if (stageFilter && stageFilter !== 'all') {
       data = data.filter(d => {
@@ -455,19 +582,28 @@ export function ReceptionDeskPage() {
       const s = search.toLowerCase();
       data = data.filter(d =>
         d.patientName.toLowerCase().includes(s) ||
-        d.patientPhone.includes(s)
+        d.patientPhone.includes(s) ||
+        d.doctor.toLowerCase().includes(s)
       );
     }
 
-    // Sort by token number descending (latest first)
+    // Sort by token number descending so recent tokens come first (e.g. 3, 2, 1)
     data.sort((a, b) => {
-      const tokenA = typeof a.token === 'number' ? a.token : 0;
-      const tokenB = typeof b.token === 'number' ? b.token : 0;
-      return tokenB - tokenA;
+      const numA = parseInt(String(a.token).replace(/\D/g, ''), 10);
+      const numB = parseInt(String(b.token).replace(/\D/g, ''), 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+        return numB - numA;
+      }
+      const timeA = new Date(a.rawVisit?.createdAt || a.rawQueue?.createdAt || 0).getTime();
+      const timeB = new Date(b.rawVisit?.createdAt || b.rawQueue?.createdAt || 0).getTime();
+      if (timeA && timeB && timeA !== timeB) {
+        return timeB - timeA;
+      }
+      return 0;
     });
 
     return data;
-  }, [queue, visits, patients, doctors, appointments, payments, search, stageFilter, visitTypeFilter, selectedDate, todayStr]);
+  }, [queue, visits, patients, doctors, staff, appointments, payments, search, stageFilter, visitTypeFilter, selectedDate, todayStr]);
 
   const columns: ColumnDef<any>[] = [
     {
@@ -585,8 +721,6 @@ export function ReceptionDeskPage() {
         if (s === 'Waiting') badge = <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 whitespace-nowrap">🟡 Waiting</Badge>;
         else if (s === 'With Doctor') badge = <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 whitespace-nowrap">🔵 With Doctor</Badge>;
         else if (s === 'Next Day' || s === 'Transferred') badge = <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 whitespace-nowrap">📅 Next Day</Badge>;
-        else if (s === 'Transferred Priority') badge = <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 whitespace-nowrap">⚡ Priority Transferred</Badge>;
-        else if (s === 'Scheduled') badge = <Badge className="bg-sky-100 text-sky-800 border-sky-200 hover:bg-sky-100 whitespace-nowrap">📅 Scheduled</Badge>;
         else if (s === 'Ready at Reception') badge = <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 whitespace-nowrap">🟢 Ready at Reception</Badge>;
         else if (s === 'Completed') badge = <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 whitespace-nowrap">✅ Completed</Badge>;
         else if (s === 'Cancelled') badge = <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 whitespace-nowrap">🚫 Cancelled</Badge>;
@@ -1156,6 +1290,8 @@ export function ReceptionDeskPage() {
         toast.success('Receipt generated! You can now click Done to complete checkout.');
       } else if (type === 'invoice') {
         toast.success('Tax invoice generated successfully.');
+      } else if (type === 'prescription') {
+        toast.success('Prescription generated successfully.');
       }
     } catch (err: any) {
       console.error(err);
@@ -1178,7 +1314,11 @@ export function ReceptionDeskPage() {
           <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight whitespace-nowrap">Reception Desk</h1>
             {selectedDate !== todayStr && (
-              <Badge className="bg-purple-100 text-purple-800 border-purple-200 font-semibold px-2.5 py-0.5 text-xs animate-pulse">
+              <Badge className={`font-semibold px-2.5 py-0.5 text-xs ${
+                selectedDate < todayStr
+                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                  : 'bg-purple-100 text-purple-800 border-purple-200 animate-pulse'
+              }`}>
                 Viewing: {selectedDate === tomorrowStr ? 'Tomorrow' : selectedDate}
               </Badge>
             )}
@@ -1186,6 +1326,8 @@ export function ReceptionDeskPage() {
           <p className="text-xs sm:text-sm text-slate-500 truncate max-w-xs sm:max-w-md xl:max-w-xl">
             {selectedDate === todayStr
               ? "Register patients, manage today's visits, and complete reception tasks."
+              : selectedDate < todayStr
+              ? `Reviewing clinic records, visits, and payments for ${selectedDate}.`
               : `Reviewing scheduled queue and transferred patients for ${selectedDate}.`}
           </p>
         </div>
@@ -1248,11 +1390,61 @@ export function ReceptionDeskPage() {
           <section className="min-w-0 w-full">
             <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-slate-400" />
-              Doctors
+              {selectedDate === todayStr ? 'Doctors' : `Doctors Activity for ${selectedDate}`}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               {doctors.map(doc => {
                 const avail = doctorAvailability[doc.id];
+                const isPastDate = selectedDate < todayStr;
+
+                if (isPastDate) {
+                  const docVisitsOnDate = visits.filter(v => (v.doctorId === doc.id) && isVisitOnDate(v, selectedDate));
+                  const completedCount = docVisitsOnDate.filter(v => v.status === 'COMPLETED').length;
+                  const totalCount = docVisitsOnDate.length;
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className="rounded-xl p-4 flex flex-col justify-between transition-all border border-slate-200 bg-white shadow-xs hover:shadow-md"
+                    >
+                      {/* Top Row: Room info & Status Badge */}
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200">
+                          Room {doc.roomNumber || '—'}
+                        </span>
+
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 shadow-xs border bg-slate-50 text-slate-700 border-slate-200"
+                        >
+                          <span className="flex items-center gap-1.5 font-medium text-xs">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                            {totalCount > 0 ? `${totalCount} Patient${totalCount === 1 ? '' : 's'}` : '0 Visits'}
+                          </span>
+                        </Badge>
+                      </div>
+
+                      {/* Middle: Doctor Information */}
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-lg leading-tight break-words text-slate-900" title={doc.name}>
+                          {doc.name}
+                        </h3>
+                        <p className="font-semibold text-sm mt-0.5 text-slate-500">
+                          {doc.role}
+                        </p>
+                      </div>
+
+                      {/* Bottom: Context indicator */}
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 text-xs flex items-center justify-between text-slate-600">
+                        <span className="text-xs font-medium flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                          {totalCount > 0 ? `${completedCount} completed of ${totalCount}` : 'No visits recorded'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const isLeave = avail === 'Leave';
                 const isAvailable = avail === 'Available';
 
@@ -2780,15 +2972,7 @@ export function ReceptionDeskPage() {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex gap-2">
-                          {/* <Button
-                            variant="outline"
-                            className="flex-1 border-teal-600 text-teal-700 hover:bg-teal-50 font-medium shadow-xs"
-                            onClick={() => handlePrintDocument('receipt')}
-                          >
-                            <Receipt className="w-4 h-4 mr-2 text-teal-600" />
-                            {hasPrintedReceipt ? 'Reprint Receipt' : 'Print Receipt'}
-                          </Button> */}
+                        <div className="flex gap-2 flex-wrap">
                           <Button
                             variant="outline"
                             className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium shadow-xs"
@@ -2797,6 +2981,15 @@ export function ReceptionDeskPage() {
                           >
                             <FileText className="w-4 h-4 mr-1.5 text-blue-600" />
                             Invoice
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium shadow-xs"
+                            onClick={() => handlePrintDocument('prescription')}
+                            title="Print Prescription"
+                          >
+                            <Pill className="w-4 h-4 mr-1.5 text-emerald-600" />
+                            Prescription
                           </Button>
                           {activeProcessVisit && activeProcessPatient && (
                             <WhatsAppActionButton
@@ -2857,7 +3050,7 @@ export function ReceptionDeskPage() {
 
       {/* Completed View Drawer */}
       <Sheet open={!!viewVisitId} onOpenChange={open => !open && setViewVisitId(null)}>
-        <SheetContent side="right" className="w-[400px] sm:w-[600px] p-0 flex flex-col bg-slate-50 h-full">
+        <SheetContent side="right" className="w-[450px] sm:w-[700px] lg:w-[850px] p-0 flex flex-col bg-slate-50 h-full">
           <SheetTitle className="sr-only">View Visit</SheetTitle>
           <div className="h-16 px-6 border-b border-slate-200 bg-white flex flex-col justify-center shrink-0">
             <h2 className="text-lg font-semibold text-slate-900">Visit Details</h2>

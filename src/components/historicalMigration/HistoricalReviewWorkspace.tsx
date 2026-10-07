@@ -16,6 +16,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'react-hot-toast';
+import { api, API_BASE_URL } from '../../lib/api';
 
 export interface MigrationRecordItem {
   id: string;
@@ -149,19 +150,7 @@ export const HistoricalReviewWorkspace: React.FC<HistoricalReviewWorkspaceProps>
         status: newStatus || currentRecord.status
       };
 
-      const res = await fetch(`/api/historical-migration/records/${currentRecord.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update record');
-      }
-
-      const updated = await res.json();
+      const updated = await api.patch<MigrationRecordItem>(`/api/historical-migration/records/${currentRecord.id}`, payload);
       onRecordUpdated(updated);
       return true;
     } catch (err: any) {
@@ -194,7 +183,7 @@ export const HistoricalReviewWorkspace: React.FC<HistoricalReviewWorkspaceProps>
     }
   };
 
-  const previewUrl = `/api/historical-migration/records/${currentRecord.id}/preview`;
+  const previewUrl = `${API_BASE_URL}/api/historical-migration/records/${currentRecord.id}/preview`;
   const isPdf = currentRecord.sourceFileKey.toLowerCase().endsWith('.pdf');
 
   const approvedCount = records.filter(r => r.status === 'APPROVED').length;

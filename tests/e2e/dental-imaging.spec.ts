@@ -441,8 +441,8 @@ test.describe('DentalCore — OPG & RVG Dental Imaging Suite (PostgreSQL)', () =
     expect(JSON.stringify(body)).toMatch(/mimeType|Validation failed/i);
   });
 
-  // 17. >10 MB Upload Rejected
-  test('17: File size exceeding 10 MB limit is rejected (400)', async ({ request }) => {
+  // 17. >2 MB Upload Rejected
+  test('17: File size exceeding 2 MB limit is rejected (400)', async ({ request }) => {
     const cookie = await getAuthCookie(request, 'dutyDoctor');
     const res = await request.post(`${API_BASE}/api/patients/${testPatient.id}/images`, {
       headers: { Cookie: cookie },
@@ -450,7 +450,7 @@ test.describe('DentalCore — OPG & RVG Dental Imaging Suite (PostgreSQL)', () =
         type: 'OPG',
         fileName: 'huge_xray.png',
         mimeType: 'image/png',
-        fileSize: 11 * 1024 * 1024, // 11 MB
+        fileSize: 3 * 1024 * 1024, // 3 MB
         imageUrl: SAMPLE_PNG_BASE64
       }
     });

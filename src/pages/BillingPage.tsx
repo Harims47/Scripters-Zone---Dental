@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, CheckCircle2, FileText, Receipt, Eye } from 'lucide-react'
+import { Search, CheckCircle2, FileText, Receipt, Eye, Pill } from 'lucide-react'
 import { DataTable, DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Badge } from '../components/ui/badge'
@@ -588,6 +588,15 @@ export function BillingPage() {
                           >
                             <FileText className="w-3.5 h-3.5 mr-1 text-blue-600" />
                             Invoice
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePrintDocument('prescription')}
+                            className="text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                          >
+                            <Pill className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                            Prescription
                           </Button>
                         </>
                       )}

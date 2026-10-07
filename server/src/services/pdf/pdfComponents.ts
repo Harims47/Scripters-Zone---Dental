@@ -544,27 +544,38 @@ export const renderFinancialSummary = (
   margin: number = 40
 ): number => {
   const contentWidth = doc.page.width - margin * 2;
-  const summaryWidth = Math.min(260, contentWidth * 0.5);
+  const summaryWidth = Math.min(300, contentWidth * 0.6);
   const summaryX = doc.page.width - margin - summaryWidth;
+  const amountColWidth = 85;
+  const labelColWidth = summaryWidth - amountColWidth;
 
   let curY = y;
-  const lineHeight = 18;
+  const baseLineHeight = 18;
 
   for (const item of financial.items) {
-    doc.font(item.isBold ? PDF_THEME.fonts.bold : PDF_THEME.fonts.regular)
-      .fontSize(9.5)
-      .fillColor(PDF_THEME.colors.textDark)
-      .text(item.label, summaryX, curY, { width: summaryWidth * 0.55 });
+    const isBold = !!item.isBold;
+    const isDiscount = item.amount < 0;
+    const textColor = isDiscount ? '#b45309' : PDF_THEME.colors.textDark;
 
-    doc.font(item.isBold ? PDF_THEME.fonts.bold : PDF_THEME.fonts.regular)
+    doc.font(isBold ? PDF_THEME.fonts.bold : PDF_THEME.fonts.regular)
       .fontSize(9.5)
-      .fillColor(PDF_THEME.colors.textDark)
-      .text(formatCurrency(item.amount), summaryX + summaryWidth * 0.55, curY, {
-        width: summaryWidth * 0.45,
+      .fillColor(textColor);
+
+    // Calculate actual height needed for the label text to prevent overlapping on multi-line wrap
+    const textHeight = doc.heightOfString(item.label, { width: labelColWidth });
+    const rowHeight = Math.max(baseLineHeight, textHeight + 3);
+
+    doc.text(item.label, summaryX, curY, { width: labelColWidth });
+
+    doc.font(isBold ? PDF_THEME.fonts.bold : PDF_THEME.fonts.regular)
+      .fontSize(9.5)
+      .fillColor(textColor)
+      .text(formatCurrency(item.amount), summaryX + labelColWidth, curY, {
+        width: amountColWidth,
         align: 'right'
       });
 
-    curY += lineHeight;
+    curY += rowHeight;
   }
 
   // Divider
@@ -577,36 +588,36 @@ export const renderFinancialSummary = (
 
   // Total Gross
   doc.font(PDF_THEME.fonts.bold).fontSize(11).fillColor(PDF_THEME.colors.primaryNavy)
-    .text('TOTAL AMOUNT', summaryX, curY, { width: summaryWidth * 0.55 });
+    .text('TOTAL AMOUNT', summaryX, curY, { width: labelColWidth });
   doc.font(PDF_THEME.fonts.bold).fontSize(11).fillColor(PDF_THEME.colors.primaryNavy)
-    .text(formatCurrency(financial.totalAmount), summaryX + summaryWidth * 0.55, curY, {
-      width: summaryWidth * 0.45,
+    .text(formatCurrency(financial.totalAmount), summaryX + labelColWidth, curY, {
+      width: amountColWidth,
       align: 'right'
     });
-  curY += lineHeight + 2;
+  curY += baseLineHeight + 4;
 
   // Paid & Balance Due if present
   if (financial.amountPaid !== undefined) {
     doc.font(PDF_THEME.fonts.regular).fontSize(9.5).fillColor(PDF_THEME.colors.textMuted)
-      .text('Amount Paid', summaryX, curY, { width: summaryWidth * 0.55 });
+      .text('Amount Paid', summaryX, curY, { width: labelColWidth });
     doc.font(PDF_THEME.fonts.bold).fontSize(9.5).fillColor(PDF_THEME.colors.statusPaid)
-      .text(formatCurrency(financial.amountPaid), summaryX + summaryWidth * 0.55, curY, {
-        width: summaryWidth * 0.45,
+      .text(formatCurrency(financial.amountPaid), summaryX + labelColWidth, curY, {
+        width: amountColWidth,
         align: 'right'
       });
-    curY += lineHeight;
+    curY += baseLineHeight;
   }
 
   if (financial.amountDue !== undefined) {
     const dueColor = financial.amountDue > 0 ? PDF_THEME.colors.statusUnpaid : PDF_THEME.colors.statusPaid;
     doc.font(PDF_THEME.fonts.bold).fontSize(10).fillColor(dueColor)
-      .text('Balance Due', summaryX, curY, { width: summaryWidth * 0.55 });
+      .text('Balance Due', summaryX, curY, { width: labelColWidth });
     doc.font(PDF_THEME.fonts.bold).fontSize(10).fillColor(dueColor)
-      .text(formatCurrency(financial.amountDue), summaryX + summaryWidth * 0.55, curY, {
-        width: summaryWidth * 0.45,
+      .text(formatCurrency(financial.amountDue), summaryX + labelColWidth, curY, {
+        width: amountColWidth,
         align: 'right'
       });
-    curY += lineHeight;
+    curY += baseLineHeight;
   }
 
   return curY;
