@@ -15,8 +15,8 @@ export const getMedicineCategories = async (req: Request, res: Response, next: N
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { description: { contains: search } }
       ];
     }
 
@@ -100,7 +100,7 @@ export const createMedicineCategory = async (req: Request, res: Response, next: 
     // Case-insensitive duplicate check
     const existing = await prisma.medicineCategory.findFirst({
       where: {
-        name: { equals: name, mode: 'insensitive' }
+        name: { equals: name }
       }
     });
 
@@ -147,7 +147,7 @@ export const updateMedicineCategory = async (req: Request, res: Response, next: 
       // Check unique name conflicts with other categories
       const duplicate = await prisma.medicineCategory.findFirst({
         where: {
-          name: { equals: name, mode: 'insensitive' },
+          name: { equals: name },
           id: { not: id }
         }
       });
@@ -259,8 +259,8 @@ export const exportMedicineCategories = async (req: Request, res: Response, next
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { description: { contains: search } }
       ];
     }
 

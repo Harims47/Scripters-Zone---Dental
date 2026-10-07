@@ -36,9 +36,9 @@ export const getSupplierBills = async (req: Request, res: Response, next: NextFu
     if (status && status !== 'all') where.status = status as string;
     if (search) {
       where.OR = [
-        { invoiceNumber: { contains: search as string, mode: 'insensitive' } },
-        { notes: { contains: search as string, mode: 'insensitive' } },
-        { supplier: { name: { contains: search as string, mode: 'insensitive' } } }
+        { invoiceNumber: { contains: search as string } },
+        { notes: { contains: search as string } },
+        { supplier: { name: { contains: search as string } } }
       ];
     }
 
@@ -222,10 +222,10 @@ export const recordSupplierPayment = async (req: Request, res: Response, next: N
 
     // Atomic transaction with row locking on PostgreSQL to prevent concurrent overpayments
     const result = await prisma.$transaction(async (tx) => {
-      // Raw query locking the SupplierBill row FOR UPDATE ensures strict serializability
+      // Raw query locking the SupplierBill row FOR UPDATE ensures strict serializability (MySQL backticks)
       const lockedBills: any[] = await tx.$queryRaw`
-        SELECT id, "supplierId", amount, status 
-        FROM "SupplierBill" 
+        SELECT id, \`supplierId\`, amount, status 
+        FROM \`SupplierBill\` 
         WHERE id = ${id} 
         FOR UPDATE
       `;

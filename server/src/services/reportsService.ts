@@ -220,10 +220,10 @@ export function buildVisitsWhereClause(params: VisitsFilterParams) {
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     where.OR = [
-      { id: { contains: s, mode: 'insensitive' } },
-      { reasonForVisit: { contains: s, mode: 'insensitive' } },
-      { patient: { name: { contains: s, mode: 'insensitive' } } },
-      { patient: { id: { contains: s, mode: 'insensitive' } } }
+      { id: { contains: s } },
+      { reasonForVisit: { contains: s } },
+      { patient: { name: { contains: s } } },
+      { patient: { id: { contains: s } } }
     ];
   }
 
@@ -368,11 +368,11 @@ export function buildRevenueWhereClause(params: RevenueFilterParams) {
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     where.OR = [
-      { id: { contains: s, mode: 'insensitive' } },
-      { visitId: { contains: s, mode: 'insensitive' } },
-      { notes: { contains: s, mode: 'insensitive' } },
-      { patient: { name: { contains: s, mode: 'insensitive' } } },
-      { patient: { id: { contains: s, mode: 'insensitive' } } }
+      { id: { contains: s } },
+      { visitId: { contains: s } },
+      { notes: { contains: s } },
+      { patient: { name: { contains: s } } },
+      { patient: { id: { contains: s } } }
     ];
   }
 
@@ -614,9 +614,9 @@ export async function getPatientsReportData(params: PatientsFilterParams) {
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     patientWhere.OR = [
-      { name: { contains: s, mode: 'insensitive' } },
+      { name: { contains: s } },
       { phone: { contains: s } },
-      { id: { contains: s, mode: 'insensitive' } }
+      { id: { contains: s } }
     ];
   }
 
@@ -706,9 +706,9 @@ export async function getPatientsExportData(params: PatientsFilterParams) {
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     patientWhere.OR = [
-      { name: { contains: s, mode: 'insensitive' } },
+      { name: { contains: s } },
       { phone: { contains: s } },
-      { id: { contains: s, mode: 'insensitive' } }
+      { id: { contains: s } }
     ];
   }
 
@@ -791,10 +791,10 @@ export async function getTreatmentsReportData(params: TreatmentsFilterParams) {
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     catalogWhere.OR = [
-      { name: { contains: s, mode: 'insensitive' } },
-      { category: { contains: s, mode: 'insensitive' } },
-      { variant: { contains: s, mode: 'insensitive' } },
-      { planItems: { some: { notes: { contains: s, mode: 'insensitive' } } } }
+      { name: { contains: s } },
+      { category: { contains: s } },
+      { variant: { contains: s } },
+      { planItems: { some: { notes: { contains: s } } } }
     ];
   }
 
@@ -888,10 +888,10 @@ export async function getTreatmentsExportData(params: TreatmentsFilterParams) {
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     catalogWhere.OR = [
-      { name: { contains: s, mode: 'insensitive' } },
-      { category: { contains: s, mode: 'insensitive' } },
-      { variant: { contains: s, mode: 'insensitive' } },
-      { planItems: { some: { notes: { contains: s, mode: 'insensitive' } } } }
+      { name: { contains: s } },
+      { category: { contains: s } },
+      { variant: { contains: s } },
+      { planItems: { some: { notes: { contains: s } } } }
     ];
   }
 
@@ -1057,8 +1057,8 @@ export async function getMedicinesReportData(params: MedicineReportFilterParams)
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     medWhere.OR = [
-      { name: { contains: s, mode: 'insensitive' } },
-      { genericName: { contains: s, mode: 'insensitive' } }
+      { name: { contains: s } },
+      { genericName: { contains: s } }
     ];
   }
 
@@ -1146,8 +1146,8 @@ export async function getMedicinesExportData(params: MedicineReportFilterParams)
   if (params.search && params.search.trim()) {
     const s = params.search.trim();
     medWhere.OR = [
-      { name: { contains: s, mode: 'insensitive' } },
-      { genericName: { contains: s, mode: 'insensitive' } }
+      { name: { contains: s } },
+      { genericName: { contains: s } }
     ];
   }
 

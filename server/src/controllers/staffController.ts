@@ -14,12 +14,12 @@ export const getStaff = async (req: Request, res: Response, next: NextFunction) 
 
     const where: any = {};
     if (role && role !== 'all') {
-      where.role = { contains: role, mode: 'insensitive' };
+      where.role = { contains: role };
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { phone: { contains: search } }
       ];
     }
 
@@ -55,12 +55,12 @@ export const exportStaff = async (req: Request, res: Response, next: NextFunctio
 
     const where: any = {};
     if (role && role !== 'all') {
-      where.role = { contains: role, mode: 'insensitive' };
+      where.role = { contains: role };
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { phone: { contains: search } }
       ];
     }
 

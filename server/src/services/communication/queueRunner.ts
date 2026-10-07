@@ -79,25 +79,37 @@ export class QueueRunner {
   }
 
   /**
-   * Claims and processes a batch of notifications atomically using PostgreSQL FOR UPDATE SKIP LOCKED.
+   * Claims and processes a batch of notifications atomically using MySQL-compatible transaction.
    */
   public static async processBatch(batchSize: number = 5): Promise<number> {
-    // Atomic row-level lock & claim using raw SQL
-    const claimedNotifications: any[] = await prisma.$queryRaw`
-      WITH claimed AS (
-        SELECT id FROM "Notification"
+    const claimedNotifications = await prisma.$transaction(async (tx) => {
+      // 1. Lock candidate notification IDs using MySQL-compatible FOR UPDATE
+      const candidates: Array<{ id: string }> = await tx.$queryRaw`
+        SELECT id FROM \`Notification\`
         WHERE status IN ('QUEUED', 'RETRYING')
-          AND "scheduledAt" <= NOW()
-        ORDER BY "scheduledAt" ASC
+          AND \`scheduledAt\` <= NOW()
+        ORDER BY \`scheduledAt\` ASC
         LIMIT ${batchSize}
-        FOR UPDATE SKIP LOCKED
-      )
-      UPDATE "Notification"
-      SET status = 'SENDING', "updatedAt" = NOW()
-      FROM claimed
-      WHERE "Notification".id = claimed.id
-      RETURNING "Notification".*;
-    `;
+        FOR UPDATE
+      `;
+
+      if (!candidates || candidates.length === 0) {
+        return [];
+      }
+
+      const ids = candidates.map((c) => c.id);
+
+      // 2. Atomically transition claimed records to SENDING
+      await tx.notification.updateMany({
+        where: { id: { in: ids } },
+        data: { status: 'SENDING', updatedAt: new Date() }
+      });
+
+      // 3. Return claimed notifications for dispatch
+      return await tx.notification.findMany({
+        where: { id: { in: ids } }
+      });
+    });
 
     if (!claimedNotifications || claimedNotifications.length === 0) {
       return 0;

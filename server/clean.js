@@ -1,12 +1,15 @@
 const { PrismaClient } = require('@prisma/client');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { Pool } = require('pg');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+// Strict safety check: Never run against production or without explicit authorization
+const dbUrl = process.env.DATABASE_URL || '';
+if (process.env.NODE_ENV === 'production' || !process.env.ALLOW_DATA_RESET || dbUrl.includes('render.com') || dbUrl.includes('godaddy') || dbUrl.includes('supabase')) {
+  console.error('[SAFETY SHIELD] Refusing to run clean.js: ALLOW_DATA_RESET=true is required and cannot run in production.');
+  process.exit(1);
+}
+
+const prisma = new PrismaClient();
 
 async function main() {
   console.log('Cleaning operational/transactional data...');

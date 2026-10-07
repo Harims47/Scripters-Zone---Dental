@@ -20,9 +20,9 @@ export const getBillingQueue = async (req: Request, res: Response, next: NextFun
 
     if (search) {
       where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } },
-        { patient: { id: { contains: search, mode: 'insensitive' } } }
+        { id: { contains: search } },
+        { patient: { name: { contains: search } } },
+        { patient: { id: { contains: search } } }
       ];
     }
 
@@ -77,9 +77,9 @@ export const exportBillingQueue = async (req: Request, res: Response, next: Next
 
     if (search) {
       where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } },
-        { patient: { id: { contains: search, mode: 'insensitive' } } }
+        { id: { contains: search } },
+        { patient: { name: { contains: search } } },
+        { patient: { id: { contains: search } } }
       ];
     }
 

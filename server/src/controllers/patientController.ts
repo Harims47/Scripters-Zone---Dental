@@ -15,9 +15,9 @@ export const getPatients = async (req: Request, res: Response, next: NextFunctio
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search } },
         { phone: { contains: search } },
-        { id: { contains: search, mode: 'insensitive' } }
+        { id: { contains: search } }
       ];
     }
 
@@ -76,7 +76,7 @@ export const createPatient = async (req: Request, res: Response, next: NextFunct
     const patient = await prisma.patient.create({
       data: {
         name: data.name,
-        phone: data.phone,
+        phone: data.phone && data.phone.trim() !== '' ? data.phone.trim() : null,
         age: data.age,
         gender: data.gender,
         status: data.status || 'Active',
@@ -115,6 +115,10 @@ export const updatePatient = async (req: Request, res: Response, next: NextFunct
       }
     }
 
+    if (data.phone !== undefined) {
+      data.phone = data.phone && data.phone.trim() !== '' ? data.phone.trim() : null;
+    }
+
     const patient = await prisma.patient.update({
       where: { id },
       data
@@ -139,9 +143,9 @@ export const exportPatients = async (req: Request, res: Response, next: NextFunc
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search } },
         { phone: { contains: search } },
-        { id: { contains: search, mode: 'insensitive' } }
+        { id: { contains: search } }
       ];
     }
 

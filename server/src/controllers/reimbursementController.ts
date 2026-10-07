@@ -40,10 +40,10 @@ export const getReimbursements = async (req: Request, res: Response, next: NextF
     const where: any = {};
     if (search) {
       where.OR = [
-        { documentNumber: { contains: search, mode: 'insensitive' } },
-        { patientNameSnapshot: { contains: search, mode: 'insensitive' } },
-        { patientPhoneSnapshot: { contains: search, mode: 'insensitive' } },
-        { subject: { contains: search, mode: 'insensitive' } }
+        { documentNumber: { contains: search } },
+        { patientNameSnapshot: { contains: search } },
+        { patientPhoneSnapshot: { contains: search } },
+        { subject: { contains: search } }
       ];
     }
 

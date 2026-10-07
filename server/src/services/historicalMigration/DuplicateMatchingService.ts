@@ -73,7 +73,7 @@ export class DuplicateMatchingService {
     if (cleanName && cleanName.length >= 3) {
       const patientsByName = await prisma.patient.findMany({
         where: {
-          name: { contains: cleanName, mode: 'insensitive' }
+          name: { contains: cleanName }
         },
         take: 5
       });

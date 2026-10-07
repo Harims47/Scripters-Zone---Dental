@@ -45,9 +45,9 @@ export const getPurchaseOrders = async (req: Request, res: Response, next: NextF
     }
     if (search) {
       where.OR = [
-        { orderNumber: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
-        { supplier: { name: { contains: search, mode: 'insensitive' } } }
+        { orderNumber: { contains: search } },
+        { notes: { contains: search } },
+        { supplier: { name: { contains: search } } }
       ];
     }
 
@@ -506,9 +506,9 @@ export const exportPurchaseOrders = async (req: Request, res: Response, next: Ne
     }
     if (search) {
       where.OR = [
-        { orderNumber: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
-        { supplier: { name: { contains: search, mode: 'insensitive' } } }
+        { orderNumber: { contains: search } },
+        { notes: { contains: search } },
+        { supplier: { name: { contains: search } } }
       ];
     }
 

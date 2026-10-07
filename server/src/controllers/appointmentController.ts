@@ -14,13 +14,13 @@ export const getAppointments = async (req: Request, res: Response, next: NextFun
     const where: any = {};
     if (search) {
       where.OR = [
-        { patientId: { contains: search, mode: 'insensitive' } },
-        { providerId: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } }
+        { patientId: { contains: search } },
+        { providerId: { contains: search } },
+        { notes: { contains: search } }
       ];
     }
     if (status && status !== 'all-status') {
-      where.status = { equals: status, mode: 'insensitive' };
+      where.status = { equals: status };
     }
     if (doctor && doctor !== 'all-doctors') {
       where.providerId = doctor;
@@ -182,13 +182,13 @@ export const exportAppointments = async (req: Request, res: Response, next: Next
     const where: any = {};
     if (search) {
       where.OR = [
-        { patientId: { contains: search, mode: 'insensitive' } },
-        { providerId: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } }
+        { patientId: { contains: search } },
+        { providerId: { contains: search } },
+        { notes: { contains: search } }
       ];
     }
     if (status && status !== 'all-status') {
-      where.status = { equals: status, mode: 'insensitive' };
+      where.status = { equals: status };
     }
     if (doctor && doctor !== 'all-doctors') {
       where.providerId = doctor;

@@ -17,8 +17,8 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
     const where: any = {};
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { genericName: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { genericName: { contains: search } }
       ];
     }
     if (category && category !== 'all') {
@@ -302,8 +302,8 @@ export const exportInventory = async (req: Request, res: Response, next: NextFun
     const where: any = {};
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { genericName: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { genericName: { contains: search } }
       ];
     }
     if (category && category !== 'all') {

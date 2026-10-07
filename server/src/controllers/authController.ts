@@ -4,9 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../db';
 import dotenv from 'dotenv';
 dotenv.config();
-
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key_change_in_production';
-
+import { JWT_SECRET } from '../config/authConfig';
 export const login = async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;

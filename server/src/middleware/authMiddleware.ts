@@ -4,7 +4,7 @@ import { prisma } from '../db';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key_change_in_production';
+import { JWT_SECRET } from '../config/authConfig';
 
 declare global {
   namespace Express {

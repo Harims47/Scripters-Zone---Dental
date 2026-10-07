@@ -1,9 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "rhel-openssl-1.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 model User {
@@ -40,7 +41,7 @@ model Patient {
   gender    String?
   status    String    @default("Active")
   photoUrl  String?
-  address   String?
+  address   String?   @db.Text
   email     String?
   preferredCommunicationChannel CommunicationPreference @default(AUTO)
   whatsappAvailable             Boolean?
@@ -66,7 +67,7 @@ model Appointment {
   time       String
   type       String
   status     String   @default("Scheduled")
-  notes      String?
+  notes      String?  @db.Text
   photoUrl   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -84,8 +85,8 @@ model Visit {
   treatmentFee    Float?
   medicineCost    Float?
   discount        Float?        @default(0)
-  discountReason  String?
-  reasonForVisit  String?
+  discountReason  String?       @db.Text
+  reasonForVisit  String?       @db.Text
   paymentOwner    String        @default("RECEPTION")
   visitDate       DateTime?
   createdAt       DateTime      @default(now())
@@ -124,12 +125,12 @@ model Consultation {
   id              String   @id @default(uuid())
   visitId         String   @unique
   doctorId        String
-  reasonForVisit  String
-  clinicalNotes   String
+  reasonForVisit  String   @db.Text
+  clinicalNotes   String   @db.Text
   consultationFee Float
   treatmentFee    Float?
-  consultationWaiverReason String?
-  treatmentWaiverReason    String?
+  consultationWaiverReason String? @db.Text
+  treatmentWaiverReason    String? @db.Text
   status          String   @default("In Progress")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -172,7 +173,7 @@ model Prescription {
   visitId    String             @unique
   doctorId   String
   status     String             @default("Draft")
-  notes      String
+  notes      String             @db.Text
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
   dispensing Dispensing?
@@ -188,7 +189,7 @@ model PrescriptionItem {
   dosage         String?
   frequency      String?
   duration       String?
-  instructions   String
+  instructions   String       @db.Text
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   medicine       Medicine     @relation(fields: [medicineId], references: [id])
@@ -226,7 +227,7 @@ model Payment {
   amount    Float
   method    String
   status    String   @default("Pending")
-  notes     String?
+  notes     String?  @db.Text
   date      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -260,7 +261,7 @@ model TreatmentPlanItem {
   treatmentCatalogId String
   toothNumber        Int?
   status             String             @default("Planned") // "Planned" | "In Progress" | "Completed"
-  notes              String?
+  notes              String?            @db.Text
   totalSittings      Int                @default(1)
   completedVisitId   String?
   completedAt        DateTime?
@@ -307,7 +308,7 @@ model Supplier {
   contactPerson  String?
   phone          String?
   email          String?
-  address        String?
+  address        String?                    @db.Text
   status         String                     @default("Active") // "Active" | "Inactive"
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
@@ -333,7 +334,7 @@ model PurchaseOrder {
   supplierId  String
   orderDate   DateTime            @default(now())
   status      String              @default("Draft") // "Draft" | "Ordered" | "Partially Received" | "Received" | "Cancelled"
-  notes       String?
+  notes       String?             @db.Text
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
@@ -361,8 +362,8 @@ model SupplierBill {
   invoiceNumber   String
   invoiceDate     DateTime          @default(now())
   amount          Float
-  billImageUrl    String?           @db.Text
-  notes           String?
+  billImageUrl    String?           @db.MediumText
+  notes           String?           @db.Text
   status          String            @default("Unpaid") // "Unpaid" | "Partial" | "Paid" | "Cancelled"
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -376,7 +377,7 @@ model SupplierPayment {
   supplierBillId String
   amount         Float
   method         String       // "Cash" | "Bank Transfer" | "UPI"
-  notes          String?
+  notes          String?      @db.Text
   date           DateTime     @default(now())
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -391,7 +392,7 @@ model StockMovement {
   balanceAfter  Int      // Running balance for quick auditing
   referenceType String?  // "PURCHASE_ORDER" | "VISIT" | "MANUAL"
   referenceId   String?  // PO ID or Visit ID
-  reason        String?  // Reason for adjustment / receiving note
+  reason        String?  @db.Text // Reason for adjustment / receiving note
   performedBy   String?  // User/Staff identifier / username
   createdAt     DateTime @default(now())
   medicine      Medicine @relation(fields: [medicineId], references: [id])
@@ -524,7 +525,7 @@ model HistoricalMigrationRecord {
   sourceFileKey       String
   sourceFileName      String
   status              HistoricalRecordStatus   @default(PENDING_OCR)
-  rawOcrText          String?                  @db.Text
+  rawOcrText          String?                  @db.MediumText
   ocrConfidence       Float?
 
   // Proposed 6 fields from OCR
@@ -574,8 +575,8 @@ model ReimbursementDocument {
   visitId               String?
   documentDate          String    // "YYYY-MM-DD"
   subject               String    @default("Reimbursement of Dental Treatment Expenses")
-  content               String    @db.Text
-  treatmentDescription  String?   @db.Text
+  content               String    @db.MediumText
+  treatmentDescription  String?   @db.MediumText
   amount                Float?
   
   // Immutable snapshots
@@ -643,9 +644,9 @@ model ExternalDoctorAdvice {
   hospitalClinic     String?
   medicalCondition   String    @db.Text
   plannedProcedure   String    @db.Text
-  clinicalQuery      String    @db.Text
+  clinicalQuery      String    @db.MediumText
   status             String    @default("PENDING") // PENDING, CLEARED, CLEARED_WITH_PRECAUTIONS, CONTRAINDICATED
-  doctorResponse     String?   @db.Text
+  doctorResponse     String?   @db.MediumText
   emailSent          Boolean   @default(false)
   emailSentAt        DateTime?
   createdAt          DateTime  @default(now())

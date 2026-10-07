@@ -18,8 +18,8 @@ export const getPayments = async (req: Request, res: Response, next: NextFunctio
     }
     if (search) {
       where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } }
+        { id: { contains: search } },
+        { patient: { name: { contains: search } } }
       ];
     }
 
@@ -71,8 +71,8 @@ export const createPayment = async (req: Request, res: Response, next: NextFunct
     const { visitId, amount, method, notes, isFinalPayment } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Lock the visit row to prevent concurrent partial payment races
-      await tx.$executeRawUnsafe('SELECT 1 FROM "Visit" WHERE id = $1 FOR UPDATE', visitId);
+      // Lock the visit row to prevent concurrent partial payment races (MySQL parameterized)
+      await tx.$queryRaw`SELECT 1 FROM \`Visit\` WHERE id = ${visitId} FOR UPDATE`;
 
       const visit = await tx.visit.findUnique({
         where: { id: visitId },
@@ -275,8 +275,8 @@ export const exportPayments = async (req: Request, res: Response, next: NextFunc
     }
     if (search) {
       where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { patient: { name: { contains: search, mode: 'insensitive' } } }
+        { id: { contains: search } },
+        { patient: { name: { contains: search } } }
       ];
     }
 

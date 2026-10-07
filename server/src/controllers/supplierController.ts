@@ -18,10 +18,10 @@ export const getSuppliers = async (req: Request, res: Response, next: NextFuncti
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { contactPerson: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { contactPerson: { contains: search } },
+        { phone: { contains: search } },
+        { email: { contains: search } }
       ];
     }
 
@@ -316,10 +316,10 @@ export const exportSuppliers = async (req: Request, res: Response, next: NextFun
     }
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { contactPerson: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } }
+        { name: { contains: search } },
+        { contactPerson: { contains: search } },
+        { phone: { contains: search } },
+        { email: { contains: search } }
       ];
     }
 

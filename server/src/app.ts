@@ -5,6 +5,18 @@ import dotenv from 'dotenv';
 // Authoritative server entry point
 dotenv.config();
 
+import { validateDatabaseConfig } from './db';
+import { validateJwtSecret } from './config/authConfig';
+
+// Fail-closed validation at startup
+try {
+  validateDatabaseConfig();
+  validateJwtSecret();
+} catch (err: any) {
+  console.error('[STARTUP HALTED]', err.message);
+  process.exit(1);
+}
+
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes';
 import patientRoutes from './routes/patientRoutes';
