@@ -34,28 +34,51 @@ async function seedMasterCatalogs() {
   }
 
   const treatments = [
-    { category: 'Consultation', name: 'Consultation' },
-    { category: 'Diagnostic', name: 'X-ray' },
-    { category: 'Diagnostic', name: 'Diagnostic' },
-    { category: 'Scaling & Curettage', name: 'Scaling & Curettage' },
-    { category: 'Fillings', name: 'Silver Amalgam' },
-    { category: 'Fillings', name: 'Composite' },
-    { category: 'Extraction', name: 'Extraction' },
-    { category: 'Extraction', name: 'Surgical Extraction' },
-    { category: 'Endodontics', name: 'Root Canal Treatment' },
-    { category: 'Crowns', name: 'Full Ceramic' },
-    { category: 'Crowns', name: 'Facing Ceramic' },
-    { category: 'Crowns', name: 'Zirconia', variant: 'Basic' },
-    { category: 'Crowns', name: 'Zirconia', variant: 'Classic' },
-    { category: 'Crowns', name: 'Zirconia', variant: 'Premium' },
-    { category: 'Crowns', name: 'Acrylic Crown' },
-    { category: 'Prosthetic Dentures', name: 'Complete Denture', variant: 'Acrylic' },
-    { category: 'Prosthetic Dentures', name: 'Complete Denture', variant: 'Sunflex' },
-    { category: 'Prosthetic Dentures', name: 'Partial Denture', variant: 'Acrylic' },
-    { category: 'Prosthetic Dentures', name: 'Partial Denture', variant: 'Sunflex' },
-    { category: 'Ortho', name: 'Fixed Appliance' },
-    { category: 'Ortho', name: 'Removable Appliance' },
-    { category: 'Implants', name: 'Dental Implants' }
+    // 1. Endodontics
+    { category: 'Endodontics', name: 'Filling' },
+    { category: 'Endodontics', name: 'RCT' },
+    { category: 'Endodontics', name: 'Permanent Filling' },
+    { category: 'Endodontics', name: 'RE RCT' },
+    { category: 'Endodontics', name: 'POST & CORE' },
+    { category: 'Endodontics', name: 'APICOECTOMY' },
+
+    // 2. Prosthodontics
+    { category: 'Prosthodontics', name: 'Complete Denture' },
+    { category: 'Prosthodontics', name: 'Removable Partial Denture' },
+    { category: 'Prosthodontics', name: 'Fixed Partial Denture', variant: 'Metal Ceramic' },
+    { category: 'Prosthodontics', name: 'Fixed Partial Denture', variant: 'Zirconia' },
+    { category: 'Prosthodontics', name: 'Fixed Partial Denture', variant: 'Acrylic' },
+
+    // 3. Orthodontics
+    { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Basic' },
+    { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Self Ligating Damon' },
+    { category: 'Orthodontics', name: 'Removable Appliance' },
+    { category: 'Orthodontics', name: 'Invisalign' },
+
+    // 4. Periodontics
+    { category: 'Periodontics', name: 'Scaling' },
+    { category: 'Periodontics', name: 'Curettage' },
+    { category: 'Periodontics', name: 'Flap Surgery' },
+    { category: 'Periodontics', name: 'Bone Graft' },
+
+    // 5. Surgery
+    { category: 'Surgery', name: 'Extraction' },
+    { category: 'Surgery', name: 'Impaction' },
+    { category: 'Surgery', name: 'Frenectomy' },
+    { category: 'Surgery', name: 'Splinting' },
+    { category: 'Surgery', name: 'Ankyloglossia' },
+    { category: 'Surgery', name: 'Fixation' },
+    { category: 'Surgery', name: 'Soft Tissue Removal' },
+
+    // 6. Pedodontics
+    { category: 'Pedodontics', name: 'Filling' },
+    { category: 'Pedodontics', name: 'Pulpectomy' },
+    { category: 'Pedodontics', name: 'Extraction' },
+
+    // 7. Neurological
+    { category: 'Neurological', name: 'Trigeminal Neurologia' },
+    { category: 'Neurological', name: 'MPDS' },
+    { category: 'Neurological', name: 'Facial Palsy' }
   ];
 
   for (const item of treatments) {

@@ -22,6 +22,7 @@ import { useClinicContext } from '../context/ClinicContext'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { PaginationMeta, PaginatedResponse, Appointment } from '../types/domain'
+import { ReasonForVisitSelector } from '../components/common/ReasonForVisitSelector'
 
 interface AppointmentRow {
   id: string
@@ -550,21 +551,13 @@ export function AppointmentsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Appointment Type<span className="text-rose-500 ml-1">*</span></label>
-                  <select
-                    className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:opacity-50"
-                    value={activeItem.type || ''}
-                    onChange={e => setActiveItem(prev => ({ ...prev, type: e.target.value }))}
+                <div>
+                  <ReasonForVisitSelector
+                    label="Appointment Type / Reason"
                     disabled={drawerMode === 'view'}
-                  >
-                    <option value="" disabled>Select Type...</option>
-                    <option value="Consultation">Consultation</option>
-                    <option value="General Checkup">General Checkup</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Follow-up">Follow-up</option>
-                    <option value="Emergency">Emergency</option>
-                  </select>
+                    value={activeItem.type || ''}
+                    onChange={val => setActiveItem(prev => ({ ...prev, type: val }))}
+                  />
                 </div>
 
                 <div className="space-y-2">

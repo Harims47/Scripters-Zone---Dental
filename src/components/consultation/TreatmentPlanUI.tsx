@@ -136,6 +136,7 @@ export function TreatmentPlanUI({
 
   // Treatment Form state
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedBaseProcedure, setSelectedBaseProcedure] = useState<string>('');
   const [selectedProcedure, setSelectedProcedure] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export function TreatmentPlanUI({
       setPlan(null);
       setSelectedTeeth([]);
       setSelectedCategory('');
+      setSelectedBaseProcedure('');
       setSelectedProcedure('');
       setNotes('');
       setEditingItem(null);
@@ -207,6 +209,7 @@ export function TreatmentPlanUI({
             const catItem = catList.find((c: any) => c.id === itemToEdit.treatmentCatalogId) || itemToEdit.catalogItem;
             setEditingItem(itemToEdit);
             setSelectedCategory(catItem?.category || '');
+            setSelectedBaseProcedure(catItem?.name || '');
             setSelectedProcedure(itemToEdit.treatmentCatalogId);
             setNotes(itemToEdit.notes || '');
             setSelectedTeeth(itemToEdit.toothNumber ? [itemToEdit.toothNumber] : []);
@@ -222,7 +225,12 @@ export function TreatmentPlanUI({
   }, [patientId, initialEdit, currentVisitId]);
 
   const categories = Array.from(new Set(catalog.map((c) => c.category))).filter(Boolean);
-  const procedures = catalog.filter((c) => c.category === selectedCategory);
+  const categoryProcedures = catalog.filter((c) => c.category === selectedCategory);
+  const uniqueProcedureNames = Array.from(new Set(categoryProcedures.map((p) => p.name)));
+  const currentProcedureVariants = categoryProcedures.filter(
+    (p) => p.name === selectedBaseProcedure && Boolean(p.variant)
+  );
+  const hasVariants = currentProcedureVariants.length > 0;
 
   // Calculate teeth with existing treatments for chart badges
   const plannedTeeth = (plan?.items || [])
@@ -256,7 +264,11 @@ export function TreatmentPlanUI({
   // Handle Add to Plan (supports single or multi-tooth)
   const handleAddOrUpdate = async () => {
     if (!selectedProcedure) {
-      setErrorMsg('Please select a treatment procedure.');
+      if (hasVariants) {
+        setErrorMsg(`Please select a specific option/type for ${selectedBaseProcedure}.`);
+      } else {
+        setErrorMsg('Please select a treatment procedure.');
+      }
       return;
     }
 
@@ -331,6 +343,7 @@ export function TreatmentPlanUI({
 
       // Reset form
       setSelectedCategory('');
+      setSelectedBaseProcedure('');
       setSelectedProcedure('');
       setNotes('');
       setSelectedTeeth([]);
@@ -348,6 +361,7 @@ export function TreatmentPlanUI({
     const catItem = catalog.find((c) => c.id === item.treatmentCatalogId) || item.catalogItem;
     setEditingItem(item);
     setSelectedCategory(catItem?.category || '');
+    setSelectedBaseProcedure(catItem?.name || '');
     setSelectedProcedure(item.treatmentCatalogId);
     setNotes(item.notes || '');
     setSelectedTeeth(item.toothNumber ? [item.toothNumber] : []);
@@ -360,6 +374,7 @@ export function TreatmentPlanUI({
   const handleCancelEdit = () => {
     setEditingItem(null);
     setSelectedCategory('');
+    setSelectedBaseProcedure('');
     setSelectedProcedure('');
     setNotes('');
     setSelectedTeeth([]);
@@ -690,9 +705,10 @@ export function TreatmentPlanUI({
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">Treatment Category</label>
               <Select
-                value={selectedCategory}
+                value={selectedCategory || undefined}
                 onValueChange={(val) => {
                   setSelectedCategory(val);
+                  setSelectedBaseProcedure('');
                   setSelectedProcedure('');
                 }}
               >
@@ -712,22 +728,57 @@ export function TreatmentPlanUI({
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">Treatment Procedure</label>
               <Select
-                value={selectedProcedure}
-                onValueChange={setSelectedProcedure}
+                value={selectedBaseProcedure || undefined}
+                onValueChange={(procName) => {
+                  setSelectedBaseProcedure(procName);
+                  const matching = categoryProcedures.filter((p) => p.name === procName);
+                  if (matching.length === 1 && !matching[0].variant) {
+                    setSelectedProcedure(matching[0].id);
+                  } else {
+                    setSelectedProcedure('');
+                  }
+                }}
                 disabled={!selectedCategory}
               >
                 <SelectTrigger className="bg-white text-xs h-9">
                   <SelectValue placeholder="Select Procedure" />
                 </SelectTrigger>
                 <SelectContent>
-                  {procedures.map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-xs">
-                      {p.name} {p.variant ? `(${p.variant})` : ''}
+                  {uniqueProcedureNames.map((name) => (
+                    <SelectItem key={name} value={name} className="text-xs">
+                      {name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Sub-Procedure / Variant Selector (Only shown when procedure has variants like Fixed Partial Denture or Fixed Appliance) */}
+            {hasVariants && (
+              <div className="space-y-1 pt-0.5 transition-all">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700">Procedure Type / Sub-Category</label>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full">
+                    {selectedBaseProcedure} Options
+                  </span>
+                </div>
+                <Select
+                  value={selectedProcedure || undefined}
+                  onValueChange={(val) => setSelectedProcedure(val)}
+                >
+                  <SelectTrigger className="bg-white text-xs h-9 border-teal-200 focus:border-teal-400">
+                    <SelectValue placeholder={`Select ${selectedBaseProcedure} Option...`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentProcedureVariants.map((v) => (
+                      <SelectItem key={v.id} value={v.id} className="text-xs">
+                        {v.variant}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Expected Sittings: Numeric 1, 2, 3, or custom number */}
             <div className="space-y-1.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
