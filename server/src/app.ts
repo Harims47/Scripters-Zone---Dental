@@ -1,9 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
 // Authoritative server entry point
 dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import { validateDatabaseConfig } from './db';
 import { validateJwtSecret } from './config/authConfig';
@@ -61,7 +65,13 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:') || origin === process.env.FRONTEND_ORIGIN) {
+    if (
+      !origin ||
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      !process.env.FRONTEND_ORIGIN ||
+      origin === process.env.FRONTEND_ORIGIN
+    ) {
       callback(null, true);
     } else {
       callback(null, false);
@@ -111,6 +121,33 @@ app.use('/api/external-advice', externalAdviceRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'DentalCore backend is running' });
 });
+
+// 404 handler for unmatched API routes
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Serve compiled frontend in production
+const candidateDistPaths = [
+  path.resolve(process.cwd(), 'dist'),
+  path.resolve(process.cwd(), '../dist'),
+  path.resolve(__dirname, '../../../../dist'),
+  path.resolve(__dirname, '../../../dist'),
+  path.resolve(__dirname, '../../dist'),
+];
+const clientDistPath = candidateDistPaths.find((p) => fs.existsSync(path.join(p, 'index.html')));
+
+if (clientDistPath) {
+  console.log(`[Production] Serving static frontend from: ${clientDistPath}`);
+  app.use(express.static(clientDistPath));
+
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 import { errorHandler } from './middleware/errorHandler';
 

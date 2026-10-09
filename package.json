@@ -3,9 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "server"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "tsc -b && vite build",
+    "build:server": "npm --prefix server run build",
+    "start": "node server/dist/src/app.js",
     "lint": "oxlint",
     "preview": "vite preview",
     "test:e2e": "cross-env DATABASE_URL=postgresql://dental:dentalpassword@localhost:5433/dentalcore node server/clean.js && playwright test && cross-env DATABASE_URL=postgresql://dental:dentalpassword@localhost:5433/dentalcore node server/clean.js"
