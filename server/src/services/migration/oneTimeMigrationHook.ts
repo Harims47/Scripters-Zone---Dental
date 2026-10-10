@@ -132,7 +132,7 @@ function defaultPrismaMigrationRunner(
  * Executes only when process.env.MIGRATION_EXECUTE_ONCE === 'true'.
  * 
  * Safeguards:
- * 1. Target database must strictly equal 'Rafi_Dental_DB'.
+ * 1. Requires all 5 native GoDaddy DB_* variables and explicit confirmation via CONFIRM_DB_NAME.
  * 2. Database must be empty (0 existing tables) before executing migrations.
  * 3. Migration files must exist and match approved list.
  * 4. Prisma migrate deploy runs with bounded timeout.
@@ -161,11 +161,46 @@ export async function runOneTimeMigrationHook(deps: MigrationHookDependencies = 
     throw new Error(`[Migration Hook HALTED] Invalid database configuration (code: ${safeCode}).`);
   }
 
-  // Mandatory Safeguard 1: Verify exact database identity
-  if (config.database !== 'Rafi_Dental_DB') {
-    console.error(`[Migration Hook FAILED] Target database is "${config.database}", but only "Rafi_Dental_DB" is permitted. Halting startup.`);
-    throw new Error('[Migration Hook HALTED] Target database identity mismatch.');
+  // Mandatory Safeguard: Require presence of all five GoDaddy native variables
+  const rawDbHost = env.DB_HOST?.trim();
+  const rawDbPort = env.DB_PORT?.trim();
+  const rawDbName = env.DB_NAME?.trim();
+  const rawDbUser = env.DB_USER?.trim();
+  const hasGoDaddyVars = Boolean(
+    rawDbHost &&
+    rawDbHost.length > 0 &&
+    rawDbPort &&
+    rawDbPort.length > 0 &&
+    rawDbName &&
+    rawDbName.length > 0 &&
+    rawDbUser &&
+    rawDbUser.length > 0 &&
+    env.DB_PASSWORD !== undefined
+  );
+
+  if (!hasGoDaddyVars) {
+    console.error('[Migration Hook FAILED] GoDaddy native DB_* variables are missing or incomplete. Halting startup.');
+    throw new Error('[Migration Hook HALTED] Missing required GoDaddy native database variables.');
   }
+
+  // Mandatory Safeguard: Require explicit confirmation via CONFIRM_DB_NAME
+  const confirmDbName = env.CONFIRM_DB_NAME?.trim();
+  if (!confirmDbName) {
+    console.error(
+      '[Migration Hook FAILED] CONFIRM_DB_NAME environment variable is missing or empty. Explicit confirmation is required to execute migration. Halting startup.'
+    );
+    throw new Error('[Migration Hook HALTED] CONFIRM_DB_NAME is not set.');
+  }
+
+  // Mandatory Safeguard: Verify exact match between resolved database, native DB_NAME, and CONFIRM_DB_NAME
+  if (config.database !== confirmDbName || rawDbName !== confirmDbName) {
+    console.error(
+      `[Migration Hook FAILED] Database identity mismatch: resolved "${config.database}" does not match CONFIRM_DB_NAME "${confirmDbName}". Halting startup.`
+    );
+    throw new Error('[Migration Hook HALTED] Target database identity confirmation mismatch.');
+  }
+
+  console.log(`[Migration Hook] Database identity confirmed: target "${confirmDbName}" matches GoDaddy DB_NAME and CONFIRM_DB_NAME.`);
 
   const serverDir = deps.serverDir || findServerDirectory();
   const migrationsDir = deps.migrationsDir || path.resolve(serverDir, 'prisma', 'migrations');
@@ -201,8 +236,8 @@ export async function runOneTimeMigrationHook(deps: MigrationHookDependencies = 
     // Mandatory Safeguard 3: Verify active database via SELECT DATABASE()
     const dbRows: any = await connection.query('SELECT DATABASE() AS current_db');
     const currentDb = dbRows && dbRows[0] ? dbRows[0].current_db : null;
-    if (currentDb !== 'Rafi_Dental_DB') {
-      console.error(`[Migration Hook FAILED] Active database is "${currentDb}", expected "Rafi_Dental_DB". Halting startup.`);
+    if (currentDb !== confirmDbName) {
+      console.error(`[Migration Hook FAILED] Active database is "${currentDb}", expected "${confirmDbName}". Halting startup.`);
       throw new Error('[Migration Hook HALTED] Active database mismatch.');
     }
 
@@ -220,7 +255,7 @@ export async function runOneTimeMigrationHook(deps: MigrationHookDependencies = 
       );
     }
 
-    console.log('[Migration Hook] Pre-flight verification passed: database is clean "Rafi_Dental_DB". Executing migration deployment...');
+    console.log(`[Migration Hook] Pre-flight verification passed: database is clean "${confirmDbName}". Executing migration deployment...`);
 
     // Mandatory Safeguards 7, 8, 9: Execute migration deploy under bounded timeout
     const migrationRunner = deps.migrationRunner || defaultPrismaMigrationRunner;
@@ -289,7 +324,7 @@ export async function runOneTimeMigrationHook(deps: MigrationHookDependencies = 
     }
 
     console.log(
-      '[Migration Hook SUCCESS] Rafi_Dental_DB schema successfully initialized and verified: 2 migrations applied, core tables present, 0 user rows.'
+      `[Migration Hook SUCCESS] ${confirmDbName} schema successfully initialized and verified: 2 migrations applied, core tables present, 0 user rows.`
     );
     return true;
   } catch (err: any) {

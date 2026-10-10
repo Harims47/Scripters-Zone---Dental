@@ -27,18 +27,29 @@ async function runTests() {
   console.log('   ONE-TIME STARTUP MIGRATION HOOK LOCAL QA TEST SUITE          ');
   console.log('================================================================\n');
 
+  const targetDbName = 'db_j925dk468p';
+
+  const baseValidEnv: Record<string, string> = {
+    MIGRATION_EXECUTE_ONCE: 'true',
+    DB_HOST: 'db.godaddy.example.com',
+    DB_PORT: '3306',
+    DB_NAME: targetDbName,
+    DB_USER: 'dbuser',
+    DB_PASSWORD: 'dbpassword',
+    CONFIRM_DB_NAME: targetDbName,
+  };
+
   const validConfig: ValidatedDatabaseConfig = {
-    host: 'db.example.com',
+    host: 'db.godaddy.example.com',
     port: 3306,
     user: 'dbuser',
     password: 'dbpassword',
-    database: 'Rafi_Dental_DB',
+    database: targetDbName,
   };
 
   // Test 1: Flag disabled (absent, false, or other than 'true')
   console.log('Test 1: Migration flag disabled (should do nothing)');
   {
-    const calledDb = false;
     const res1 = await runOneTimeMigrationHook({
       env: {},
     });
@@ -57,7 +68,7 @@ async function runTests() {
     let caught = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => {
           throw new Error('Config missing');
         },
@@ -69,25 +80,69 @@ async function runTests() {
     assert(caught, 'Threw error on invalid config');
   }
 
-  // Test 3: Wrong database name in config or active DB
-  console.log('\nTest 3: Wrong database name (not Rafi_Dental_DB)');
+  // Test 3A: Missing GoDaddy native DB_* variables
+  console.log('\nTest 3A: Missing GoDaddy native DB_* variables');
   {
-    let caughtConfig = false;
+    let caught = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
-        dbConfigGetter: () => ({ ...validConfig, database: 'dentalcore_test' }),
+        env: {
+          MIGRATION_EXECUTE_ONCE: 'true',
+          CONFIRM_DB_NAME: targetDbName,
+          // Missing DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+        },
+        dbConfigGetter: () => validConfig,
       });
     } catch (err: any) {
-      caughtConfig = true;
-      assert(err.message.includes('Target database identity mismatch'), 'Rejects non-Rafi_Dental_DB database config');
+      caught = true;
+      assert(err.message.includes('Missing required GoDaddy native database variables'), 'Rejects execution when native GoDaddy DB_* variables are incomplete');
     }
-    assert(caughtConfig, 'Threw error on non-Rafi_Dental_DB config database');
+    assert(caught, 'Threw error on incomplete native DB_* variables');
+  }
 
-    let caughtActiveDb = false;
+  // Test 3B: Missing CONFIRM_DB_NAME
+  console.log('\nTest 3B: Missing or empty CONFIRM_DB_NAME');
+  {
+    let caught = false;
+    try {
+      const { CONFIRM_DB_NAME, ...envWithoutConfirm } = baseValidEnv;
+      await runOneTimeMigrationHook({
+        env: envWithoutConfirm,
+        dbConfigGetter: () => validConfig,
+      });
+    } catch (err: any) {
+      caught = true;
+      assert(err.message.includes('CONFIRM_DB_NAME is not set'), 'Rejects execution when CONFIRM_DB_NAME is absent');
+    }
+    assert(caught, 'Threw error on missing CONFIRM_DB_NAME');
+  }
+
+  // Test 3C: Database name mismatch (DB_NAME vs CONFIRM_DB_NAME)
+  console.log('\nTest 3C: Database name mismatch (DB_NAME vs CONFIRM_DB_NAME)');
+  {
+    let caught = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: {
+          ...baseValidEnv,
+          CONFIRM_DB_NAME: 'Rafi_Dental_DB', // Mismatched confirmation
+        },
+        dbConfigGetter: () => validConfig,
+      });
+    } catch (err: any) {
+      caught = true;
+      assert(err.message.includes('Target database identity confirmation mismatch'), 'Rejects mismatch between DB_NAME and CONFIRM_DB_NAME');
+    }
+    assert(caught, 'Threw error on DB_NAME / CONFIRM_DB_NAME mismatch');
+  }
+
+  // Test 3D: Active database mismatch (SELECT DATABASE() vs CONFIRM_DB_NAME)
+  console.log('\nTest 3D: Active database mismatch (SELECT DATABASE() vs CONFIRM_DB_NAME)');
+  {
+    let caught = false;
+    try {
+      await runOneTimeMigrationHook({
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
@@ -98,10 +153,10 @@ async function runTests() {
         }),
       });
     } catch (err: any) {
-      caughtActiveDb = true;
-      assert(err.message.includes('Active database mismatch'), 'Rejects mismatch between SELECT DATABASE() and Rafi_Dental_DB');
+      caught = true;
+      assert(err.message.includes('Active database mismatch'), 'Rejects mismatch between SELECT DATABASE() and CONFIRM_DB_NAME');
     }
-    assert(caughtActiveDb, 'Threw error when active database is not Rafi_Dental_DB');
+    assert(caught, 'Threw error when active database differs from CONFIRM_DB_NAME');
   }
 
   // Test 4: Existing tables detected
@@ -110,11 +165,11 @@ async function runTests() {
     let caught = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) return [{ table_name: 'User' }, { table_name: 'Patient' }];
             return [];
           },
@@ -128,14 +183,14 @@ async function runTests() {
     assert(caught, 'Threw error on non-empty database');
   }
 
-  // Test 5: Missing migration files on disk
+  // Test 5: Missing approved migration files on disk
   console.log('\nTest 5: Missing approved migration files on disk');
   {
     let caught = false;
     const tempEmptyDir = path.resolve(__dirname, '../../data_migration_staging');
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         migrationsDir: tempEmptyDir,
       });
@@ -152,11 +207,11 @@ async function runTests() {
     let caught = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) return [];
             return [];
           },
@@ -181,11 +236,11 @@ async function runTests() {
     let caught = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) return [];
             return [];
           },
@@ -211,11 +266,11 @@ async function runTests() {
     let caughtMissing = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) return []; // Initially empty
             if (sql.includes('_prisma_migrations')) {
               return [
@@ -242,11 +297,11 @@ async function runTests() {
     let caughtRolledBack = false;
     try {
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) return [];
             if (sql.includes('_prisma_migrations')) {
               return [
@@ -282,11 +337,11 @@ async function runTests() {
     try {
       let isInitialCheck = true;
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) {
               if (isInitialCheck) {
                 isInitialCheck = false;
@@ -322,11 +377,11 @@ async function runTests() {
     try {
       let isInitialCheck = true;
       await runOneTimeMigrationHook({
-        env: { MIGRATION_EXECUTE_ONCE: 'true' },
+        env: baseValidEnv,
         dbConfigGetter: () => validConfig,
         connectionFactory: async () => ({
           query: async (sql: string) => {
-            if (sql.includes('SELECT DATABASE()')) return [{ current_db: 'Rafi_Dental_DB' }];
+            if (sql.includes('SELECT DATABASE()')) return [{ current_db: targetDbName }];
             if (sql.includes('information_schema.tables')) {
               if (isInitialCheck) {
                 isInitialCheck = false;
@@ -362,14 +417,14 @@ async function runTests() {
   {
     let closedConnection = false;
     const result = await runOneTimeMigrationHook({
-      env: { MIGRATION_EXECUTE_ONCE: 'true' },
+      env: baseValidEnv,
       dbConfigGetter: () => validConfig,
       connectionFactory: async () => {
         let isInitialCheck = true;
         return {
           query: async (sql: string) => {
             if (sql.includes('SELECT DATABASE()')) {
-              return [{ current_db: 'Rafi_Dental_DB' }];
+              return [{ current_db: targetDbName }];
             }
             if (sql.includes('information_schema.tables')) {
               if (isInitialCheck) {
