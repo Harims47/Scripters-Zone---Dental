@@ -156,11 +156,21 @@ app.use(errorHandler);
 
 import { prisma } from './db';
 import { runOneTimeMigrationHook } from './services/migration/oneTimeMigrationHook';
+import { runFirstAdminBootstrap } from './services/bootstrap/firstAdminBootstrap';
 
-// Server boot with one-time migration hook execution gate
+// Server boot with one-time migration hook and first admin bootstrap execution gates
 async function boot() {
+  if (process.env.MIGRATION_EXECUTE_ONCE === 'true' && process.env.INIT_HEAD_DOCTOR_ONCE === 'true') {
+    console.error('[Startup HALTED] MIGRATION_EXECUTE_ONCE and INIT_HEAD_DOCTOR_ONCE cannot be enabled in the same startup.');
+    throw new Error('MIGRATION_EXECUTE_ONCE and INIT_HEAD_DOCTOR_ONCE are mutually exclusive.');
+  }
+
   if (process.env.MIGRATION_EXECUTE_ONCE === 'true') {
     await runOneTimeMigrationHook();
+  }
+
+  if (process.env.INIT_HEAD_DOCTOR_ONCE === 'true') {
+    await runFirstAdminBootstrap();
   }
 
   const server = app.listen(port, '0.0.0.0', () => {
