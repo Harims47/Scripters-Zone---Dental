@@ -7,6 +7,9 @@ import { NotificationStatus } from './types';
 
 export class QueueRunner {
   private static isRunning = false;
+  private static isProcessingBatch = false;
+  private static isRecovering = false;
+  private static isSchedulingReminders = false;
   private static pollTimer: NodeJS.Timeout | null = null;
   private static reminderTimer: NodeJS.Timeout | null = null;
 
@@ -62,6 +65,10 @@ export class QueueRunner {
    * Crash Recovery: Reset jobs stuck in SENDING back to RETRYING on backend boot.
    */
   public static async recoverStaleJobs() {
+    if (this.isRecovering) {
+      return;
+    }
+    this.isRecovering = true;
     try {
       const recovered = await prisma.notification.updateMany({
         where: { status: 'SENDING' },
@@ -75,53 +82,64 @@ export class QueueRunner {
       }
     } catch (err: any) {
       console.error('[QueueRunner] Failed to recover stale jobs:', err.message);
+    } finally {
+      this.isRecovering = false;
     }
   }
 
   /**
    * Claims and processes a batch of notifications atomically using MySQL-compatible transaction.
+   * Uses a concurrency guard to prevent overlapping batch cycles.
    */
   public static async processBatch(batchSize: number = 5): Promise<number> {
-    const claimedNotifications = await prisma.$transaction(async (tx) => {
-      // 1. Lock candidate notification IDs using MySQL-compatible FOR UPDATE
-      const candidates: Array<{ id: string }> = await tx.$queryRaw`
-        SELECT id FROM \`Notification\`
-        WHERE status IN ('QUEUED', 'RETRYING')
-          AND \`scheduledAt\` <= NOW()
-        ORDER BY \`scheduledAt\` ASC
-        LIMIT ${batchSize}
-        FOR UPDATE
-      `;
-
-      if (!candidates || candidates.length === 0) {
-        return [];
-      }
-
-      const ids = candidates.map((c) => c.id);
-
-      // 2. Atomically transition claimed records to SENDING
-      await tx.notification.updateMany({
-        where: { id: { in: ids } },
-        data: { status: 'SENDING', updatedAt: new Date() }
-      });
-
-      // 3. Return claimed notifications for dispatch
-      return await tx.notification.findMany({
-        where: { id: { in: ids } }
-      });
-    });
-
-    if (!claimedNotifications || claimedNotifications.length === 0) {
+    if (this.isProcessingBatch) {
       return 0;
     }
+    this.isProcessingBatch = true;
+    try {
+      const claimedNotifications = await prisma.$transaction(async (tx) => {
+        // 1. Lock candidate notification IDs using MySQL-compatible FOR UPDATE
+        const candidates: Array<{ id: string }> = await tx.$queryRaw`
+          SELECT id FROM \`Notification\`
+          WHERE status IN ('QUEUED', 'RETRYING')
+            AND \`scheduledAt\` <= NOW()
+          ORDER BY \`scheduledAt\` ASC
+          LIMIT ${batchSize}
+          FOR UPDATE
+        `;
 
-    console.log(`[QueueRunner] Atomically claimed ${claimedNotifications.length} notification job(s).`);
+        if (!candidates || candidates.length === 0) {
+          return [];
+        }
 
-    for (const notification of claimedNotifications) {
-      await this.dispatchNotification(notification);
+        const ids = candidates.map((c) => c.id);
+
+        // 2. Atomically transition claimed records to SENDING
+        await tx.notification.updateMany({
+          where: { id: { in: ids } },
+          data: { status: 'SENDING', updatedAt: new Date() }
+        });
+
+        // 3. Return claimed notifications for dispatch
+        return await tx.notification.findMany({
+          where: { id: { in: ids } }
+        });
+      });
+
+      if (!claimedNotifications || claimedNotifications.length === 0) {
+        return 0;
+      }
+
+      console.log(`[QueueRunner] Atomically claimed ${claimedNotifications.length} notification job(s).`);
+
+      for (const notification of claimedNotifications) {
+        await this.dispatchNotification(notification);
+      }
+
+      return claimedNotifications.length;
+    } finally {
+      this.isProcessingBatch = false;
     }
-
-    return claimedNotifications.length;
   }
 
   /**
@@ -336,70 +354,79 @@ export class QueueRunner {
 
   /**
    * Sweeper for scheduling 24h appointment reminders.
+   * Uses a concurrency guard to prevent overlapping executions.
    */
   public static async scheduleUpcomingAppointmentReminders() {
-    // Find appointments scheduled for tomorrow
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0]; // "YYYY-MM-DD"
+    if (this.isSchedulingReminders) {
+      return;
+    }
+    this.isSchedulingReminders = true;
+    try {
+      // Find appointments scheduled for tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0]; // "YYYY-MM-DD"
 
-    const upcomingAppointments = await prisma.appointment.findMany({
-      where: {
-        date: tomorrowStr,
-        status: 'Scheduled',
-      },
-      include: {
-        visit: {
-          include: {
-            patient: true,
+      const upcomingAppointments = await prisma.appointment.findMany({
+        where: {
+          date: tomorrowStr,
+          status: 'Scheduled',
+        },
+        include: {
+          visit: {
+            include: {
+              patient: true,
+            },
           },
         },
-      },
-    });
-
-    for (const apt of upcomingAppointments) {
-      const patient = apt.visit?.patient;
-      if (!patient) continue;
-
-      const idempotencyKey = `APPOINTMENT_REMINDER:APPOINTMENT:${apt.id}`;
-
-      // Check if reminder already exists
-      const existing = await prisma.notification.findUnique({
-        where: { idempotencyKey },
       });
 
-      if (!existing) {
-        const pref = (patient.preferredCommunicationChannel as any) || 'AUTO';
-        const channel = pref === 'SMS' ? 'SMS' : pref === 'EMAIL' ? 'EMAIL' : patient.whatsappAvailable === false ? 'SMS' : 'WHATSAPP';
-        const rendered = TemplateEngine.render('APPOINTMENT_REMINDER', channel, {
-          patientName: patient.name,
-          doctorName: 'your doctor',
-          date: apt.date,
-          time: apt.time,
+      for (const apt of upcomingAppointments) {
+        const patient = apt.visit?.patient;
+        if (!patient) continue;
+
+        const idempotencyKey = `APPOINTMENT_REMINDER:APPOINTMENT:${apt.id}`;
+
+        // Check if reminder already exists
+        const existing = await prisma.notification.findUnique({
+          where: { idempotencyKey },
         });
 
-        await prisma.notification.create({
-          data: {
-            type: 'APPOINTMENT_REMINDER',
-            channel,
-            status: 'QUEUED',
-            recipientPhone: patient.phone,
-            recipientEmail: patient.email,
-            recipientName: patient.name,
-            patientId: patient.id,
-            entityType: 'APPOINTMENT',
-            entityId: apt.id,
-            idempotencyKey,
-            templateName: rendered.templateName,
-            payload: {
-              body: rendered.body,
-              subject: rendered.subject,
-              variables: rendered.variables,
+        if (!existing) {
+          const pref = (patient.preferredCommunicationChannel as any) || 'AUTO';
+          const channel = pref === 'SMS' ? 'SMS' : pref === 'EMAIL' ? 'EMAIL' : patient.whatsappAvailable === false ? 'SMS' : 'WHATSAPP';
+          const rendered = TemplateEngine.render('APPOINTMENT_REMINDER', channel, {
+            patientName: patient.name,
+            doctorName: 'your doctor',
+            date: apt.date,
+            time: apt.time,
+          });
+
+          await prisma.notification.create({
+            data: {
+              type: 'APPOINTMENT_REMINDER',
+              channel,
+              status: 'QUEUED',
+              recipientPhone: patient.phone,
+              recipientEmail: patient.email,
+              recipientName: patient.name,
+              patientId: patient.id,
+              entityType: 'APPOINTMENT',
+              entityId: apt.id,
+              idempotencyKey,
+              templateName: rendered.templateName,
+              payload: {
+                body: rendered.body,
+                subject: rendered.subject,
+                variables: rendered.variables,
+              },
+              scheduledAt: new Date(),
             },
-            scheduledAt: new Date(),
-          },
-        });
+          });
+        }
       }
+    } finally {
+      this.isSchedulingReminders = false;
     }
   }
 }
