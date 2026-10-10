@@ -155,36 +155,49 @@ import { errorHandler } from './middleware/errorHandler';
 app.use(errorHandler);
 
 import { prisma } from './db';
+import { runOneTimeMigrationHook } from './services/migration/oneTimeMigrationHook';
 
-const server = app.listen(port, '0.0.0.0', () => {
-  console.log(`Server is running on port ${port}`);
-  QueueRunner.start().catch((err) => {
-    console.error('Failed to start communication QueueRunner:', err.message);
+// Server boot with one-time migration hook execution gate
+async function boot() {
+  if (process.env.MIGRATION_EXECUTE_ONCE === 'true') {
+    await runOneTimeMigrationHook();
+  }
+
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`Server is running on port ${port}`);
+    QueueRunner.start().catch((err) => {
+      console.error('Failed to start communication QueueRunner:', err.message);
+    });
+    HistoricalBatchService.recoverStaleMigrationJobs().catch((err) => {
+      console.error('Failed to recover stale historical migration jobs:', err.message);
+    });
   });
-  HistoricalBatchService.recoverStaleMigrationJobs().catch((err) => {
-    console.error('Failed to recover stale historical migration jobs:', err.message);
-  });
+
+  // Graceful Shutdown Mechanism
+  const shutdown = async (signal: string) => {
+    console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+    QueueRunner.stop();
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      await prisma.$disconnect();
+      console.log('Database connection closed.');
+      process.exit(0);
+    });
+
+    // Force close after 10 seconds if graceful shutdown fails
+    setTimeout(() => {
+      console.error('Could not close connections in time, forcefully shutting down');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+boot().catch((err) => {
+  console.error('[STARTUP HALTED] Server boot failed:', err.message || 'Fatal error');
+  process.exit(1);
 });
-
-// Graceful Shutdown Mechanism
-const shutdown = async (signal: string) => {
-  console.log(`\nReceived ${signal}. Shutting down gracefully...`);
-  QueueRunner.stop();
-  server.close(async () => {
-    console.log('HTTP server closed.');
-    await prisma.$disconnect();
-    console.log('Database connection closed.');
-    process.exit(0);
-  });
-
-  // Force close after 10 seconds if graceful shutdown fails
-  setTimeout(() => {
-    console.error('Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 10000);
-};
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;

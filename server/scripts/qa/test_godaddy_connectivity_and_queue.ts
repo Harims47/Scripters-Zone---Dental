@@ -202,6 +202,39 @@ async function runTests() {
     console.log('✅ Test 11 Passed: Completely missing configuration fails closed with sanitized error message.');
     passed++;
 
+    // ----------------------------------------------------
+    // Test 12: prisma.config.ts resolvePrismaDatabaseUrl prioritizes GoDaddy DB_* over localhost DATABASE_URL
+    // ----------------------------------------------------
+    const { resolvePrismaDatabaseUrl } = await import('../../prisma.config');
+    process.env.DB_HOST = 'godaddy-mysql.internal';
+    process.env.DB_PORT = '3306';
+    process.env.DB_NAME = 'Rafi_Dental_DB';
+    process.env.DB_USER = 'godaddy_admin';
+    process.env.DB_PASSWORD = 'strong_password_123';
+    process.env.DATABASE_URL = 'mysql://localuser:localpass@localhost:3306/wrong_db';
+
+    const resolvedUrl = resolvePrismaDatabaseUrl();
+    assert(resolvedUrl !== undefined, 'Resolved URL must be defined');
+    assert(resolvedUrl!.includes('@godaddy-mysql.internal:3306/Rafi_Dental_DB'), 'GoDaddy host and database must be used');
+    assert(!resolvedUrl!.includes('localhost:3306'), 'Must not use localhost DATABASE_URL');
+    console.log('✅ Test 12 Passed: prisma.config.ts correctly prioritizes GoDaddy DB_* variables over localhost DATABASE_URL.');
+    passed++;
+
+    // ----------------------------------------------------
+    // Test 13: prisma.config.ts resolvePrismaDatabaseUrl falls back to DATABASE_URL when DB_* missing
+    // ----------------------------------------------------
+    delete process.env.DB_HOST;
+    delete process.env.DB_PORT;
+    delete process.env.DB_NAME;
+    delete process.env.DB_USER;
+    delete process.env.DB_PASSWORD;
+    process.env.DATABASE_URL = 'mysql://devuser:devpass@127.0.0.1:3306/dev_dental';
+
+    const fallbackUrl = resolvePrismaDatabaseUrl();
+    assert(fallbackUrl === 'mysql://devuser:devpass@127.0.0.1:3306/dev_dental', 'Fallback URL must match DATABASE_URL');
+    console.log('✅ Test 13 Passed: prisma.config.ts falls back to DATABASE_URL for local development.');
+    passed++;
+
     console.log(`\n🎉 All ${passed}/${passed} GoDaddy Airo Connectivity & Queue Tests Passed!`);
     process.exit(0);
   } finally {
