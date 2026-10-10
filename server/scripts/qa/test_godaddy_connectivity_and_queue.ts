@@ -127,6 +127,81 @@ async function runTests() {
     console.log('✅ Test 7 Passed: QueueRunner concurrency guard is always released in finally block.');
     passed++;
 
+    // ----------------------------------------------------
+    // Test 8: GoDaddy DB_* variables take precedence over localhost DATABASE_URL
+    // ----------------------------------------------------
+    process.env.DB_HOST = 'hosted-mysql.godaddy.com';
+    process.env.DB_PORT = '3306';
+    process.env.DB_NAME = 'godaddy_dentalcore';
+    process.env.DB_USER = 'godaddy_user';
+    process.env.DB_PASSWORD = 'supersecret_godaddy_pass!';
+    process.env.DATABASE_URL = 'mysql://localuser:localpass@127.0.0.1:3306/local_dental';
+
+    const godaddyConfig = validateDatabaseConfig();
+    assert(godaddyConfig.host === 'hosted-mysql.godaddy.com', 'GoDaddy host must be used');
+    assert(godaddyConfig.port === 3306, 'GoDaddy port must be used');
+    assert(godaddyConfig.database === 'godaddy_dentalcore', 'GoDaddy database name must be used');
+    assert(godaddyConfig.user === 'godaddy_user', 'GoDaddy user must be used');
+    assert(godaddyConfig.password === 'supersecret_godaddy_pass!', 'GoDaddy password must be used');
+    console.log('✅ Test 8 Passed: GoDaddy DB_* variables take precedence over localhost DATABASE_URL.');
+    passed++;
+
+    // ----------------------------------------------------
+    // Test 9: Incomplete GoDaddy DB_* variables fall back to valid DATABASE_URL
+    // ----------------------------------------------------
+    delete process.env.DB_HOST; // incomplete GoDaddy config
+    process.env.DATABASE_URL = 'mysql://fallbackuser:fallbackpass@remote-fallback.com:3306/fallback_db';
+
+    const fallbackConfig = validateDatabaseConfig();
+    assert(fallbackConfig.host === 'remote-fallback.com', 'Fallback host must be used from DATABASE_URL');
+    assert(fallbackConfig.database === 'fallback_db', 'Fallback database name must be used');
+    assert(fallbackConfig.user === 'fallbackuser', 'Fallback user must be used');
+    console.log('✅ Test 9 Passed: Incomplete GoDaddy DB_* variables correctly fall back to valid DATABASE_URL.');
+    passed++;
+
+    // ----------------------------------------------------
+    // Test 10: Invalid GoDaddy DB_PORT fails safely with sanitized error
+    // ----------------------------------------------------
+    process.env.DB_HOST = 'hosted-mysql.godaddy.com';
+    process.env.DB_PORT = '99999'; // Out of range port (> 65535)
+    process.env.DB_NAME = 'godaddy_dentalcore';
+    process.env.DB_USER = 'godaddy_user';
+    process.env.DB_PASSWORD = 'mysecretpassword';
+    delete process.env.DATABASE_URL;
+
+    let portThrew = false;
+    try {
+      validateDatabaseConfig();
+    } catch (err: any) {
+      portThrew = true;
+      assert(err.message.includes('GoDaddy DB_PORT "99999" is invalid'), 'Must report invalid port');
+      assert(!err.message.includes('mysecretpassword'), 'Must not leak database password');
+    }
+    assert(portThrew, 'Invalid DB_PORT must throw');
+    console.log('✅ Test 10 Passed: Out-of-range DB_PORT fails safely without leaking secrets.');
+    passed++;
+
+    // ----------------------------------------------------
+    // Test 11: Completely missing configuration fails closed with sanitized error
+    // ----------------------------------------------------
+    delete process.env.DB_HOST;
+    delete process.env.DB_PORT;
+    delete process.env.DB_NAME;
+    delete process.env.DB_USER;
+    delete process.env.DB_PASSWORD;
+    delete process.env.DATABASE_URL;
+
+    let missingThrew = false;
+    try {
+      validateDatabaseConfig();
+    } catch (err: any) {
+      missingThrew = true;
+      assert(err.message.includes('DATABASE_URL environment variable is missing'), 'Must report missing database configuration');
+    }
+    assert(missingThrew, 'Missing configuration must fail closed');
+    console.log('✅ Test 11 Passed: Completely missing configuration fails closed with sanitized error message.');
+    passed++;
+
     console.log(`\n🎉 All ${passed}/${passed} GoDaddy Airo Connectivity & Queue Tests Passed!`);
     process.exit(0);
   } finally {

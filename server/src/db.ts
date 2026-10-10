@@ -19,60 +19,40 @@ export interface ValidatedDatabaseConfig {
 }
 
 /**
- * Validates the database configuration from environment variables.
- * Fails closed immediately if DATABASE_URL is missing, malformed, or targets an unsupported protocol.
- * Parses supported TLS settings if present without silently weakening certificate verification.
- * Never logs or exposes credentials.
+ * Parses TLS / SSL configuration safely from query parameters and environment overrides.
+ * Preserves strict certificate verification by default. Never leaks secrets.
  */
-export function validateDatabaseConfig(): ValidatedDatabaseConfig {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl || dbUrl.trim().length === 0) {
-    throw new Error('FATAL: DATABASE_URL environment variable is missing. DentalCore requires a valid MySQL database connection string.');
-  }
-
-  let u: URL;
-  try {
-    u = new URL(dbUrl.trim());
-  } catch {
-    throw new Error('FATAL: DATABASE_URL is malformed. Ensure it is a valid URL.');
-  }
-
-  if (u.protocol !== 'mysql:' && u.protocol !== 'mariadb:') {
-    throw new Error(`FATAL: DATABASE_URL protocol "${u.protocol}" is unsupported. Only "mysql:" and "mariadb:" protocols are allowed.`);
-  }
-
-  const database = u.pathname.replace(/^\//, '').trim();
-  if (!database) {
-    throw new Error('FATAL: DATABASE_URL must specify a target database name.');
-  }
-
-  if (!u.hostname) {
-    throw new Error('FATAL: DATABASE_URL must specify a target host.');
-  }
-
-  // Parse TLS / SSL configuration safely
-  const sslParam = u.searchParams.get('ssl');
-  const sslModeParam = u.searchParams.get('sslmode') || u.searchParams.get('ssl-mode');
-  const rejectUnauthorizedParam = u.searchParams.get('rejectUnauthorized') || u.searchParams.get('reject-unauthorized');
-  const sslCaParam = u.searchParams.get('sslca') || u.searchParams.get('ssl-ca');
-
-  let ssl: boolean | (SecureContextOptions & { rejectUnauthorized?: boolean }) | undefined = undefined;
+function parseTlsConfiguration(
+  searchParams?: URLSearchParams | null
+): boolean | (SecureContextOptions & { rejectUnauthorized?: boolean }) | undefined {
+  const sslParam = searchParams?.get('ssl');
+  const sslModeParam = searchParams?.get('sslmode') || searchParams?.get('ssl-mode');
+  const rejectUnauthorizedParam = searchParams?.get('rejectUnauthorized') || searchParams?.get('reject-unauthorized');
+  const sslCaParam = searchParams?.get('sslca') || searchParams?.get('ssl-ca');
 
   const isSslRequested =
     sslParam === 'true' ||
     sslParam === '1' ||
-    (sslModeParam !== null && ['require', 'required', 'verify_ca', 'verify-ca', 'verify_identity', 'verify-full', 'prefer'].includes(sslModeParam.toLowerCase())) ||
+    (sslModeParam !== null &&
+      sslModeParam !== undefined &&
+      ['require', 'required', 'verify_ca', 'verify-ca', 'verify_identity', 'verify-full', 'prefer'].includes(
+        sslModeParam.toLowerCase()
+      )) ||
     process.env.DATABASE_SSL === 'true';
 
   const isSslExplicitlyDisabled =
     sslParam === 'false' ||
     sslParam === '0' ||
-    (sslModeParam !== null && ['disable', 'disabled'].includes(sslModeParam.toLowerCase())) ||
+    (sslModeParam !== null &&
+      sslModeParam !== undefined &&
+      ['disable', 'disabled'].includes(sslModeParam.toLowerCase())) ||
     process.env.DATABASE_SSL === 'false';
 
   if (isSslExplicitlyDisabled) {
-    ssl = false;
-  } else if (isSslRequested) {
+    return false;
+  }
+
+  if (isSslRequested) {
     // Default to strict certificate verification; do not silently disable verification
     let rejectUnauthorized = true;
     if (
@@ -101,12 +81,100 @@ export function validateDatabaseConfig(): ValidatedDatabaseConfig {
       }
     }
 
-    ssl = sslConfig;
+    return sslConfig;
   }
+
+  return undefined;
+}
+
+/**
+ * Validates the database configuration from environment variables.
+ * Precedence:
+ * 1. If all five GoDaddy DB_* variables (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD) are present and valid,
+ *    use them directly to configure the connection. (A localhost DATABASE_URL will never override GoDaddy DB_*).
+ * 2. Otherwise, fall back to DATABASE_URL for local development and other environments.
+ * 3. If neither configuration is complete, fail closed immediately with a sanitized error message.
+ * Never logs or exposes credentials.
+ */
+export function validateDatabaseConfig(): ValidatedDatabaseConfig {
+  const dbHost = process.env.DB_HOST?.trim();
+  const dbPortStr = process.env.DB_PORT?.trim();
+  const dbName = process.env.DB_NAME?.trim();
+  const dbUser = process.env.DB_USER?.trim();
+  const dbPassword = process.env.DB_PASSWORD;
+
+  // Check if all five GoDaddy native variables are provided
+  const hasGoDaddyConfig = Boolean(
+    dbHost &&
+    dbHost.length > 0 &&
+    dbPortStr &&
+    dbPortStr.length > 0 &&
+    dbName &&
+    dbName.length > 0 &&
+    dbUser &&
+    dbUser.length > 0 &&
+    dbPassword !== undefined
+  );
+
+  if (hasGoDaddyConfig) {
+    const port = parseInt(dbPortStr!, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`FATAL: GoDaddy DB_PORT "${dbPortStr}" is invalid. Port must be an integer between 1 and 65535.`);
+    }
+
+    const ssl = parseTlsConfiguration(null);
+
+    return {
+      host: dbHost!,
+      port,
+      user: dbUser!,
+      password: dbPassword,
+      database: dbName!,
+      ...(ssl !== undefined ? { ssl } : {}),
+    };
+  }
+
+  // Fallback to DATABASE_URL for local development and non-GoDaddy environments
+  const dbUrl = process.env.DATABASE_URL?.trim();
+  if (!dbUrl) {
+    throw new Error(
+      'FATAL: DATABASE_URL environment variable is missing. DentalCore requires either complete GoDaddy variables (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD) or a valid MySQL DATABASE_URL.'
+    );
+  }
+
+  let u: URL;
+  try {
+    u = new URL(dbUrl);
+  } catch {
+    throw new Error('FATAL: DATABASE_URL is malformed. Ensure it is a valid URL.');
+  }
+
+  if (u.protocol !== 'mysql:' && u.protocol !== 'mariadb:') {
+    throw new Error(`FATAL: DATABASE_URL protocol "${u.protocol}" is unsupported. Only "mysql:" and "mariadb:" protocols are allowed.`);
+  }
+
+  const database = u.pathname.replace(/^\//, '').trim();
+  if (!database) {
+    throw new Error('FATAL: DATABASE_URL must specify a target database name.');
+  }
+
+  if (!u.hostname) {
+    throw new Error('FATAL: DATABASE_URL must specify a target host.');
+  }
+
+  let port = 3306;
+  if (u.port) {
+    port = parseInt(u.port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`FATAL: DATABASE_URL port "${u.port}" is invalid. Port must be an integer between 1 and 65535.`);
+    }
+  }
+
+  const ssl = parseTlsConfiguration(u.searchParams);
 
   return {
     host: u.hostname,
-    port: u.port ? parseInt(u.port, 10) : 3306,
+    port,
     user: decodeURIComponent(u.username || ''),
     password: decodeURIComponent(u.password || ''),
     database,
