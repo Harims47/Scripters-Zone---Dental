@@ -18,7 +18,8 @@ export const NEW_TREATMENT_CATALOG = [
 
   // 3. Orthodontics
   { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Basic' },
-  { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Self Ligating Damon' },
+  { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Self Ligating' },
+  { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Damon' },
   { category: 'Orthodontics', name: 'Removable Appliance', variant: null },
   { category: 'Orthodontics', name: 'Invisalign', variant: null },
 

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
+import { MATERIAL_CATEGORY_NAMES } from '../constants/supplierCatalog';
 
 export const getInventory = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -24,10 +25,21 @@ export const getInventory = async (req: Request, res: Response, next: NextFuncti
     if (category && category !== 'all') {
       where.categoryId = category;
     }
+    const materialCategoryNames = Array.from(MATERIAL_CATEGORY_NAMES);
     if (itemType === 'material') {
-      where.form = { in: MATERIAL_FORMS };
+      where.AND = where.AND || [];
+      where.AND.push({
+        OR: [
+          { form: { in: MATERIAL_FORMS } },
+          { category: { name: { in: materialCategoryNames } } }
+        ]
+      });
     } else if (itemType === 'medicine') {
-      where.form = { notIn: MATERIAL_FORMS };
+      where.AND = where.AND || [];
+      where.AND.push({
+        form: { notIn: MATERIAL_FORMS },
+        category: { name: { notIn: materialCategoryNames } }
+      });
     }
 
     // Since Prisma doesn't natively support comparing two columns in simple findMany,
@@ -126,6 +138,21 @@ export const createMedicine = async (req: Request, res: Response, next: NextFunc
   try {
     const { currentStock, ...rest } = req.body;
 
+    const trimmedName = rest.name?.trim();
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'Item name is required' });
+    }
+
+    // Check for duplicate name
+    const duplicate = await prisma.medicine.findFirst({
+      where: {
+        name: trimmedName
+      }
+    });
+    if (duplicate) {
+      return res.status(400).json({ error: `An item with the name "${trimmedName}" already exists` });
+    }
+
     // Validate category exists and is Active
     if (rest.categoryId) {
       const category = await prisma.medicineCategory.findUnique({
@@ -144,6 +171,7 @@ export const createMedicine = async (req: Request, res: Response, next: NextFunc
     const medicine = await prisma.medicine.create({
       data: {
         ...rest,
+        name: trimmedName,
         currentStock: 0
       },
       include: {
@@ -166,6 +194,23 @@ export const updateMedicine = async (req: Request, res: Response, next: NextFunc
 
     // Explicitly reject or strip currentStock from direct updates
     const { currentStock, ...rest } = req.body;
+
+    if (rest.name) {
+      const trimmedName = rest.name.trim();
+      if (!trimmedName) {
+        return res.status(400).json({ error: 'Item name cannot be empty' });
+      }
+      const duplicate = await prisma.medicine.findFirst({
+        where: {
+          name: trimmedName,
+          id: { not: id }
+        }
+      });
+      if (duplicate) {
+        return res.status(400).json({ error: `An item with the name "${trimmedName}" already exists` });
+      }
+      rest.name = trimmedName;
+    }
 
     // If categoryId is being changed, validate it
     if (rest.categoryId && rest.categoryId !== existing.categoryId) {

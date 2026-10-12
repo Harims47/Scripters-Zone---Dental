@@ -73,6 +73,7 @@ export const createConsultation = async (req: Request, res: Response, next: Next
       await tx.visit.update({
         where: { id: visitId },
         data: { 
+          ...(reasonForVisit ? { reasonForVisit } : {}),
           consultationFee: consultationFee || 0,
           treatmentFee: treatmentFee || 0,
           amountDue: Math.round((consultationFee || 0) + (treatmentFee || 0) + (visit.medicineCost || 0))
@@ -130,17 +131,22 @@ export const updateConsultation = async (req: Request, res: Response, next: Next
         }
       });
 
+      const visitUpdates: any = {};
+      if (reasonForVisit !== undefined && reasonForVisit.trim()) {
+        visitUpdates.reasonForVisit = reasonForVisit.trim();
+      }
       if (consultationFee !== undefined || treatmentFee !== undefined) {
         const finalConsultationFee = consultationFee !== undefined ? consultationFee : existing.consultationFee;
         const finalTreatmentFee = treatmentFee !== undefined ? treatmentFee : existing.treatmentFee;
+        visitUpdates.consultationFee = finalConsultationFee;
+        visitUpdates.treatmentFee = finalTreatmentFee;
+        visitUpdates.amountDue = Math.round(finalConsultationFee + (finalTreatmentFee || 0) + (existing.visit.medicineCost || 0));
+      }
 
+      if (Object.keys(visitUpdates).length > 0) {
         await tx.visit.update({
           where: { id: existing.visitId },
-          data: {
-            consultationFee: finalConsultationFee,
-            treatmentFee: finalTreatmentFee,
-            amountDue: Math.round(finalConsultationFee + (finalTreatmentFee || 0) + (existing.visit.medicineCost || 0))
-          }
+          data: visitUpdates
         });
       }
 

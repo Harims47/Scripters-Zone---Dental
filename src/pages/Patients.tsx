@@ -22,6 +22,7 @@ import { PatientCompleteHistory } from '../components/history/PatientCompleteHis
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import type { Patient, PaginationMeta, PaginatedResponse } from '../types/domain';
+import { ReasonForVisitSelector } from '../components/common/ReasonForVisitSelector';
 import { useClinicContext } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { PatientImportModal } from '../components/patients/PatientImportModal';
@@ -615,12 +616,9 @@ export function PatientsPage() {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">Reason for Visit</label>
-                          <textarea 
+                          <ReasonForVisitSelector 
                             value={visitReason}
-                            onChange={e => setVisitReason(e.target.value)}
-                            placeholder="e.g. Routine Checkup, Toothache, Cleaning..."
-                            className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[14px] text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-teal-300 focus-visible:ring-4 focus-visible:ring-teal-50 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                            onChange={setVisitReason}
                           />
                         </div>
                         <div className="space-y-2">

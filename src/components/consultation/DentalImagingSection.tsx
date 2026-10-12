@@ -154,7 +154,10 @@ export function DentalImagingSection({
   const loadImages = async () => {
     try {
       setLoading(true);
-      const res = await api.get<DentalImage[]>(`/api/patients/${patientId}/dental-images`);
+      const url = currentVisitId
+        ? `/api/patients/${patientId}/dental-images?visitId=${currentVisitId}`
+        : `/api/patients/${patientId}/dental-images`;
+      const res = await api.get<DentalImage[]>(url);
       const imgList = Array.isArray(res) ? res : [];
       setImages(imgList);
       onImagesChange?.(imgList);
@@ -170,7 +173,7 @@ export function DentalImagingSection({
     if (patientId) {
       loadImages();
     }
-  }, [patientId]);
+  }, [patientId, currentVisitId]);
 
   // Sync activeToothNumber if doctor selects a tooth in FDI chart
   useEffect(() => {
@@ -575,12 +578,14 @@ export function DentalImagingSection({
                 <ImageIcon className="w-6 h-6" />
               </div>
               <h5 className="text-xs font-bold text-slate-800">
-                No {activeTab} images recorded for this patient
+                {currentVisitId
+                  ? `No ${activeTab} images recorded for this visit`
+                  : `No ${activeTab} images recorded for this patient`}
               </h5>
               <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
                 {activeTab === 'OPG'
-                  ? 'Upload a panoramic dental tomograph to inspect full-mouth dentition, TMJ, and bone levels.'
-                  : 'Upload digital RVG intraoral radiographs to examine periapical structures and root canals.'}
+                  ? 'Upload a panoramic dental tomograph for this visit to inspect full-mouth dentition, TMJ, and bone levels.'
+                  : 'Upload digital RVG intraoral radiographs for this visit to examine periapical structures and root canals.'}
               </p>
             </div>
           ) : (

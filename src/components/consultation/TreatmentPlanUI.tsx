@@ -184,10 +184,13 @@ export function TreatmentPlanUI({
       setEditingItem(null);
       setErrorMsg(null);
       try {
+        const imgEndpoint = currentVisitId
+          ? `/api/patients/${patientId}/dental-images?visitId=${currentVisitId}`
+          : `/api/patients/${patientId}/dental-images`;
         const [catRes, planRes, imgRes] = await Promise.all([
           api.get<any>('/api/treatments/catalog'),
           api.get<any>(`/api/patients/${patientId}/treatment-plan`),
-          api.get<any>(`/api/patients/${patientId}/dental-images`).catch(() => [])
+          api.get<any>(imgEndpoint).catch(() => [])
         ]);
 
         const catList = Array.isArray(catRes) ? catRes : catRes?.data || [];

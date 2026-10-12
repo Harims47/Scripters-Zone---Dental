@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext'
 import { canAccessRoute } from '../lib/route-permissions'
 import { api } from '../lib/api'
 import { DiscountModal } from '../components/queue/DiscountModal'
+import { parseReasonForVisit } from '../constants/visitReasons'
 
 type QueueRow = {
   id: string
@@ -172,7 +173,19 @@ export function QueuePage() {
     {
       accessorKey: "reasonForVisit",
       header: "Reason for Visit",
-      cell: ({ row }) => <span className="text-sm font-medium text-slate-700">{row.original.reasonForVisit}</span>
+      cell: ({ row }) => {
+        const { primary, sub } = parseReasonForVisit(row.original.reasonForVisit)
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-medium text-slate-700">{primary || row.original.reasonForVisit}</span>
+            {sub && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                {sub}
+              </span>
+            )}
+          </div>
+        )
+      }
     },
     {
       accessorKey: "visitType",

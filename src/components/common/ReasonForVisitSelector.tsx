@@ -81,7 +81,7 @@ export const ReasonForVisitSelector: React.FC<ReasonForVisitSelectorProps> = ({
           value={primary || undefined}
           onValueChange={handlePrimaryChange}
         >
-          <SelectTrigger className="w-full bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
+          <SelectTrigger className="w-full bg-white border-slate-200 disabled:bg-slate-100/90 disabled:text-slate-800 disabled:opacity-90 disabled:cursor-not-allowed disabled:border-slate-200">
             <SelectValue placeholder="Select Reason for Visit" />
           </SelectTrigger>
           <SelectContent className="max-h-72">
@@ -129,7 +129,7 @@ export const ReasonForVisitSelector: React.FC<ReasonForVisitSelectorProps> = ({
             value={sub || undefined}
             onValueChange={handleSubChange}
           >
-            <SelectTrigger className="w-full bg-white border-teal-200 focus:border-teal-400 focus:ring-teal-100 disabled:opacity-50 disabled:cursor-not-allowed">
+            <SelectTrigger className="w-full bg-white border-teal-200 focus:border-teal-400 focus:ring-teal-100 disabled:bg-slate-100/90 disabled:text-slate-800 disabled:opacity-90 disabled:cursor-not-allowed disabled:border-slate-200">
               <SelectValue placeholder={`Select ${selectedCategory.label} Sub-Reason...`} />
             </SelectTrigger>
             <SelectContent className="max-h-60">

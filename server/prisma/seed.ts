@@ -1,6 +1,7 @@
 import { prisma } from '../src/db';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { syncSupplierCatalog } from '../scripts/sync_supplier_catalog';
 dotenv.config();
 
 /**
@@ -51,7 +52,8 @@ async function seedMasterCatalogs() {
 
     // 3. Orthodontics
     { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Basic' },
-    { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Self Ligating Damon' },
+    { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Self Ligating' },
+    { category: 'Orthodontics', name: 'Fixed Appliance', variant: 'Damon' },
     { category: 'Orthodontics', name: 'Removable Appliance' },
     { category: 'Orthodontics', name: 'Invisalign' },
 
@@ -95,6 +97,9 @@ async function seedMasterCatalogs() {
       });
     }
   }
+
+  // Seed master supplier categories and items/dosage
+  await syncSupplierCatalog();
 
   console.log('[Seed] Master catalog setup complete.');
 }
