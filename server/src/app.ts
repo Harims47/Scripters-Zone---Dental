@@ -49,13 +49,27 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:') || origin === process.env.FRONTEND_ORIGIN) {
+    if (!origin) return callback(null, true);
+    const cleanOrigin = origin.trim().replace(/\/+$/, '');
+    const configuredOrigins = process.env.FRONTEND_ORIGIN
+      ? process.env.FRONTEND_ORIGIN.split(',').map((o) => o.trim().replace(/\/+$/, ''))
+      : [];
+
+    if (
+      cleanOrigin.startsWith('http://localhost:') ||
+      cleanOrigin.startsWith('http://127.0.0.1:') ||
+      cleanOrigin.endsWith('.onrender.com') ||
+      configuredOrigins.includes(cleanOrigin)
+    ) {
       callback(null, true);
     } else {
+      console.warn(`[CORS Blocked] Origin: ${origin}, Allowed FRONTEND_ORIGIN: ${process.env.FRONTEND_ORIGIN}`);
       callback(null, false);
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 }));
 
 // Static uploads serving for dental images & patient photos
