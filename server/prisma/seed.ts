@@ -22,23 +22,26 @@ async function main() {
   ];
 
   for (const user of demoUsers) {
-    const staff = await prisma.staff.create({
-      data: {
-        name: user.name,
-        phone: user.phone,
-        role: user.role,
-        status: 'Active'
-      }
-    });
+    const existingUser = await prisma.user.findUnique({ where: { username: user.username } });
+    if (!existingUser) {
+      const staff = await prisma.staff.create({
+        data: {
+          name: user.name,
+          phone: user.phone,
+          role: user.role,
+          status: 'Active'
+        }
+      });
 
-    await prisma.user.create({
-      data: {
-        username: user.username,
-        passwordHash,
-        role: user.role,
-        staffId: staff.id
-      }
-    });
+      await prisma.user.create({
+        data: {
+          username: user.username,
+          passwordHash,
+          role: user.role,
+          staffId: staff.id
+        }
+      });
+    }
   }
 
   // 2. Medicine Categories Master Data
@@ -66,16 +69,21 @@ async function main() {
   }
 
   // 3. Medicines Master Data
-  await prisma.medicine.createMany({
-    data: [
-      { name: 'Amoxicillin 500mg', categoryId: 'cat1', currentStock: 150, stockWarningLevel: 50, unit: 'Tablets', form: 'Tablet', unitPrice: 15 },
-      { name: 'Ibuprofen 400mg', categoryId: 'cat2', currentStock: 200, stockWarningLevel: 100, unit: 'Tablets', form: 'Tablet', unitPrice: 8 },
-      { name: 'Lidocaine 2%', categoryId: 'cat3', currentStock: 45, stockWarningLevel: 20, unit: 'Vials', form: 'Injection', unitPrice: 120 },
-      { name: 'Chlorhexidine', categoryId: 'cat4', currentStock: 30, stockWarningLevel: 15, unit: 'Bottles', form: 'Mouthwash', unitPrice: 85 },
-      { name: 'Paracetamol 500mg', categoryId: 'cat2', currentStock: 300, stockWarningLevel: 100, unit: 'Tablets', form: 'Tablet', unitPrice: 5 },
-      { name: 'Diclofenac Gel', categoryId: 'cat2', currentStock: 25, stockWarningLevel: 10, unit: 'Tubes', form: 'Ointment', unitPrice: 45 },
-    ]
-  });
+  const defaultMedicines = [
+    { name: 'Amoxicillin 500mg', categoryId: 'cat1', currentStock: 150, stockWarningLevel: 50, unit: 'Tablets', form: 'Tablet', unitPrice: 15 },
+    { name: 'Ibuprofen 400mg', categoryId: 'cat2', currentStock: 200, stockWarningLevel: 100, unit: 'Tablets', form: 'Tablet', unitPrice: 8 },
+    { name: 'Lidocaine 2%', categoryId: 'cat3', currentStock: 45, stockWarningLevel: 20, unit: 'Vials', form: 'Injection', unitPrice: 120 },
+    { name: 'Chlorhexidine', categoryId: 'cat4', currentStock: 30, stockWarningLevel: 15, unit: 'Bottles', form: 'Mouthwash', unitPrice: 85 },
+    { name: 'Paracetamol 500mg', categoryId: 'cat2', currentStock: 300, stockWarningLevel: 100, unit: 'Tablets', form: 'Tablet', unitPrice: 5 },
+    { name: 'Diclofenac Gel', categoryId: 'cat2', currentStock: 25, stockWarningLevel: 10, unit: 'Tubes', form: 'Ointment', unitPrice: 45 },
+  ];
+
+  for (const med of defaultMedicines) {
+    const existingMed = await prisma.medicine.findFirst({ where: { name: med.name } });
+    if (!existingMed) {
+      await prisma.medicine.create({ data: med });
+    }
+  }
 
   // 3. Treatment Catalog Master Data
   const treatments = [
