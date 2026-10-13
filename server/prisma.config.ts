@@ -4,7 +4,7 @@ dotenv.config();
 
 export default defineConfig({
   migrations: {
-    seed: 'npx ts-node --project tsconfig.json ./prisma/seed.ts',
+    seed: 'node dist/prisma/seed.js',
   },
   datasource: {
     url: process.env.DATABASE_URL,
