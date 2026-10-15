@@ -23,6 +23,7 @@ import { PaymentMethodSelector } from '../components/payment/payment-components'
 import type { PaymentMethod } from '../components/payment/payment-components';
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails';
 import { PatientClinicalSummary } from '../components/consultation/consultation-components';
+import { ReasonForVisitSelector } from '../components/common/ReasonForVisitSelector';
 import { API_BASE_URL } from '../lib/api';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
@@ -547,7 +548,7 @@ export function ReceptionDeskPage() {
             visitType: 'Appointment',
             token: `${visitItems.length + idx + 1}`,
             doctor: d?.name || 'Unassigned',
-            reasonForVisit: appt.notes || appt.type || 'Consultation',
+            reasonForVisit: appt.notes || appt.type || 'General Checkup',
             stage: isPriority ? 'Next Day' : 'Waiting',
             paymentStatus: '—',
             rawStatus: 'Waiting',
@@ -757,7 +758,7 @@ export function ReceptionDeskPage() {
                     age: patient.age != null && patient.age > 0 ? patient.age.toString() : '',
                     gender: patient.gender || 'Male',
                     address: patient.address || '',
-                    reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
+                    reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'General Checkup',
                     photoUrl: patient.photoUrl || ''
                   });
                   setEditDrawerMode('edit');
@@ -786,7 +787,7 @@ export function ReceptionDeskPage() {
                     age: patient.age != null && patient.age > 0 ? patient.age.toString() : '',
                     gender: patient.gender || 'Male',
                     address: patient.address || '',
-                    reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'Routine Checkup',
+                    reasonForVisit: row.original.reasonForVisit || row.original.rawVisit?.reasonForVisit || 'General Checkup',
                     photoUrl: patient.photoUrl || ''
                   });
                   setEditDrawerMode('view');
@@ -2174,21 +2175,10 @@ export function ReceptionDeskPage() {
 
                   {regType === 'walk-in' && (
                     <div className="mt-4 pt-4 border-t border-slate-100">
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
-                      <Select value={regData.reasonForVisit} onValueChange={(val) => setRegData({ ...regData, reasonForVisit: val })}>
-                        <SelectTrigger className="w-full bg-white border-slate-200">
-                          <SelectValue placeholder="Select Reason for Visit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
-                          <SelectItem value="Toothache">Toothache</SelectItem>
-                          <SelectItem value="Cleaning">Cleaning</SelectItem>
-                          <SelectItem value="Follow-up">Follow-up</SelectItem>
-                          <SelectItem value="Emergency">Emergency</SelectItem>
-                          <SelectItem value="Consultation">Consultation</SelectItem>
-                          <SelectItem value="Surgery">Surgery</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <ReasonForVisitSelector
+                        value={regData.reasonForVisit}
+                        onChange={(val) => setRegData({ ...regData, reasonForVisit: val })}
+                      />
                     </div>
                   )}
                 </div>
@@ -2208,21 +2198,10 @@ export function ReceptionDeskPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
-                      <Select value={apptData.type} onValueChange={(val) => setApptData({ ...apptData, type: val })}>
-                        <SelectTrigger className="w-full bg-white border-slate-200">
-                          <SelectValue placeholder="Select Reason for Visit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
-                          <SelectItem value="Toothache">Toothache</SelectItem>
-                          <SelectItem value="Cleaning">Cleaning</SelectItem>
-                          <SelectItem value="Follow-up">Follow-up</SelectItem>
-                          <SelectItem value="Emergency">Emergency</SelectItem>
-                          <SelectItem value="Consultation">Consultation</SelectItem>
-                          <SelectItem value="Surgery">Surgery</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <ReasonForVisitSelector
+                        value={apptData.type}
+                        onChange={(val) => setApptData({ ...apptData, type: val })}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Notes (Optional)</label>
@@ -2378,21 +2357,11 @@ export function ReceptionDeskPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-slate-700 mb-1 block">Reason for Visit</label>
-                    <Select disabled={editDrawerMode === 'view'} value={regData.reasonForVisit} onValueChange={(val) => setRegData({ ...regData, reasonForVisit: val })}>
-                      <SelectTrigger className="w-full bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <SelectValue placeholder="Select Reason for Visit" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Routine Checkup">Routine Checkup</SelectItem>
-                        <SelectItem value="Toothache">Toothache</SelectItem>
-                        <SelectItem value="Cleaning">Cleaning</SelectItem>
-                        <SelectItem value="Follow-up">Follow-up</SelectItem>
-                        <SelectItem value="Emergency">Emergency</SelectItem>
-                        <SelectItem value="Consultation">Consultation</SelectItem>
-                        <SelectItem value="Surgery">Surgery</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <ReasonForVisitSelector
+                      disabled={editDrawerMode === 'view'}
+                      value={regData.reasonForVisit}
+                      onChange={(val) => setRegData({ ...regData, reasonForVisit: val })}
+                    />
                   </div>
                 </div>
               </DrawerSection>

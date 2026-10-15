@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../lib/api';
 import { toast } from 'react-hot-toast';
-import { Plus, Edit2, UserX, Search, Phone, Building2, PlusCircle, Layers, ChevronDown, X, Check } from 'lucide-react';
+import { Plus, Edit2, UserX, Search, Phone, Building2, PlusCircle, Layers, ChevronDown, X, Check, Package, Eye } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -17,6 +17,7 @@ import { DataTableToolbar } from '../data-table/data-table-toolbar';
 import { DataTableEmpty } from '../data-table/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { Supplier, MedicineCategory } from '../../types/domain';
+import { getCatalogItemsForCategory, type SupplierCatalogItem } from '../../constants/supplierCatalog';
 
 export function SuppliersTab() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -30,15 +31,17 @@ export function SuppliersTab() {
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create');
+  const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+
+  // Category items preview modal
+  const [viewCategoryItems, setViewCategoryItems] = useState<{ categoryName: string; items: SupplierCatalogItem[] } | null>(null);
 
   // Selected category IDs in drawer
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
-
   // Quick Add Category Modal state
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -131,6 +134,22 @@ export function SuppliersTab() {
     setCategoryDropdownOpen(false);
     setCategorySearch('');
     setDrawerMode('edit');
+    setDrawerOpen(true);
+  };
+
+  const openViewDrawer = (s: Supplier) => {
+    setSelectedSupplier(s);
+    setFormData({
+      name: s.name,
+      contactPerson: s.contactPerson || '',
+      phone: s.phone || '',
+      email: s.email || '',
+      address: s.address || ''
+    });
+    setSelectedCategoryIds(s.categories ? s.categories.map(c => c.id) : []);
+    setCategoryDropdownOpen(false);
+    setCategorySearch('');
+    setDrawerMode('view');
     setDrawerOpen(true);
   };
 
@@ -228,22 +247,33 @@ export function SuppliersTab() {
     },
     {
       id: 'categories',
-      header: 'Categories',
+      header: 'Supplied Categories & Dosage',
       cell: ({ row }) => {
         const cats = row.original.categories || [];
         if (cats.length === 0) {
           return <span className="text-slate-400 text-xs italic">None</span>;
         }
         return (
-          <div className="flex flex-wrap gap-1 items-center max-w-[170px]">
-            {cats.slice(0, 2).map(c => (
-              <Badge key={c.id} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[11px] py-0 px-1.5 font-medium">
-                {c.name}
-              </Badge>
-            ))}
-            {cats.length > 2 && (
-              <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 text-[10px] py-0 px-1">
-                +{cats.length - 2}
+          <div className="flex flex-wrap gap-1 items-center max-w-[220px]">
+            {cats.slice(0, 3).map(c => {
+              const items = getCatalogItemsForCategory(c.name);
+              return (
+                <Badge
+                  key={c.id}
+                  variant="outline"
+                  onClick={() => items.length > 0 && setViewCategoryItems({ categoryName: c.name, items })}
+                  className={`bg-teal-50 text-teal-700 border-teal-200 text-[11px] py-0.5 px-2 font-medium transition-colors ${
+                    items.length > 0 ? 'cursor-pointer hover:bg-teal-100/80 hover:border-teal-300' : ''
+                  }`}
+                  title={items.length > 0 ? `Click to view subcategories for ${c.name}` : c.name}
+                >
+                  {c.name}
+                </Badge>
+              );
+            })}
+            {cats.length > 3 && (
+              <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 text-[10px] py-0.5 px-1.5">
+                +{cats.length - 3} more
               </Badge>
             )}
           </div>
@@ -323,6 +353,15 @@ export function SuppliersTab() {
         const s = row.original;
         return (
           <div className="flex items-center justify-end gap-1.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-teal-600 hover:bg-teal-50"
+              title="View Supplier Profile & Dosage Catalog"
+              onClick={() => openViewDrawer(s)}
+            >
+              <Eye className="w-4 h-4" />
+            </Button>
             <Button
               size="icon"
               variant="ghost"
@@ -424,308 +463,466 @@ export function SuppliersTab() {
 
       {/* Supplier Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" size="lg" className="sm:max-w-md bg-white border-l shadow-2xl p-0 flex flex-col">
+        <SheetContent side="right" size="lg" className="sm:max-w-lg bg-white border-l shadow-2xl p-0 flex flex-col">
           <div className="px-6 py-5 border-b bg-slate-50/60">
             <h3 className="text-lg font-bold text-slate-900">
-              {drawerMode === 'create' ? 'Add New Supplier' : 'Edit Supplier'}
+              {drawerMode === 'create' ? 'Add New Supplier' : drawerMode === 'edit' ? 'Edit Supplier' : 'Supplier Profile & Catalog'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              {drawerMode === 'create' ? 'Register a wholesale vendor for purchase orders.' : 'Update supplier contact and category information.'}
+              {drawerMode === 'create'
+                ? 'Register a wholesale vendor for purchase orders and link supplied dosage materials.'
+                : drawerMode === 'edit'
+                ? 'Update supplier contact details and linked dosage categories.'
+                : 'Detailed supplier contact information and supplied materials catalog.'}
             </p>
           </div>
 
           <SheetScrollArea className="p-6 flex-1">
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="sup-name" className="text-xs font-semibold text-slate-600 uppercase">
-                  Supplier Name <span className="text-rose-500">*</span>
-                </Label>
-                <Input
-                  id="sup-name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Apollo Pharma Distributors"
-                  className="h-10 text-sm"
-                  required
-                />
-              </div>
-
-              {/* Medicine Categories Supplied Section - Multi-select Dropdown */}
-              <div className="space-y-2 pt-2 border-t border-slate-100" ref={categoryDropdownRef}>
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold text-slate-700 uppercase flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-teal-600" />
-                    Medicine Categories Supplied
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setQuickAddOpen(true)}
-                    className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 h-7 text-xs px-2 font-medium"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5 mr-1" /> Quick Add Category
-                  </Button>
+            {drawerMode === 'view' ? (
+              <div className="space-y-5">
+                {/* Supplier Profile Card */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold text-slate-900">{formData.name}</span>
+                    <Badge className={selectedSupplier?.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}>
+                      {selectedSupplier?.status || 'Active'}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-slate-200/60">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Contact Person</span>
+                      <span className="font-medium text-slate-800">{formData.contactPerson || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Phone</span>
+                      <span className="font-medium text-slate-800 font-mono">{formData.phone || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Email</span>
+                      <span className="font-medium text-slate-800 truncate block">{formData.email || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Address</span>
+                      <span className="font-medium text-slate-800 truncate block">{formData.address || '—'}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <p className="text-[11px] text-slate-400">
-                  Select which types of medicines or supplies this vendor provides.
-                </p>
+                {/* Supplied Categories & Dosage Catalog View */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700 uppercase flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-teal-600" /> Supplied Categories & Dosage Items
+                    </Label>
+                    <span className="text-[11px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200/50">
+                      {selectedCategoryIds.length} Categories
+                    </span>
+                  </div>
 
-                {/* Multiselect Dropdown Control */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-                    className={`w-full min-h-[42px] px-3 py-2 text-left bg-white border rounded-xl flex items-center justify-between gap-2 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${
-                      categoryDropdownOpen
-                        ? 'border-teal-500 ring-2 ring-teal-500/20 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
-                      {selectedCategoryIds.length === 0 ? (
-                        <span className="text-slate-400 text-sm">Select medicine categories...</span>
-                      ) : (
-                        selectedCategoryIds.map((id) => {
-                          const cat = categories.find((c) => c.id === id);
-                          if (!cat) return null;
-                          return (
-                            <span
-                              key={cat.id}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 text-xs font-medium border border-teal-200/60"
-                            >
-                              {cat.name}
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleCategory(cat.id);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.stopPropagation();
-                                    handleToggleCategory(cat.id);
-                                  }
-                                }}
-                                className="hover:text-teal-900 rounded p-0.5 transition-colors cursor-pointer"
-                              >
-                                <X className="w-3 h-3" />
+                  {selectedCategoryIds.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      No categories assigned to this supplier.
+                    </p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {selectedCategoryIds.map((id) => {
+                        const cat = categories.find((c) => c.id === id);
+                        if (!cat) return null;
+                        const items = getCatalogItemsForCategory(cat.name);
+                        return (
+                          <div key={cat.id} className="bg-slate-50/80 rounded-xl p-3 border border-slate-200/80 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-teal-500" />
+                                {cat.name}
                               </span>
-                            </span>
-                          );
-                        })
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0 text-slate-400">
-                      {selectedCategoryIds.length > 0 && (
-                        <span className="text-[11px] font-semibold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full">
-                          {selectedCategoryIds.length}
-                        </span>
-                      )}
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform duration-200 ${
-                          categoryDropdownOpen ? 'transform rotate-180 text-teal-600' : ''
-                        }`}
-                      />
-                    </div>
-                  </button>
-
-                  {/* Dropdown Menu Popover */}
-                  {categoryDropdownOpen && (
-                    <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in-0 zoom-in-95">
-                      {/* Search & Actions Bar */}
-                      <div className="p-2 border-b border-slate-100 bg-slate-50/70 space-y-2">
-                        <div className="relative">
-                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Filter categories..."
-                            value={categorySearch}
-                            onChange={(e) => setCategorySearch(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 placeholder:text-slate-400"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px] px-1 text-slate-500">
-                          <span>
-                            {selectedCategoryIds.length} of {categories.length} selected
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {categories.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const allIds = categories.map((c) => c.id);
-                                  setSelectedCategoryIds(allIds);
-                                }}
-                                className="text-teal-600 hover:text-teal-700 font-medium hover:underline"
-                              >
-                                Select all
-                              </button>
+                              <Badge variant="outline" className="text-[10px] bg-white text-teal-700 border-teal-200 font-bold">
+                                {items.length} items
+                              </Badge>
+                            </div>
+                            {cat.description && (
+                              <p className="text-[11px] text-slate-500">{cat.description}</p>
                             )}
-                            {selectedCategoryIds.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedCategoryIds([]);
-                                }}
-                                className="text-slate-500 hover:text-rose-600 font-medium hover:underline"
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Categories List */}
-                      <div className="max-h-56 overflow-y-auto p-1.5 space-y-1">
-                        {categories.length === 0 ? (
-                          <div className="p-4 text-center">
-                            <p className="text-xs text-slate-500">No active categories found.</p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCategoryDropdownOpen(false);
-                                setQuickAddOpen(true);
-                              }}
-                              className="text-teal-600 text-xs font-semibold hover:underline mt-1 inline-block"
-                            >
-                              + Quick Add Category
-                            </button>
-                          </div>
-                        ) : (
-                          (() => {
-                            const filtered = categories.filter((c) =>
-                              c.name.toLowerCase().includes(categorySearch.toLowerCase())
-                            );
-
-                            if (filtered.length === 0) {
-                              return (
-                                <div className="p-4 text-center">
-                                  <p className="text-xs text-slate-400">
-                                    No category matching "{categorySearch}"
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setNewCatName(categorySearch);
-                                      setCategoryDropdownOpen(false);
-                                      setQuickAddOpen(true);
-                                    }}
-                                    className="text-teal-600 text-xs font-semibold hover:underline mt-1.5 inline-flex items-center gap-1"
+                            {items.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {items.map((item) => (
+                                  <span
+                                    key={item.name}
+                                    className="text-[11px] bg-white text-slate-700 border border-slate-200 px-2 py-0.5 rounded-md font-medium shadow-2xs"
                                   >
-                                    <Plus className="w-3 h-3" /> Add "{categorySearch}"
-                                  </button>
-                                </div>
-                              );
-                            }
-
-                            return filtered.map((cat) => {
-                              const isChecked = selectedCategoryIds.includes(cat.id);
-                              return (
-                                <div
-                                  key={cat.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleToggleCategory(cat.id);
-                                  }}
-                                  className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer text-xs transition-colors ${
-                                    isChecked
-                                      ? 'bg-teal-50 text-teal-900 font-medium'
-                                      : 'hover:bg-slate-100 text-slate-700'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2.5">
-                                    <Checkbox
-                                      id={`popover-cat-${cat.id}`}
-                                      checked={isChecked}
-                                      onCheckedChange={() => handleToggleCategory(cat.id)}
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                    <span>{cat.name}</span>
-                                  </div>
-                                  {isChecked && <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />}
-                                </div>
-                              );
-                            });
-                          })()
-                        )}
-                      </div>
+                                    {item.name} {item.unit && <span className="text-slate-400 text-[10px]">({item.unit})</span>}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">No predefined dosage items in master catalog.</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               </div>
-
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <Label htmlFor="sup-contact" className="text-xs font-semibold text-slate-600 uppercase">
-                  Contact Person
-                </Label>
-                <Input
-                  id="sup-contact"
-                  value={formData.contactPerson}
-                  onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-                  placeholder="e.g. Mr. Rajesh Kumar"
-                  className="h-10 text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            ) : (
+              <div className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="sup-phone" className="text-xs font-semibold text-slate-600 uppercase">
-                    Phone Number
+                  <Label htmlFor="sup-name" className="text-xs font-semibold text-slate-600 uppercase">
+                    Supplier Name <span className="text-rose-500">*</span>
                   </Label>
                   <Input
-                    id="sup-phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="e.g. 9876543210"
-                    className="h-10 text-sm font-mono"
+                    id="sup-name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g. Apollo Pharma Distributors"
+                    className="h-10 text-sm"
+                    required
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="sup-email" className="text-xs font-semibold text-slate-600 uppercase">
-                    Email Address
+                {/* Medicine Categories Supplied Section - Multi-select Dropdown */}
+                <div className="space-y-2 pt-2 border-t border-slate-100" ref={categoryDropdownRef}>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700 uppercase flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-teal-600" />
+                      Supplied Categories & Dosage / Materials
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setQuickAddOpen(true)}
+                      className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 h-7 text-xs px-2 font-medium"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 mr-1" /> Quick Add Category
+                    </Button>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400">
+                    Select which categories and dosage materials this vendor provides.
+                  </p>
+
+                  {/* Multiselect Dropdown Control */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+                      className={`w-full min-h-[42px] px-3 py-2 text-left bg-white border rounded-xl flex items-center justify-between gap-2 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${
+                        categoryDropdownOpen
+                          ? 'border-teal-500 ring-2 ring-teal-500/20 shadow-xs'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+                        {selectedCategoryIds.length === 0 ? (
+                          <span className="text-slate-400 text-sm">Select medicine & supply categories...</span>
+                        ) : (
+                          selectedCategoryIds.map((id) => {
+                            const cat = categories.find((c) => c.id === id);
+                            if (!cat) return null;
+                            return (
+                              <span
+                                key={cat.id}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 text-xs font-medium border border-teal-200/60"
+                              >
+                                {cat.name}
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleCategory(cat.id);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.stopPropagation();
+                                      handleToggleCategory(cat.id);
+                                    }
+                                  }}
+                                  className="hover:text-teal-900 rounded p-0.5 transition-colors cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </span>
+                              </span>
+                            );
+                          })
+                        )}
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${
+                          categoryDropdownOpen ? 'transform rotate-180 text-teal-600' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {/* Dropdown Menu Popover */}
+                    {categoryDropdownOpen && (
+                      <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in-0 zoom-in-95">
+                        {/* Search & Actions Bar */}
+                        <div className="p-2 border-b border-slate-100 bg-slate-50/70 space-y-2">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="Filter categories or dosage items (e.g. Tetric, Gloves, Saline)..."
+                              value={categorySearch}
+                              onChange={(e) => setCategorySearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 placeholder:text-slate-400"
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] px-1 text-slate-500">
+                            <span>
+                              {selectedCategoryIds.length} of {categories.length} selected
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {categories.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const allIds = categories.map((c) => c.id);
+                                    setSelectedCategoryIds(allIds);
+                                  }}
+                                  className="text-teal-600 hover:text-teal-700 font-medium hover:underline"
+                                >
+                                  Select all
+                                </button>
+                              )}
+                              {selectedCategoryIds.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedCategoryIds([]);
+                                  }}
+                                  className="text-slate-500 hover:text-rose-600 font-medium hover:underline"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Categories List */}
+                        <div className="max-h-60 overflow-y-auto p-1.5 space-y-1">
+                          {categories.length === 0 ? (
+                            <div className="p-4 text-center">
+                              <p className="text-xs text-slate-500">No active categories found.</p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCategoryDropdownOpen(false);
+                                  setQuickAddOpen(true);
+                                }}
+                                className="text-teal-600 text-xs font-semibold hover:underline mt-1 inline-block"
+                              >
+                                + Quick Add Category
+                              </button>
+                            </div>
+                          ) : (
+                            (() => {
+                              const q = categorySearch.toLowerCase().trim();
+                              const filtered = categories.filter((c) => {
+                                if (!q) return true;
+                                if (c.name.toLowerCase().includes(q)) return true;
+                                const items = getCatalogItemsForCategory(c.name);
+                                return items.some((i) => i.name.toLowerCase().includes(q));
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div className="p-4 text-center">
+                                    <p className="text-xs text-slate-400">
+                                      No category or dosage item matching "{categorySearch}"
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setNewCatName(categorySearch);
+                                        setCategoryDropdownOpen(false);
+                                        setQuickAddOpen(true);
+                                      }}
+                                      className="text-teal-600 text-xs font-semibold hover:underline mt-1.5 inline-flex items-center gap-1"
+                                    >
+                                      <Plus className="w-3 h-3" /> Add Category "{categorySearch}"
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              return filtered.map((cat) => {
+                                const isChecked = selectedCategoryIds.includes(cat.id);
+
+                                return (
+                                  <div
+                                    key={cat.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleCategory(cat.id);
+                                    }}
+                                    className={`px-3 py-2 rounded-lg cursor-pointer text-xs transition-colors border ${
+                                      isChecked
+                                        ? 'bg-teal-50 border-teal-200 text-teal-950 font-medium'
+                                        : 'hover:bg-slate-50 border-transparent text-slate-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <Checkbox
+                                          id={`popover-cat-${cat.id}`}
+                                          checked={isChecked}
+                                          onCheckedChange={() => handleToggleCategory(cat.id)}
+                                          onClick={(e) => e.stopPropagation()}
+                                        />
+                                        <span className="font-semibold text-slate-800 truncate">{cat.name}</span>
+                                      </div>
+                                      {isChecked && <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />}
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subcategories for Selected Categories */}
+                  {selectedCategoryIds.length > 0 && (
+                    <div className="mt-3 rounded-xl border border-teal-200/80 bg-teal-50/40 p-3 space-y-2.5">
+                      <Label className="text-xs font-semibold text-slate-700">
+                        Subcategories for Selected Categories:
+                      </Label>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {selectedCategoryIds.map((id) => {
+                          const cat = categories.find((c) => c.id === id);
+                          if (!cat) return null;
+                          const items = getCatalogItemsForCategory(cat.name);
+                          return (
+                            <div key={cat.id} className="bg-white rounded-lg p-2.5 border border-teal-100 shadow-2xs space-y-1.5">
+                              <div className="flex items-center justify-between text-xs font-semibold text-slate-800">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                                  {cat.name}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleCategory(cat.id)}
+                                  className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors"
+                                  title={`Remove ${cat.name}`}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              {items.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {items.map((item) => (
+                                    <span
+                                      key={item.name}
+                                      className="text-[10px] bg-slate-50 text-slate-700 border border-slate-200/70 px-1.5 py-0.5 rounded font-medium"
+                                    >
+                                      {item.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-slate-400 italic">No subcategories defined.</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <Label htmlFor="sup-contact" className="text-xs font-semibold text-slate-600 uppercase">
+                    Contact Person
                   </Label>
                   <Input
-                    id="sup-email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="sales@supplier.com"
+                    id="sup-contact"
+                    value={formData.contactPerson}
+                    onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                    placeholder="e.g. Mr. Rajesh Kumar"
+                    className="h-10 text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sup-phone" className="text-xs font-semibold text-slate-600 uppercase">
+                      Phone Number
+                    </Label>
+                    <Input
+                      id="sup-phone"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="e.g. 9876543210"
+                      className="h-10 text-sm font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="sup-email" className="text-xs font-semibold text-slate-600 uppercase">
+                      Email Address
+                    </Label>
+                    <Input
+                      id="sup-email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="sales@supplier.com"
+                      className="h-10 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="sup-addr" className="text-xs font-semibold text-slate-600 uppercase">
+                    Physical Address
+                  </Label>
+                  <Input
+                    id="sup-addr"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="Street, City, Postal Code"
                     className="h-10 text-sm"
                   />
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sup-addr" className="text-xs font-semibold text-slate-600 uppercase">
-                  Physical Address
-                </Label>
-                <Input
-                  id="sup-addr"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Street, City, Postal Code"
-                  className="h-10 text-sm"
-                />
-              </div>
-            </div>
+            )}
           </SheetScrollArea>
 
           <DrawerFooterActions>
-            <Button variant="outline" onClick={() => setDrawerOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveSupplier} className="bg-teal-600 hover:bg-teal-700 text-white font-medium">
-              {drawerMode === 'create' ? 'Save Supplier' : 'Update Supplier'}
-            </Button>
+            {drawerMode === 'view' ? (
+              <div className="flex items-center justify-between w-full">
+                <Button variant="outline" onClick={() => setDrawerOpen(false)}>
+                  Close
+                </Button>
+                {selectedSupplier && (
+                  <Button
+                    onClick={() => openEditDrawer(selectedSupplier)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium gap-1.5"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit Supplier
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setDrawerOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveSupplier} className="bg-teal-600 hover:bg-teal-700 text-white font-medium">
+                  {drawerMode === 'create' ? 'Save Supplier' : 'Update Supplier'}
+                </Button>
+              </>
+            )}
           </DrawerFooterActions>
         </SheetContent>
       </Sheet>
@@ -817,6 +1014,50 @@ export function SuppliersTab() {
               className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
             >
               {isDeactivating ? 'Deactivating...' : 'Yes, Deactivate'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category Dosage / Items Modal */}
+      <Dialog open={!!viewCategoryItems} onOpenChange={(open) => !open && setViewCategoryItems(null)}>
+        <DialogContent className="sm:max-w-[480px] bg-white rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Package className="w-4 h-4 text-teal-600" /> {viewCategoryItems?.categoryName} — Dosage & Materials
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 pt-1">
+              Predefined materials and dosage items available under this category ({viewCategoryItems?.items.length || 0} items).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-72 overflow-y-auto space-y-1.5 py-2 pr-1">
+            {viewCategoryItems?.items.map((item, idx) => (
+              <div
+                key={item.name}
+                className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-slate-400 w-5">{idx + 1}.</span>
+                  <span className="font-semibold text-slate-800">{item.name}</span>
+                  {item.form && (
+                    <Badge variant="outline" className="text-[10px] bg-white text-slate-500 border-slate-200 py-0">
+                      {item.form}
+                    </Badge>
+                  )}
+                </div>
+                {item.unit && (
+                  <span className="text-[11px] font-mono font-medium text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200/50">
+                    {item.unit}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button size="sm" onClick={() => setViewCategoryItems(null)} className="w-full sm:w-auto">
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

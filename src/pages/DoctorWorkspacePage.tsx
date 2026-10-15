@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Sheet, SheetContent, SheetTitle } from '../components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Badge } from '../components/ui/badge'
+import { ReasonForVisitSelector } from '../components/common/ReasonForVisitSelector'
+import { parseReasonForVisit } from '../constants/visitReasons'
 
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI'
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails'
@@ -504,9 +506,11 @@ export function DoctorWorkspacePage() {
 
 
   useEffect(() => {
-    if (consultation) {
-      setReason(consultation.reasonForVisit || visit?.reasonForVisit || '')
+    // Priority: Registration reason on visit takes precedence so updates from registration are immediately reflected
+    const effectiveReason = visit?.reasonForVisit || consultation?.reasonForVisit || '';
+    setReason(effectiveReason);
 
+    if (consultation) {
       // Clinical notes strictly contains only clinical notes - strip legacy waiver strings if present
       const rawNotes = consultation.clinicalNotes || '';
       const cleanedNotes = rawNotes
@@ -529,14 +533,12 @@ export function DoctorWorkspacePage() {
       setTreatmentZeroReason(initialTreatReason);
     } else if (visit) {
       // FRESH VISIT FOR THIS PATIENT: NEVER CARRY OVER PREVIOUS CONSULTATION DETAILS!
-      setReason(visit.reasonForVisit || '')
       setNotes('')
       setConsultationFee(visit.consultationFee !== undefined && visit.consultationFee !== null ? visit.consultationFee : 500)
       setTreatmentFee(Number(visit.treatmentFee) || 0)
       setConsultationZeroReason('')
       setTreatmentZeroReason('')
     } else {
-      setReason('')
       setNotes('')
       setConsultationFee(500)
       setTreatmentFee(0)
@@ -544,6 +546,12 @@ export function DoctorWorkspacePage() {
       setTreatmentZeroReason('')
     }
   }, [visitId, consultation, visit])
+
+  const handleOpenConsultationModal = () => {
+    // Ensure reason is fresh from visit/registration on modal open
+    setReason(visit?.reasonForVisit || consultation?.reasonForVisit || '');
+    setConsultationModalOpen(true);
+  };
 
   const calculatedMedicineCost = useMemo(() => {
     const rxItems = (prescription?.items && prescription.items.length > 0) ? prescription.items : activePrescription;
@@ -924,7 +932,7 @@ export function DoctorWorkspacePage() {
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Queue
           </Button>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-9 shadow-sm bg-white border-slate-200">
+            <Button variant="outline" size="sm" onClick={handleOpenConsultationModal} className="h-9 shadow-sm bg-white border-slate-200">
               <FileText className="mr-2 h-4 w-4 text-blue-600" /> Consultation
             </Button>
             <Button variant="outline" size="sm" aria-label="Treatment" onClick={() => { setTreatmentModalInitialEdit(false); setTreatmentModalOpen(true); }} className="h-9 shadow-sm bg-white border-slate-200">
@@ -948,9 +956,20 @@ export function DoctorWorkspacePage() {
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-sm">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-900 whitespace-nowrap">Reason for Visit:</span>
-                <span className="bg-slate-50 px-3 py-1 rounded border border-slate-100 text-slate-800 truncate max-w-xs">
-                  {visit.reasonForVisit || 'Not specified'}
-                </span>
+                {(() => {
+                  const currentReason = visit.reasonForVisit || consultation?.reasonForVisit;
+                  const parsed = parseReasonForVisit(currentReason);
+                  return (
+                    <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 text-slate-800">
+                      <span className="font-medium">{parsed.primary || 'Not specified'}</span>
+                      {parsed.sub && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                          {parsed.sub}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-900 whitespace-nowrap">Date:</span>
@@ -1191,7 +1210,7 @@ export function DoctorWorkspacePage() {
                     <Button variant="outline" size="sm" onClick={() => setViewConsultationModalOpen(true)} className="h-8 px-3 text-blue-700 border-blue-200 hover:bg-blue-50 hover:text-blue-800">
                       <Eye className="h-4 w-4 mr-1.5" /> View
                     </Button>
-                    <Button variant="secondary" size="sm" onClick={() => setConsultationModalOpen(true)} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
+                    <Button variant="secondary" size="sm" onClick={handleOpenConsultationModal} className="h-8 px-3 text-slate-700 bg-slate-100 hover:bg-slate-200 border-0">
                       <Edit className="h-4 w-4 mr-1.5" /> Edit
                     </Button>
                   </div>
@@ -1199,7 +1218,20 @@ export function DoctorWorkspacePage() {
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 text-sm text-slate-700 space-y-4">
                   <div>
                     <strong className="block mb-1 text-slate-900">Reason for Visit</strong>
-                    {consultation.reasonForVisit}
+                    {(() => {
+                      const currentReason = consultation.reasonForVisit || visit?.reasonForVisit;
+                      const parsed = parseReasonForVisit(currentReason);
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-800">{parsed.primary || '—'}</span>
+                          {parsed.sub && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                              Stage: {parsed.sub}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <strong className="block mb-1 text-slate-900">Clinical Notes</strong>
@@ -1751,9 +1783,20 @@ export function DoctorWorkspacePage() {
             <div className="space-y-4 py-3 overflow-y-auto flex-1 pr-1 [scrollbar-gutter:stable]">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Reason for Visit</label>
-                <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm font-medium text-slate-800">
-                  {reason || 'Not specified'}
-                </div>
+                {(() => {
+                  const currentReason = reason || visit?.reasonForVisit || consultation?.reasonForVisit || '';
+                  const parsed = parseReasonForVisit(currentReason);
+                  return (
+                    <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm font-medium text-slate-800 flex items-center justify-between">
+                      <span>{parsed.primary || 'Not specified'}</span>
+                      {parsed.sub && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                          Stage: {parsed.sub}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Notes</label>
@@ -1792,12 +1835,22 @@ export function DoctorWorkspacePage() {
               <DialogTitle>Consultation Details</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 py-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold text-slate-700">Reason for Visit</Label>
-                <div className="px-3 py-2 rounded-md bg-slate-50 border border-slate-200 text-sm text-slate-700">
-                  {reason || 'Not specified'}
+              <div className="space-y-2 p-3.5 bg-slate-50/70 rounded-xl border border-slate-200/80">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold text-slate-700">Reason for Visit & Procedure Stage</Label>
+                  <span className="text-[11px] text-teal-700 bg-teal-50 border border-teal-200/80 font-medium px-2 py-0.5 rounded-full">
+                    Registration Synced
+                  </span>
                 </div>
-                <p className="text-xs text-slate-400">Captured at registration — cannot be changed here.</p>
+                <ReasonForVisitSelector
+                  disabled={true}
+                  value={reason}
+                  onChange={setReason}
+                  showLabel={false}
+                />
+                <p className="text-[11px] text-slate-400">
+                  Captured at registration — cannot be changed here.
+                </p>
               </div>
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -2512,9 +2565,21 @@ export function DoctorWorkspacePage() {
                                 <span>{prevVisit.appointmentId ? 'Appointment' : 'Walk-in'}</span>
                               </div>
 
-                              <div className="text-xs text-slate-600">
+                              <div className="text-xs text-slate-600 flex items-center gap-1.5 flex-wrap">
                                 <span className="font-medium text-slate-700">Reason: </span>
-                                <span className="text-slate-800">{prevVisit.reasonForVisit || 'General Consultation'}</span>
+                                {(() => {
+                                  const parsed = parseReasonForVisit(prevVisit.reasonForVisit);
+                                  return (
+                                    <div className="inline-flex items-center gap-1">
+                                      <span className="text-slate-800 font-medium">{parsed.primary || 'General Consultation'}</span>
+                                      {parsed.sub && (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                                          {parsed.sub}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
 

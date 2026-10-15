@@ -19,6 +19,7 @@ import { SupplierBillPaymentsModal } from './SupplierBillPaymentsModal';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { PurchaseOrder, Supplier, PurchaseOrderStatus, SupplierBill } from '../../types/domain';
 import type { Medicine } from '../../lib/mock-data/medicines';
+import { isMaterialCategory } from '../../constants/supplierCatalog';
 
 interface CreatePOItemRow {
   medicineId: string;
@@ -35,14 +36,16 @@ const MATERIAL_FORMS = ['Material', 'Dental Material', 'Consumable', 'Instrument
 
 export const isMaterialItem = (item: { form?: string; category?: { name?: string } } | null | undefined): boolean => {
   if (!item) return false;
+  const catName = item.category?.name || '';
+  if (isMaterialCategory(catName)) return true;
   const f = (item.form || '').toLowerCase().trim();
   if (MATERIAL_FORMS.some(mf => mf.toLowerCase() === f) ||
     f.includes('material') || f.includes('equipment') || f.includes('consumable') ||
-    f.includes('instrument') || f.includes('disposable') || f.includes('tool')) {
+    f.includes('instrument') || f.includes('disposable') || f.includes('tool') ||
+    f.includes('point') || f.includes('file') || f.includes('composite')) {
     return true;
   }
-  const catName = (item.category?.name || '').toLowerCase().trim();
-  return catName.includes('material') || catName.includes('equipment') || catName.includes('consumable') || catName.includes('supply') || catName.includes('instrument');
+  return false;
 };
 
 export const getPurchaseOrderType = (po: PurchaseOrder): 'MATERIAL' | 'MEDICINE' => {
@@ -53,6 +56,27 @@ export const getPurchaseOrderType = (po: PurchaseOrder): 'MATERIAL' | 'MEDICINE'
     if (hasMaterial) return 'MATERIAL';
   }
   return 'MEDICINE';
+};
+
+export const cleanPONotes = (notes?: string | null): string => {
+  if (!notes) return '';
+  return notes
+    .replace(/\[(Material|Item|Medicine) PO\]\s*/g, '')
+    .replace(/\[Cat:[^\]]+\]\s*/g, '')
+    .replace(/\[Form:[^\]]+\]\s*/g, '')
+    .trim();
+};
+
+export const extractPOFilters = (po: PurchaseOrder, medicinesList: Medicine[] = []) => {
+  const rawNotes = po.notes || '';
+  const catMatch = rawNotes.match(/\[Cat:([^\]]+)\]/);
+  const formMatch = rawNotes.match(/\[Form:([^\]]+)\]/);
+
+  const firstMed = po.items?.[0]?.medicine || medicinesList.find(m => m.id === po.items?.[0]?.medicineId);
+  const categoryId = catMatch ? catMatch[1] : ((firstMed as any)?.categoryId || firstMed?.category?.id || 'all');
+  const form = formMatch ? formMatch[1] : (firstMed?.form || 'all');
+
+  return { categoryId, form };
 };
 
 export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: PurchaseOrdersTabProps = {}) {
@@ -106,28 +130,86 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
   // Create / Edit PO form state
   const [poType, setPoType] = useState<'MEDICINE' | 'MATERIAL'>('MEDICINE');
   const [poCategoryFilter, setPoCategoryFilter] = useState<'all' | 'item' | 'material'>('all');
+  const [poSupplierFilter, setPoSupplierFilter] = useState('all');
   const [poSupplierId, setPoSupplierId] = useState('');
   const [poOrderDate, setPoOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [poNotes, setPoNotes] = useState('');
   const [poItems, setPoItems] = useState<CreatePOItemRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Item filters within Create / Edit PO drawer
+  const [itemCategoryFilter, setItemCategoryFilter] = useState<string>('all');
+  const [itemDosageFilter, setItemDosageFilter] = useState<string>('all');
+
   const filteredOrders = useMemo(() => {
     return orders.filter(po => {
-      if (poCategoryFilter === 'all') return true;
-      const type = getPurchaseOrderType(po);
-      if (poCategoryFilter === 'item') return type === 'MEDICINE';
-      if (poCategoryFilter === 'material') return type === 'MATERIAL';
+      if (poCategoryFilter === 'item') {
+        const type = getPurchaseOrderType(po);
+        if (type !== 'MEDICINE') return false;
+      } else if (poCategoryFilter === 'material') {
+        const type = getPurchaseOrderType(po);
+        if (type !== 'MATERIAL') return false;
+      }
+      if (poSupplierFilter !== 'all' && po.supplierId !== poSupplierFilter) {
+        return false;
+      }
       return true;
     });
-  }, [orders, poCategoryFilter]);
+  }, [orders, poCategoryFilter, poSupplierFilter]);
 
-  const selectableMedicines = useMemo(() => {
+  const availableCategoriesForPO = useMemo(() => {
+    const isMaterial = poType === 'MATERIAL';
+    const activeMeds = medicines.filter(m => m.status !== 'Inactive' && (isMaterial ? isMaterialItem(m) : !isMaterialItem(m)));
+    const catMap = new Map<string, string>(); // id -> name
+    activeMeds.forEach(m => {
+      if (m.category?.id && m.category?.name) {
+        catMap.set(m.category.id, m.category.name);
+      }
+    });
+    return Array.from(catMap.entries()).map(([id, name]) => ({ id, name }));
+  }, [medicines, poType]);
+
+  const availableDosageFormsForPO = useMemo(() => {
+    const isMaterial = poType === 'MATERIAL';
+    let pool = medicines.filter(m => m.status !== 'Inactive' && (isMaterial ? isMaterialItem(m) : !isMaterialItem(m)));
+
+    if (itemCategoryFilter !== 'all') {
+      pool = pool.filter(m => m.categoryId === itemCategoryFilter || (m.category?.name || '').toLowerCase() === itemCategoryFilter.toLowerCase());
+    }
+
+    const forms = Array.from(new Set(pool.map(m => m.form).filter(Boolean))) as string[];
+    return forms.sort();
+  }, [medicines, poType, itemCategoryFilter]);
+
+  const filteredMedicinesForPO = useMemo(() => {
+    const isMaterial = poType === 'MATERIAL';
+    const seenNames = new Set<string>();
     return medicines.filter(m => {
       if (m.status === 'Inactive') return false;
-      return poType === 'MATERIAL' ? isMaterialItem(m) : !isMaterialItem(m);
+      const isMat = isMaterialItem(m);
+      if (isMaterial && !isMat) return false;
+      if (!isMaterial && isMat) return false;
+
+      // Category filter
+      if (itemCategoryFilter !== 'all') {
+        const matchesCat = m.categoryId === itemCategoryFilter ||
+          (m.category?.name || '').toLowerCase() === itemCategoryFilter.toLowerCase();
+        if (!matchesCat) return false;
+      }
+
+      // Dosage / Form filter
+      if (itemDosageFilter !== 'all') {
+        if ((m.form || '').toLowerCase() !== itemDosageFilter.toLowerCase()) return false;
+      }
+
+      // Safeguard against duplicate names
+      const norm = (m.name || '').toLowerCase().trim();
+      if (seenNames.has(norm)) return false;
+      seenNames.add(norm);
+
+      return true;
     });
-  }, [medicines, poType]);
+  }, [medicines, poType, itemCategoryFilter, itemDosageFilter]);
 
   const fetchOrders = useCallback(async () => {
     setIsLoading(true);
@@ -150,7 +232,7 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
     try {
       const [supRes, medRes] = await Promise.all([
         api.get<Supplier[]>('/api/suppliers?status=Active'),
-        api.get<any>('/api/inventory?limit=200')
+        api.get<any>('/api/inventory?limit=500')
       ]);
       setSuppliers(Array.isArray(supRes) ? supRes : (supRes as any).data || []);
       const meds = (medRes as any).data || (Array.isArray(medRes) ? medRes : []);
@@ -171,6 +253,8 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       loadDependencies();
       setSelectedOrder(null);
       setPoSupplierId('');
+      setItemCategoryFilter('all');
+      setItemDosageFilter('all');
       setPoOrderDate(new Date().toISOString().split('T')[0]);
       setPoNotes('Urgent low stock reorder');
       const med = medicines.find(m => m.id === initialMedicineId);
@@ -188,6 +272,8 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
     const targetType = type || (poCategoryFilter === 'material' ? 'MATERIAL' : 'MEDICINE');
     setPoType(targetType);
     setPoSupplierId('');
+    setItemCategoryFilter('all');
+    setItemDosageFilter('all');
     setPoOrderDate(new Date().toISOString().split('T')[0]);
     setPoNotes('');
     setPoItems([{ medicineId: '', orderedQuantity: 50, unitCost: 0 }]);
@@ -208,8 +294,13 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
     const type = getPurchaseOrderType(po);
     setPoType(type);
     setPoSupplierId(po.supplierId);
+
+    const { categoryId, form } = extractPOFilters(po, medicines);
+    setItemCategoryFilter(categoryId);
+    setItemDosageFilter(form);
+
     setPoOrderDate(new Date(po.orderDate).toISOString().split('T')[0]);
-    setPoNotes(po.notes ? po.notes.replace(/\[(Material|Item|Medicine) PO\]\s*/g, '').trim() : '');
+    setPoNotes(cleanPONotes(po.notes));
     setPoItems(
       po.items.map((i) => ({
         medicineId: i.medicineId,
@@ -255,6 +346,8 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
   const handlePOTypeChange = (newType: 'MEDICINE' | 'MATERIAL') => {
     if (newType === poType) return;
     setPoType(newType);
+    setItemCategoryFilter('all');
+    setItemDosageFilter('all');
     const hasIncompatible = poItems.some(item => {
       if (!item.medicineId) return false;
       const med = medicines.find(m => m.id === item.medicineId);
@@ -274,9 +367,12 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
 
   const handleAddAllActiveItems = () => {
     const isMaterial = poType === 'MATERIAL';
-    const activeItems = medicines.filter(m => m.status !== 'Inactive' && (isMaterial ? isMaterialItem(m) : !isMaterialItem(m)));
+    const isFiltered = itemCategoryFilter !== 'all' || itemDosageFilter !== 'all';
+    const activeItems = isFiltered
+      ? filteredMedicinesForPO
+      : medicines.filter(m => m.status !== 'Inactive' && (isMaterial ? isMaterialItem(m) : !isMaterialItem(m)));
     if (activeItems.length === 0) {
-      toast.error(`No active ${isMaterial ? 'materials' : 'medicines'} found in catalog`);
+      toast.error(`No matching ${isMaterial ? 'materials' : 'medicines'} found`);
       return;
     }
     const newItems: CreatePOItemRow[] = activeItems.map((m) => ({
@@ -285,7 +381,7 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
       unitCost: m.unitPrice || 0
     }));
     setPoItems(newItems);
-    toast.success(`Loaded all ${newItems.length} active ${isMaterial ? 'materials' : 'medicines'} into PO`);
+    toast.success(`Loaded ${newItems.length} ${isFiltered ? 'matching' : 'active'} ${isMaterial ? 'materials' : 'medicines'} into PO`);
   };
 
   const handleRemoveItemRow = (idx: number) => {
@@ -331,9 +427,12 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
 
     setIsSaving(true);
     try {
-      const tag = isMaterial ? '[Material PO]' : '[Item PO]';
-      const cleanNotes = (poNotes || '').replace(/\[(Material|Item|Medicine) PO\]\s*/g, '').trim();
-      const finalNotes = cleanNotes ? `${tag} ${cleanNotes}` : tag;
+      const typeTag = isMaterial ? '[Material PO]' : '[Item PO]';
+      const catTag = itemCategoryFilter && itemCategoryFilter !== 'all' ? `[Cat:${itemCategoryFilter}]` : '';
+      const formTag = itemDosageFilter && itemDosageFilter !== 'all' ? `[Form:${itemDosageFilter}]` : '';
+      const clean = cleanPONotes(poNotes);
+      const tags = [typeTag, catTag, formTag].filter(Boolean).join(' ');
+      const finalNotes = clean ? `${tags} ${clean}` : tags;
 
       const payload = {
         supplierId: poSupplierId,
@@ -685,19 +784,34 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
         onSearchChange={setSearch}
         searchPlaceholder={poCategoryFilter === 'material' ? 'Search Material POs...' : poCategoryFilter === 'item' ? 'Search Item POs...' : 'Search POs...'}
         filterSlot={
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[180px] h-9 bg-slate-50/50 text-xs font-medium">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Draft">Draft</SelectItem>
-              <SelectItem value="Ordered">Waiting for Receive</SelectItem>
-              <SelectItem value="Partially Received">Partially Collected</SelectItem>
-              <SelectItem value="Received">Collected</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={poSupplierFilter} onValueChange={setPoSupplierFilter}>
+              <SelectTrigger className="w-full sm:w-[170px] h-9 bg-slate-50/50 text-xs font-medium">
+                <SelectValue placeholder="All Suppliers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Suppliers</SelectItem>
+                {suppliers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[160px] h-9 bg-slate-50/50 text-xs font-medium">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Draft">Draft</SelectItem>
+                <SelectItem value="Ordered">Waiting for Receive</SelectItem>
+                <SelectItem value="Partially Received">Partially Collected</SelectItem>
+                <SelectItem value="Received">Collected</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         }
         exportOptions={{
           pdf: true,
@@ -793,7 +907,7 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                       />
                       {selectedOrder.notes && (
                         <div className="col-span-2">
-                          <ReadOnlyField label="Notes" value={selectedOrder.notes} />
+                          <ReadOnlyField label="Notes" value={cleanPONotes(selectedOrder.notes) || '—'} />
                         </div>
                       )}
                     </div>
@@ -994,6 +1108,50 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                       />
                     </div>
 
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600 uppercase">
+                        Category
+                      </Label>
+                      <Select
+                        value={itemCategoryFilter}
+                        onValueChange={(val) => {
+                          setItemCategoryFilter(val);
+                          setItemDosageFilter('all');
+                        }}
+                      >
+                        <SelectTrigger className="h-10 text-sm bg-white">
+                          <SelectValue placeholder="All Categories" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Categories</SelectItem>
+                          {availableCategoriesForPO.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600 uppercase">
+                        {poType === 'MATERIAL' ? 'Material Form' : 'Dosage Form'}
+                      </Label>
+                      <Select value={itemDosageFilter} onValueChange={setItemDosageFilter}>
+                        <SelectTrigger className="h-10 text-sm bg-white">
+                          <SelectValue placeholder="All Forms" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Forms</SelectItem>
+                          {availableDosageFormsForPO.map((f) => (
+                            <SelectItem key={f} value={f}>
+                              {f}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="col-span-1 sm:col-span-2 space-y-1.5">
                       <Label className="text-xs font-semibold text-slate-600 uppercase">Notes</Label>
                       <Input
@@ -1055,21 +1213,29 @@ export function PurchaseOrdersTab({ initialMedicineId, onGoodsReceived }: Purcha
                                   value={item.medicineId}
                                   onValueChange={(val) => handleItemChange(idx, 'medicineId', val)}
                                 >
-                                  <SelectTrigger className="h-8 text-xs">
+                                  <SelectTrigger className="h-8 text-xs bg-white">
                                     <SelectValue placeholder={poType === 'MATERIAL' ? "Select material" : "Select medicine"} />
                                   </SelectTrigger>
-                                  <SelectContent>
-                                    {selectableMedicines.length === 0 ? (
-                                      <div className="p-2 text-xs text-slate-400 text-center">
-                                        No active {poType === 'MATERIAL' ? 'materials' : 'medicines'} found in catalog
-                                      </div>
-                                    ) : (
-                                      selectableMedicines.map((m) => (
+                                  <SelectContent className="max-h-60">
+                                    {(() => {
+                                      const rowPool = filteredMedicinesForPO.slice();
+                                      if (item.medicineId && !rowPool.some(m => m.id === item.medicineId)) {
+                                        const currentMed = medicines.find(m => m.id === item.medicineId);
+                                        if (currentMed) rowPool.unshift(currentMed);
+                                      }
+                                      if (rowPool.length === 0) {
+                                        return (
+                                          <div className="p-3 text-xs text-slate-400 text-center">
+                                            No {poType === 'MATERIAL' ? 'materials' : 'medicines'} match filters
+                                          </div>
+                                        );
+                                      }
+                                      return rowPool.map((m) => (
                                         <SelectItem key={m.id} value={m.id}>
-                                          {m.name} ({m.unit})
+                                          {m.name}
                                         </SelectItem>
-                                      ))
-                                    )}
+                                      ));
+                                    })()}
                                   </SelectContent>
                                 </Select>
                               </td>

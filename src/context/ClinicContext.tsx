@@ -449,7 +449,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
           return [...prev, savedConsultation]
         })
 
-        if (data.consultationFee !== undefined || data.treatmentFee !== undefined) {
+        if (data.reasonForVisit !== undefined || data.consultationFee !== undefined || data.treatmentFee !== undefined) {
           setVisits(prev => prev.map(v => {
             if (v.id === visitId) {
               const consultationFee = data.consultationFee !== undefined ? data.consultationFee : (v.consultationFee || 0);
@@ -457,6 +457,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
               const medicineCost = v.medicineCost || 0;
               return {
                 ...v,
+                ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit } : {}),
                 consultationFee,
                 treatmentFee,
                 amountDue: consultationFee + treatmentFee + medicineCost

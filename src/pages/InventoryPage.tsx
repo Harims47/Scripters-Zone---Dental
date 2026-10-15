@@ -23,6 +23,11 @@ import { cn } from '../lib/utils'
 import { type Medicine } from '../lib/mock-data'
 import { api } from '../lib/api'
 import type { PaginationMeta, PaginatedResponse, MedicineCategory } from '../types/domain'
+import {
+  getCatalogItemsForCategory,
+  isMaterialCategory,
+  isMedicineCategory,
+} from '../constants/supplierCatalog'
 
 import { StockAdjustmentDialog } from '../components/inventory/StockAdjustmentDialog'
 import { StockHistoryTable } from '../components/inventory/StockHistoryTable'
@@ -50,7 +55,7 @@ export function InventoryPage() {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [filterCategory] = useState('all')
+  const [filterCategory, setFilterCategory] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all-status')
   const [filterType, setFilterType] = useState<'all' | 'medicine' | 'material'>('all')
 
@@ -80,22 +85,73 @@ export function InventoryPage() {
     form: 'Tablet'
   })
 
-  const isMaterialItem = (item: { form?: string; category?: { name?: string } } | null | undefined): boolean => {
+  const isMaterialItem = (item: { form?: string; category?: { name?: string }; categoryId?: string } | null | undefined): boolean => {
     if (!item) return false
+    const catName = item.category?.name || dbCategories.find(c => c.id === item.categoryId)?.name || ''
+    if (isMaterialCategory(catName)) return true
     const f = (item.form || '').toLowerCase()
-    if (f.includes('material') || f.includes('equipment') || f.includes('consumable') || f.includes('instrument') || f.includes('disposable') || f.includes('tool')) {
+    if (f.includes('material') || f.includes('equipment') || f.includes('consumable') || f.includes('instrument') || f.includes('disposable') || f.includes('tool') || f.includes('composite') || f.includes('file') || f.includes('point')) {
       return true
     }
-    const catName = (item.category?.name || '').toLowerCase()
-    return catName.includes('material') || catName.includes('equipment') || catName.includes('consumable')
+    return false
   }
 
   const handleItemTypeChange = (newType: 'MEDICINE' | 'MATERIAL') => {
+    setFormData(prev => {
+      const activeCats = dbCategories.filter(c => c.status === 'Active')
+      const targetCat = newType === 'MATERIAL'
+        ? activeCats.find(c => isMaterialCategory(c.name))
+        : activeCats.find(c => isMedicineCategory(c.name))
+
+      const targetCatId = targetCat?.id || prev.categoryId
+      const catDosages = targetCat ? getCatalogItemsForCategory(targetCat.name) : []
+      const defaultForm = catDosages.length > 0
+        ? catDosages[0].name
+        : (newType === 'MEDICINE' ? 'Tablet' : 'Dental Material')
+
+      return {
+        ...prev,
+        itemType: newType,
+        categoryId: targetCatId,
+        form: defaultForm,
+        unit: '',
+      }
+    })
+  }
+
+  const handleCategoryChange = (newCatId: string) => {
+    const catObj = dbCategories.find(c => c.id === newCatId)
+    const catName = catObj?.name || ''
+    const catDosageItems = getCatalogItemsForCategory(catName)
+
+    setFormData(prev => {
+      let nextForm = prev.form
+
+      if (catDosageItems.length > 0) {
+        const currentMatches = catDosageItems.find(i => i.name.toLowerCase() === prev.form.toLowerCase())
+        if (!currentMatches) {
+          nextForm = catDosageItems[0].name
+        }
+      } else {
+        if (prev.itemType === 'MATERIAL' && prev.form === 'Tablet') {
+          nextForm = 'Dental Material'
+        } else if (prev.itemType === 'MEDICINE' && prev.form === 'Dental Material') {
+          nextForm = 'Tablet'
+        }
+      }
+
+      return {
+        ...prev,
+        categoryId: newCatId,
+        form: nextForm
+      }
+    })
+  }
+
+  const handleDosageFormChange = (newForm: string) => {
     setFormData(prev => ({
       ...prev,
-      itemType: newType,
-      form: newType === 'MEDICINE' ? 'Tablet' : 'Dental Material',
-      unit: (prev.unit === 'Tablets' || prev.unit === 'Units') ? '' : prev.unit
+      form: newForm
     }))
   }
 
@@ -117,17 +173,29 @@ export function InventoryPage() {
     setSelectedItem(item)
     setDrawerMode(mode)
     if (mode === 'create') {
-      const firstActiveCat = dbCategories.find(c => c.status === 'Active')?.id || 'cat1'
+      const activeCats = dbCategories.filter(c => c.status === 'Active')
       const initialType = filterType === 'material' ? 'MATERIAL' : 'MEDICINE'
+      let defaultCat = activeCats[0]
+      if (initialType === 'MATERIAL') {
+        defaultCat = activeCats.find(c => isMaterialCategory(c.name)) || defaultCat
+      } else {
+        defaultCat = activeCats.find(c => isMedicineCategory(c.name)) || defaultCat
+      }
+      const catId = defaultCat?.id || 'cat1'
+      const catDosageItems = defaultCat ? getCatalogItemsForCategory(defaultCat.name) : []
+      const defaultForm = catDosageItems.length > 0
+        ? catDosageItems[0].name
+        : (initialType === 'MATERIAL' ? 'Dental Material' : 'Tablet')
+
       setFormData({
         itemType: initialType,
         name: '',
         genericName: '',
-        categoryId: firstActiveCat,
+        categoryId: catId,
         unit: '',
         stockWarningLevel: 10,
         unitPrice: 0,
-        form: initialType === 'MATERIAL' ? 'Dental Material' : 'Tablet'
+        form: defaultForm
       })
     } else if (item) {
       const isMat = isMaterialItem(item)
@@ -146,12 +214,28 @@ export function InventoryPage() {
   }
 
   const handleSaveItem = async () => {
-    if (!formData.name.trim() || !formData.categoryId || !formData.unit.trim()) {
+    const trimmedName = formData.name.trim();
+    if (!trimmedName || !formData.categoryId || !formData.unit.trim()) {
       toast.error('Please fill out all mandatory fields.');
       return;
     }
+
+    if (drawerMode === 'create') {
+      const existsInCurrent = data.some(d => d.name.toLowerCase().trim() === trimmedName.toLowerCase());
+      if (existsInCurrent) {
+        toast.error(`An item named "${trimmedName}" already exists`);
+        return;
+      }
+    } else if (drawerMode === 'edit' && selectedItem) {
+      const existsInCurrent = data.some(d => d.id !== selectedItem.id && d.name.toLowerCase().trim() === trimmedName.toLowerCase());
+      if (existsInCurrent) {
+        toast.error(`An item named "${trimmedName}" already exists`);
+        return;
+      }
+    }
+
     const payload = {
-      name: formData.name.trim(),
+      name: trimmedName,
       genericName: formData.genericName?.trim() || undefined,
       categoryId: formData.categoryId,
       unit: formData.unit.trim(),
@@ -481,6 +565,10 @@ export function InventoryPage() {
     },
   ]
 
+  const currentCategory = dbCategories.find(c => c.id === formData.categoryId)
+  const currentCategoryName = currentCategory?.name || ''
+  const currentCategoryDosageItems = getCatalogItemsForCategory(currentCategoryName)
+
   return (
     <div className="space-y-6 w-full min-w-0">
 
@@ -562,7 +650,22 @@ export function InventoryPage() {
             }}
             filterSlot={
               <>
-                <Select value={filterType} onValueChange={(v: any) => setFilterType(v)}>
+                <Select
+                  value={filterType}
+                  onValueChange={(v: any) => {
+                    setFilterType(v);
+                    if (filterCategory !== 'all') {
+                      const selectedCat = dbCategories.find(c => c.id === filterCategory);
+                      if (selectedCat) {
+                        if (v === 'medicine' && !isMedicineCategory(selectedCat.name)) {
+                          setFilterCategory('all');
+                        } else if (v === 'material' && !isMaterialCategory(selectedCat.name)) {
+                          setFilterCategory('all');
+                        }
+                      }
+                    }
+                  }}
+                >
                   <SelectTrigger className="flex-1 min-w-[130px] sm:w-[145px] sm:flex-initial h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors">
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
@@ -572,15 +675,23 @@ export function InventoryPage() {
                     <SelectItem value="material">📦 Materials</SelectItem>
                   </SelectContent>
                 </Select>
-                {/* <Select value={filterCategory} onValueChange={setFilterCategory}>
-                  <SelectTrigger className="w-[160px] h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Category" /></SelectTrigger>
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="flex-1 min-w-[130px] sm:w-[150px] sm:flex-initial h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    {dbCategories.map(cat => (
-                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                    ))}
+                    {dbCategories
+                      .filter(cat => {
+                        if (filterType === 'medicine') return isMedicineCategory(cat.name);
+                        if (filterType === 'material') return isMaterialCategory(cat.name);
+                        return true;
+                      })
+                      .map(cat => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                      ))}
                   </SelectContent>
-                </Select> */}
+                </Select>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
                   <SelectTrigger className="flex-1 min-w-[130px] sm:w-[140px] sm:flex-initial h-9 bg-slate-50/50 hover:bg-slate-50 transition-colors"><SelectValue placeholder="Status" /></SelectTrigger>
                   <SelectContent>
@@ -750,11 +861,16 @@ export function InventoryPage() {
 
                       <div className="space-y-2.5">
                         <Label className="text-[13px] text-slate-600 font-medium">Category <span className="text-rose-500">*</span></Label>
-                        <Select value={formData.categoryId} onValueChange={v => setFormData({ ...formData, categoryId: v })}>
+                        <Select value={formData.categoryId} onValueChange={handleCategoryChange}>
                           <SelectTrigger className="shadow-xs bg-white transition-all focus:ring-primary/20"><SelectValue placeholder="Select Category" /></SelectTrigger>
                           <SelectContent>
                             {dbCategories
-                              .filter(cat => cat.status === 'Active' || cat.id === formData.categoryId)
+                              .filter(cat => {
+                                const matchesType = formData.itemType === 'MATERIAL'
+                                  ? isMaterialCategory(cat.name)
+                                  : isMedicineCategory(cat.name)
+                                return matchesType && (cat.status === 'Active' || cat.id === formData.categoryId)
+                              })
                               .map(cat => (
                                 <SelectItem key={cat.id} value={cat.id}>
                                   {cat.name} {cat.status === 'Inactive' ? '(Inactive)' : ''}
@@ -766,19 +882,33 @@ export function InventoryPage() {
 
                       <div className="space-y-2.5">
                         <Label className="text-[13px] text-slate-600 font-medium">
-                          {formData.itemType === 'MATERIAL' ? 'Material Form / Type' : 'Dosage Form'} <span className="text-rose-500">*</span>
+                          {formData.itemType === 'MATERIAL' ? 'Material Form' : 'Dosage Form'} <span className="text-rose-500">*</span>
                         </Label>
-                        <Select value={formData.form} onValueChange={v => setFormData({ ...formData, form: v })}>
-                          <SelectTrigger className="shadow-xs bg-white transition-all focus:ring-primary/20"><SelectValue /></SelectTrigger>
+                        <Select value={formData.form} onValueChange={handleDosageFormChange}>
+                          <SelectTrigger className="shadow-xs bg-white transition-all focus:ring-primary/20">
+                            <SelectValue placeholder={formData.itemType === 'MATERIAL' ? "Select Material Form" : "Select Dosage Form"} />
+                          </SelectTrigger>
                           <SelectContent>
-                            {formData.itemType === 'MATERIAL'
-                              ? ['Dental Material', 'Consumable', 'Instrument / Tool', 'Disposable', 'Equipment', 'Other'].map(f => (
-                                <SelectItem key={f} value={f}>{f}</SelectItem>
-                              ))
-                              : ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Liquid', 'Mouthwash', 'Other'].map(f => (
-                                <SelectItem key={f} value={f}>{f}</SelectItem>
-                              ))
+                            {currentCategoryDosageItems.length > 0
+                              ? currentCategoryDosageItems.map(item => (
+                                  <SelectItem key={item.name} value={item.name}>
+                                    {item.name}
+                                  </SelectItem>
+                                ))
+                              : (formData.itemType === 'MATERIAL'
+                                  ? ['Dental Material', 'Consumable', 'Instrument / Tool', 'Disposable', 'Equipment', 'Other']
+                                  : ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Gel', 'Liquid', 'Mouthwash', 'Other']
+                                ).map(f => (
+                                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                                ))
                             }
+                            {formData.form &&
+                             !currentCategoryDosageItems.some(i => i.name === formData.form) &&
+                             !['Dental Material', 'Consumable', 'Instrument / Tool', 'Disposable', 'Equipment', 'Other', 'Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Gel', 'Liquid', 'Mouthwash'].includes(formData.form) && (
+                              <SelectItem value={formData.form}>
+                                {formData.form}
+                              </SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
