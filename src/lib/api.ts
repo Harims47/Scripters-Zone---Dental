@@ -1,4 +1,29 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:3001');
+/**
+ * Resolves the API base URL based on build mode and configuration.
+ * - In production: defaults to '' (same-origin relative /api). If an external URL is explicitly
+ *   provided, it is used, but localhost/127.0.0.1 is strictly prevented to avoid production leaks.
+ * - In development: defaults to '' so Vite dev proxy handles requests to backend port 3001,
+ *   or uses VITE_API_BASE_URL if explicitly configured.
+ */
+function getApiBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+
+  if (import.meta.env.PROD) {
+    // In production, prevent accidental leakage of localhost / 127.0.0.1
+    if (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
+      return '';
+    }
+    return envUrl.replace(/\/$/, '');
+  }
+
+  // In development, return custom URL if set; otherwise relative '' (handled by Vite proxy)
+  if (envUrl) {
+    return envUrl.replace(/\/$/, '');
+  }
+  return '';
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;
