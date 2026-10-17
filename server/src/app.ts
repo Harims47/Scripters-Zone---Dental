@@ -209,6 +209,18 @@ async function boot() {
     HistoricalBatchService.recoverStaleMigrationJobs().catch((err) => {
       console.error('Failed to recover stale historical migration jobs:', err.message);
     });
+
+    // Ensure master catalogs (19 categories, 17 medicines, 33 treatments) are synced if database is unseeded
+    import('./services/catalogSyncService').then(({ syncMasterCatalogs }) => {
+      prisma.medicine.count().then(async (count) => {
+        if (count === 0) {
+          console.log('[AutoSync] Medicine catalog is empty (0 records). Auto-populating master catalogs...');
+          await syncMasterCatalogs();
+        }
+      }).catch((err) => {
+        console.warn('[AutoSync] Notice: could not check catalog count:', err.message);
+      });
+    }).catch(() => {});
   });
 
   // Graceful Shutdown Mechanism

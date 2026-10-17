@@ -1,0 +1,557 @@
+{
+  "categories": [
+    {
+      "id": "027153f8-7796-4c0e-b8d3-cbb87e3c2e63",
+      "name": "Injection",
+      "description": "Injectable anti-inflammatories and corticosteroids",
+      "status": "Active"
+    },
+    {
+      "id": "036f09e8-4022-45be-a3ad-34d514888616",
+      "name": "Antibiotic",
+      "description": "Antibiotic formulations and antibacterial tablets",
+      "status": "Active"
+    },
+    {
+      "id": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "name": "Toothpaste",
+      "description": "Toothpaste dental items",
+      "status": "Active"
+    },
+    {
+      "id": "45895c35-b947-460a-977c-ab7c87130d57",
+      "name": "PEDO",
+      "description": "Pediatric formulations and oral hygiene items",
+      "status": "Active"
+    },
+    {
+      "id": "528fc434-5a09-47fe-888e-faee87d4e2a8",
+      "name": "General",
+      "description": "General clinic dental consumables, hygiene supplies, and surgical disposables",
+      "status": "Active"
+    },
+    {
+      "id": "52eaa330-ca97-49de-a2f4-ff599eacc0bd",
+      "name": "Endodontics",
+      "description": "Endodontic solutions, sealers, root canal cements, and medicaments",
+      "status": "Active"
+    },
+    {
+      "id": "75e966db-aafc-44a2-bb2f-f2a17de17208",
+      "name": "Anti Ulcer",
+      "description": "Gastroprotective and anti-ulcer medications",
+      "status": "Active"
+    },
+    {
+      "id": "80edbf57-0cc8-42c2-865d-f23d8eceb3a7",
+      "name": "FILLING",
+      "description": "Restorative composites, bonding agents, etchants, and filling materials",
+      "status": "Active"
+    },
+    {
+      "id": "824fa465-ff4d-4428-a57a-c641144bd76f",
+      "name": "GP POINTS",
+      "description": "Gutta-percha obturation points and tapers",
+      "status": "Active"
+    },
+    {
+      "id": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "name": "Toothbrush",
+      "description": "Toothbrush dental items",
+      "status": "Active"
+    },
+    {
+      "id": "a34955bf-2cb9-4db6-b029-1ea816fbc0eb",
+      "name": "Supplement",
+      "description": "Nutritional and vitamin supplements",
+      "status": "Active"
+    },
+    {
+      "id": "abafd76b-dba0-403a-8bbe-967026085863",
+      "name": "Topical",
+      "description": "Topical dental ointments and soothing gels",
+      "status": "Active"
+    },
+    {
+      "id": "b026f675-f82d-49d3-9e01-3ac357c42033",
+      "name": "Oral Hygiene Supplements",
+      "description": "Oral Hygiene Supplements dental items",
+      "status": "Active"
+    },
+    {
+      "id": "c0226ae9-e7ab-4bad-9116-f2edb3b3c044",
+      "name": "Oral Hygiene",
+      "description": "Oral hygiene formulations, brushes, pastes, and rinses",
+      "status": "Active"
+    },
+    {
+      "id": "c5c2ca9d-5c76-4941-9f3f-548ed90611c4",
+      "name": "Prosthodontics",
+      "description": "Prosthetic materials, impression compounds, waxes, and dental stone",
+      "status": "Active"
+    },
+    {
+      "id": "c64d02c3-41d4-4379-9d11-55adb0127a92",
+      "name": "Sedative",
+      "description": "Sedatives and anticonvulsant tablets",
+      "status": "Active"
+    },
+    {
+      "id": "d4f0d651-0bd7-4b16-bbc4-40dbd210974f",
+      "name": "Ortho Toothpaste",
+      "description": "Ortho Toothpaste dental items",
+      "status": "Active"
+    },
+    {
+      "id": "da4d31ad-4fc6-4867-b629-f5db37fab920",
+      "name": "Anti Inflamatory",
+      "description": "Anti-inflammatory and analgesic medications",
+      "status": "Active"
+    },
+    {
+      "id": "e841312a-e20d-4f49-8249-56a000af08a6",
+      "name": "ENDO FILES",
+      "description": "Hand and rotary endodontic files, broaches, and reamers",
+      "status": "Active"
+    }
+  ],
+  "medicines": [
+    {
+      "id": "0167361e-e358-43e1-991f-4311b2bf8665",
+      "name": "METROHEX ®PLUS GEL",
+      "genericName": "Chlorhexidine gluconate 1%w/w Metronidazole 1%w/w, Lignocaine 2%w/w",
+      "categoryId": "abafd76b-dba0-403a-8bbe-967026085863",
+      "form": "Gel",
+      "unit": "20gms",
+      "stockWarningLevel": 5,
+      "currentStock": 0,
+      "unitPrice": 127.87,
+      "status": "Active"
+    },
+    {
+      "id": "0627d585-6c00-48c5-88eb-84e4bbd03c5b",
+      "name": "GEODENT",
+      "genericName": "Non-fluoridated",
+      "categoryId": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "form": "Toothpaste",
+      "unit": "50gm",
+      "stockWarningLevel": 5,
+      "currentStock": 0,
+      "unitPrice": 175,
+      "status": "Active"
+    },
+    {
+      "id": "10001007-68e6-40bc-bc08-37ef269ec1cb",
+      "name": "ZE-HEX MOUTH RINSE",
+      "genericName": "Chlorhexidine mouthwash IP",
+      "categoryId": "b026f675-f82d-49d3-9e01-3ac357c42033",
+      "form": "Mouthwash",
+      "unit": "100 ml",
+      "stockWarningLevel": 10,
+      "currentStock": 0,
+      "unitPrice": 70,
+      "status": "Active"
+    },
+    {
+      "id": "44e6a157-6c4d-47d4-9c9c-464de938f48d",
+      "name": "AIDORA FLOSS PICK",
+      "genericName": "Interdental floss",
+      "categoryId": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "form": "Floss",
+      "unit": "20 unit",
+      "stockWarningLevel": 5,
+      "currentStock": 0,
+      "unitPrice": 50,
+      "status": "Active"
+    },
+    {
+      "id": "4bf10b1d-5a3d-4b5c-a2af-6ccc2d048140",
+      "name": "THERMOKIND -ADVANCED",
+      "genericName": "Sensitivity",
+      "categoryId": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "form": "Toothpaste",
+      "unit": "100mg",
+      "stockWarningLevel": 10,
+      "currentStock": 0,
+      "unitPrice": 257,
+      "status": "Active"
+    },
+    {
+      "id": "5b52aa4b-659a-4bd8-8108-63dfbcbf37fd",
+      "name": "CHEERIO GEL",
+      "genericName": "Sodium monofluorophosphate oral gel 0.35% w/w",
+      "categoryId": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "form": "Gel",
+      "unit": "75 g",
+      "stockWarningLevel": 10,
+      "currentStock": 0,
+      "unitPrice": 179,
+      "status": "Active"
+    },
+    {
+      "id": "8d81261f-7d42-40e8-8180-dd2222524055",
+      "name": "FLUROKID",
+      "genericName": "Sodium monoflurophospate dental gel",
+      "categoryId": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "form": "Gel",
+      "unit": "50g",
+      "stockWarningLevel": 10,
+      "currentStock": 0,
+      "unitPrice": 80,
+      "status": "Active"
+    },
+    {
+      "id": "8fc39679-7134-4e37-9316-db83196cc4e3",
+      "name": "STIM TOOTH BRUSH",
+      "genericName": "Normal",
+      "categoryId": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "form": "Brush",
+      "unit": "1 unit",
+      "stockWarningLevel": 12,
+      "currentStock": 0,
+      "unitPrice": 90,
+      "status": "Active"
+    },
+    {
+      "id": "9148fd50-79f3-4b0a-842c-e8cb6b0eaebb",
+      "name": "SENSODYNE",
+      "genericName": "Repair & protect",
+      "categoryId": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "form": "Toothpaste",
+      "unit": "100mg",
+      "stockWarningLevel": 15,
+      "currentStock": 0,
+      "unitPrice": 240,
+      "status": "Active"
+    },
+    {
+      "id": "95d6e396-7a00-4d0e-92f1-d1e9a30f8262",
+      "name": "AIDORA TOOTH BRUSH",
+      "genericName": "Normal",
+      "categoryId": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "form": "Brush",
+      "unit": "1 unit",
+      "stockWarningLevel": 12,
+      "currentStock": 0,
+      "unitPrice": 70,
+      "status": "Active"
+    },
+    {
+      "id": "9675b8f8-f436-4365-a725-081e8f8e53c1",
+      "name": "STIM ORTHO-MB",
+      "genericName": "Ortho brush",
+      "categoryId": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "form": "Brush",
+      "unit": "1 unit",
+      "stockWarningLevel": 12,
+      "currentStock": 0,
+      "unitPrice": 98,
+      "status": "Active"
+    },
+    {
+      "id": "9ed64428-c42c-418d-873d-b59e993f96d5",
+      "name": "AIDORA KIDS",
+      "genericName": "Pedo brush",
+      "categoryId": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "form": "Brush",
+      "unit": "1 unit",
+      "stockWarningLevel": 5,
+      "currentStock": 0,
+      "unitPrice": 80,
+      "status": "Active"
+    },
+    {
+      "id": "a8b1c2c8-ad08-4d7b-b341-0860c474907a",
+      "name": "AIDORA INTERDENTAL BRUSH",
+      "genericName": "Interdental brush",
+      "categoryId": "8695e323-adb0-4678-bad7-32c5060cb64a",
+      "form": "Brush",
+      "unit": "1 unit",
+      "stockWarningLevel": 20,
+      "currentStock": 0,
+      "unitPrice": 30,
+      "status": "Active"
+    },
+    {
+      "id": "b1b4180e-5568-4d6a-845f-c7e5ce801e1e",
+      "name": "RAS ORAL GEL",
+      "genericName": "Benzocaine gel USP 20% W/W",
+      "categoryId": "abafd76b-dba0-403a-8bbe-967026085863",
+      "form": "Gel",
+      "unit": "10 gms",
+      "stockWarningLevel": 10,
+      "currentStock": 0,
+      "unitPrice": 65,
+      "status": "Active"
+    },
+    {
+      "id": "cbdf1b98-1dc8-4579-a688-aa3a75a63e70",
+      "name": "CURENEXT ORAL GEL",
+      "genericName": "Curcuma oral gel",
+      "categoryId": "abafd76b-dba0-403a-8bbe-967026085863",
+      "form": "Gel",
+      "unit": "50 gms",
+      "stockWarningLevel": 5,
+      "currentStock": 0,
+      "unitPrice": 179.06,
+      "status": "Active"
+    },
+    {
+      "id": "cebb5065-e5c5-430e-8559-133c378995b0",
+      "name": "VANTEJ",
+      "genericName": "Sensitivity",
+      "categoryId": "1216cf04-a68c-45cb-9955-77f74278f48a",
+      "form": "Toothpaste",
+      "unit": "50g",
+      "stockWarningLevel": 12,
+      "currentStock": 0,
+      "unitPrice": 216,
+      "status": "Active"
+    },
+    {
+      "id": "d6f9691a-5d32-44cc-8a84-cfc8166ca177",
+      "name": "STOLIN -R",
+      "genericName": "Active gum care",
+      "categoryId": "d4f0d651-0bd7-4b16-bbc4-40dbd210974f",
+      "form": "Toothpaste",
+      "unit": "70g",
+      "stockWarningLevel": 5,
+      "currentStock": 0,
+      "unitPrice": 202,
+      "status": "Active"
+    }
+  ],
+  "treatments": [
+    {
+      "id": "0da45a52-0cd7-4ccb-bd77-3c1cdce9cf73",
+      "category": "Pedodontics",
+      "name": "Extraction",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "13c81b65-2f07-45ea-a8c7-e1649fc3f897",
+      "category": "Surgery",
+      "name": "Soft Tissue Removal",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "15811bcb-a47b-425d-bbb6-c09156830f74",
+      "category": "Periodontics",
+      "name": "Bone Graft",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "1a0fd8dd-91f4-41f3-a622-ba51b5a5a035",
+      "category": "Prosthodontics",
+      "name": "Fixed Partial Denture",
+      "variant": "Acrylic",
+      "isActive": 1
+    },
+    {
+      "id": "1d01774b-e0ba-4b7c-b92d-6627427d3762",
+      "category": "Prosthodontics",
+      "name": "Removable Partial Denture",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "272f78b8-98a8-4e8f-855c-4b6a0e52808b",
+      "category": "Surgery",
+      "name": "Fixation",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "2cac48fb-6170-413d-b31a-eaadd5873bef",
+      "category": "Orthodontics",
+      "name": "Fixed Appliance",
+      "variant": "Self Ligating",
+      "isActive": 1
+    },
+    {
+      "id": "394e4c8a-0ce9-47bf-b1c7-b90e77ec0fa1",
+      "category": "Endodontics",
+      "name": "APICOECTOMY",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "460ad817-4765-4747-af36-7b2c86b7518f",
+      "category": "Endodontics",
+      "name": "RCT",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "472ecf76-1170-4165-a0eb-86041141516d",
+      "category": "Endodontics",
+      "name": "Filling",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "527f3eab-6e71-4e08-82fd-eb70d348b009",
+      "category": "Periodontics",
+      "name": "Curettage",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "5367f173-b0b5-46f9-9b78-5ccf73598f33",
+      "category": "Orthodontics",
+      "name": "Fixed Appliance",
+      "variant": "Basic",
+      "isActive": 1
+    },
+    {
+      "id": "5ce560ed-6803-4a94-93c7-ddf3ef07c976",
+      "category": "Prosthodontics",
+      "name": "Complete Denture",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "603f7887-2847-4bc9-abd5-e19fc2aea268",
+      "category": "Surgery",
+      "name": "Extraction",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "671f177e-bbdc-478a-8d27-bff8ffa9622b",
+      "category": "Periodontics",
+      "name": "Scaling",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "6bbb5f8c-0e47-4a92-9bdf-bff507ddbd1e",
+      "category": "Periodontics",
+      "name": "Flap Surgery",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "728102a6-b83a-4828-bd30-403e5860d30b",
+      "category": "Neurological",
+      "name": "Trigeminal Neurologia",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "72e38c74-d02f-4ef0-9b53-3dc50ff6bc0f",
+      "category": "Pedodontics",
+      "name": "Pulpectomy",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "8764c63f-00d5-4654-af04-8a610914b356",
+      "category": "Endodontics",
+      "name": "RE RCT",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "885510a2-ab00-46eb-84ed-0b6e38fae175",
+      "category": "Surgery",
+      "name": "Splinting",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "89404237-52cb-48da-82d2-47feda734150",
+      "category": "Endodontics",
+      "name": "POST & CORE",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "8c1edbb0-b200-40f4-b574-0a15dbef4ace",
+      "category": "Orthodontics",
+      "name": "Fixed Appliance",
+      "variant": "Damon",
+      "isActive": 1
+    },
+    {
+      "id": "ae1da48f-da96-4c4f-96dd-90715031cbf4",
+      "category": "Endodontics",
+      "name": "Permanent Filling",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "b765531f-25bc-4b51-aa93-7c41140610f1",
+      "category": "Surgery",
+      "name": "Impaction",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "c7c18868-b6ef-4e14-b86a-6cccb03964ab",
+      "category": "Neurological",
+      "name": "Facial Palsy",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "cb00808e-cf29-4473-884f-1139d81c0686",
+      "category": "Orthodontics",
+      "name": "Removable Appliance",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "cbcacd91-94be-424b-8db9-7a3b7d2ce1f8",
+      "category": "Surgery",
+      "name": "Frenectomy",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "cde97215-726c-453e-9c24-c63575f60780",
+      "category": "Prosthodontics",
+      "name": "Fixed Partial Denture",
+      "variant": "Metal Ceramic",
+      "isActive": 1
+    },
+    {
+      "id": "d3048210-6a4a-478e-8f5f-dca2f21c47a9",
+      "category": "Orthodontics",
+      "name": "Invisalign",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "d506f6b9-e7dc-4e16-b74b-62e982e683f6",
+      "category": "Surgery",
+      "name": "Ankyloglossia",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "ece93384-841e-4b60-8c43-30e69a06eb63",
+      "category": "Prosthodontics",
+      "name": "Fixed Partial Denture",
+      "variant": "Zirconia",
+      "isActive": 1
+    },
+    {
+      "id": "f215c845-4930-4226-a1c2-a7bf64d9462f",
+      "category": "Pedodontics",
+      "name": "Filling",
+      "variant": null,
+      "isActive": 1
+    },
+    {
+      "id": "feda431f-1c30-4757-a80c-ef53bd123ec0",
+      "category": "Neurological",
+      "name": "MPDS",
+      "variant": null,
+      "isActive": 1
+    }
+  ]
+}
