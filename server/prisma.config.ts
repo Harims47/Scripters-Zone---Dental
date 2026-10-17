@@ -16,6 +16,10 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
  * Never logs credentials or complete URLs.
  */
 export function resolvePrismaDatabaseUrl(): string | undefined {
+  if (process.env.CPANEL_DATABASE_URL?.trim()) {
+    return process.env.CPANEL_DATABASE_URL.trim();
+  }
+
   const dbHost = process.env.DB_HOST?.trim();
   const dbPortStr = process.env.DB_PORT?.trim();
   const dbName = process.env.DB_NAME?.trim();
