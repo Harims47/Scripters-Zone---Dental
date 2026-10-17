@@ -97,14 +97,109 @@ function parseTlsConfiguration(
  * 3. If neither configuration is complete, fail closed immediately with a sanitized error message.
  * Never logs or exposes credentials.
  */
+function parseDatabaseUrl(urlStr: string, sourceName: string): ValidatedDatabaseConfig {
+  let u: URL;
+  try {
+    u = new URL(urlStr);
+  } catch {
+    throw new Error(`FATAL: ${sourceName} is malformed. Ensure it is a valid URL.`);
+  }
+
+  if (u.protocol !== 'mysql:' && u.protocol !== 'mariadb:') {
+    throw new Error(`FATAL: ${sourceName} protocol "${u.protocol}" is unsupported. Only "mysql:" and "mariadb:" protocols are allowed.`);
+  }
+
+  const database = u.pathname.replace(/^\//, '').trim();
+  if (!database) {
+    throw new Error(`FATAL: ${sourceName} must specify a target database name.`);
+  }
+
+  if (!u.hostname) {
+    throw new Error(`FATAL: ${sourceName} must specify a target host.`);
+  }
+
+  let port = 3306;
+  if (u.port) {
+    port = parseInt(u.port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`FATAL: ${sourceName} port "${u.port}" is invalid. Port must be an integer between 1 and 65535.`);
+    }
+  }
+
+  const ssl = parseTlsConfiguration(u.searchParams);
+
+  return {
+    host: u.hostname,
+    port,
+    user: decodeURIComponent(u.username || ''),
+    password: decodeURIComponent(u.password || ''),
+    database,
+    source: sourceName,
+    ...(ssl !== undefined ? { ssl } : {}),
+  };
+}
+
+/**
+ * Validates the database configuration from environment variables.
+ * Precedence:
+ * 1. Dedicated cPanel / External DB URL (CPANEL_DATABASE_URL or EXTERNAL_DATABASE_URL)
+ * 2. Dedicated cPanel discrete variables (CPANEL_DB_HOST, CPANEL_DB_NAME, CPANEL_DB_USER, CPANEL_DB_PASSWORD)
+ * 3. User-supplied DATABASE_URL pointing to an external non-Airo host (overrides Airo default DB)
+ * 4. GoDaddy Airo native DB_* variables (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD)
+ * 5. Fallback to DATABASE_URL (for local dev)
+ */
 export function validateDatabaseConfig(): ValidatedDatabaseConfig {
+  // 1. Dedicated cPanel / External secret (safe from platform variable collision)
+  const cpanelUrl = process.env.CPANEL_DATABASE_URL?.trim() || process.env.EXTERNAL_DATABASE_URL?.trim();
+  if (cpanelUrl) {
+    return parseDatabaseUrl(cpanelUrl, 'CPANEL_DATABASE_URL secret');
+  }
+
+  // 2. Dedicated cPanel discrete variables
+  const cpanelHost = process.env.CPANEL_DB_HOST?.trim();
+  const cpanelName = process.env.CPANEL_DB_NAME?.trim();
+  const cpanelUser = process.env.CPANEL_DB_USER?.trim();
+  const cpanelPass = process.env.CPANEL_DB_PASSWORD;
+  const cpanelPortStr = process.env.CPANEL_DB_PORT?.trim() || '3306';
+  if (cpanelHost && cpanelName && cpanelUser && cpanelPass !== undefined) {
+    const port = parseInt(cpanelPortStr, 10) || 3306;
+    const ssl = parseTlsConfiguration(null);
+    return {
+      host: cpanelHost,
+      port,
+      user: cpanelUser,
+      password: cpanelPass,
+      database: cpanelName,
+      source: 'cPanel custom variables (CPANEL_DB_HOST, CPANEL_DB_NAME)',
+      ...(ssl !== undefined ? { ssl } : {}),
+    };
+  }
+
+  // 3. User-supplied DATABASE_URL if pointing to an external (non-Airo internal IP) host
+  const dbUrl = process.env.DATABASE_URL?.trim();
+  if (dbUrl) {
+    try {
+      const parsed = new URL(dbUrl);
+      if (
+        parsed.hostname &&
+        parsed.hostname !== '10.204.137.66' &&
+        parsed.hostname !== 'localhost' &&
+        parsed.hostname !== '127.0.0.1'
+      ) {
+        return parseDatabaseUrl(dbUrl, 'DATABASE_URL (External Host)');
+      }
+    } catch {
+      // ignore, will be checked below
+    }
+  }
+
+  // 4. GoDaddy Airo native DB_* variables (Airo managed DB)
   const dbHost = process.env.DB_HOST?.trim();
   const dbPortStr = process.env.DB_PORT?.trim();
   const dbName = process.env.DB_NAME?.trim();
   const dbUser = process.env.DB_USER?.trim();
   const dbPassword = process.env.DB_PASSWORD;
 
-  // Check if all five GoDaddy native variables are provided
   const hasGoDaddyConfig = Boolean(
     dbHost &&
     dbHost.length > 0 &&
@@ -136,53 +231,14 @@ export function validateDatabaseConfig(): ValidatedDatabaseConfig {
     };
   }
 
-  // Fallback to DATABASE_URL for local development and non-GoDaddy environments
-  const dbUrl = process.env.DATABASE_URL?.trim();
-  if (!dbUrl) {
-    throw new Error(
-      'FATAL: DATABASE_URL environment variable is missing. DentalCore requires either complete GoDaddy variables (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD) or a valid MySQL DATABASE_URL.'
-    );
+  // 5. Fallback to DATABASE_URL for local development
+  if (dbUrl) {
+    return parseDatabaseUrl(dbUrl, 'DATABASE_URL environment variable');
   }
 
-  let u: URL;
-  try {
-    u = new URL(dbUrl);
-  } catch {
-    throw new Error('FATAL: DATABASE_URL is malformed. Ensure it is a valid URL.');
-  }
-
-  if (u.protocol !== 'mysql:' && u.protocol !== 'mariadb:') {
-    throw new Error(`FATAL: DATABASE_URL protocol "${u.protocol}" is unsupported. Only "mysql:" and "mariadb:" protocols are allowed.`);
-  }
-
-  const database = u.pathname.replace(/^\//, '').trim();
-  if (!database) {
-    throw new Error('FATAL: DATABASE_URL must specify a target database name.');
-  }
-
-  if (!u.hostname) {
-    throw new Error('FATAL: DATABASE_URL must specify a target host.');
-  }
-
-  let port = 3306;
-  if (u.port) {
-    port = parseInt(u.port, 10);
-    if (isNaN(port) || port < 1 || port > 65535) {
-      throw new Error(`FATAL: DATABASE_URL port "${u.port}" is invalid. Port must be an integer between 1 and 65535.`);
-    }
-  }
-
-  const ssl = parseTlsConfiguration(u.searchParams);
-
-  return {
-    host: u.hostname,
-    port,
-    user: decodeURIComponent(u.username || ''),
-    password: decodeURIComponent(u.password || ''),
-    database,
-    source: 'DATABASE_URL environment variable',
-    ...(ssl !== undefined ? { ssl } : {}),
-  };
+  throw new Error(
+    'FATAL: No database configuration found. Please provide CPANEL_DATABASE_URL, DATABASE_URL, or DB_* variables.'
+  );
 }
 
 function createDatabaseAdapter() {
