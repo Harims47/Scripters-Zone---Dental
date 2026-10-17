@@ -149,51 +149,7 @@ function parseDatabaseUrl(urlStr: string, sourceName: string): ValidatedDatabase
  * 5. Fallback to DATABASE_URL (for local dev)
  */
 export function validateDatabaseConfig(): ValidatedDatabaseConfig {
-  // 1. Dedicated cPanel / External secret (safe from platform variable collision)
-  const cpanelUrl = process.env.CPANEL_DATABASE_URL?.trim() || process.env.EXTERNAL_DATABASE_URL?.trim();
-  if (cpanelUrl) {
-    return parseDatabaseUrl(cpanelUrl, 'CPANEL_DATABASE_URL secret');
-  }
-
-  // 2. Dedicated cPanel discrete variables
-  const cpanelHost = process.env.CPANEL_DB_HOST?.trim();
-  const cpanelName = process.env.CPANEL_DB_NAME?.trim();
-  const cpanelUser = process.env.CPANEL_DB_USER?.trim();
-  const cpanelPass = process.env.CPANEL_DB_PASSWORD;
-  const cpanelPortStr = process.env.CPANEL_DB_PORT?.trim() || '3306';
-  if (cpanelHost && cpanelName && cpanelUser && cpanelPass !== undefined) {
-    const port = parseInt(cpanelPortStr, 10) || 3306;
-    const ssl = parseTlsConfiguration(null);
-    return {
-      host: cpanelHost,
-      port,
-      user: cpanelUser,
-      password: cpanelPass,
-      database: cpanelName,
-      source: 'cPanel custom variables (CPANEL_DB_HOST, CPANEL_DB_NAME)',
-      ...(ssl !== undefined ? { ssl } : {}),
-    };
-  }
-
-  // 3. User-supplied DATABASE_URL if pointing to an external (non-Airo internal IP) host
-  const dbUrl = process.env.DATABASE_URL?.trim();
-  if (dbUrl) {
-    try {
-      const parsed = new URL(dbUrl);
-      if (
-        parsed.hostname &&
-        parsed.hostname !== '10.204.137.66' &&
-        parsed.hostname !== 'localhost' &&
-        parsed.hostname !== '127.0.0.1'
-      ) {
-        return parseDatabaseUrl(dbUrl, 'DATABASE_URL (External Host)');
-      }
-    } catch {
-      // ignore, will be checked below
-    }
-  }
-
-  // 4. GoDaddy Airo native DB_* variables (Airo managed DB)
+  // 1. GoDaddy Airo native DB_* variables (Fast, internal managed DB at 10.204.137.66)
   const dbHost = process.env.DB_HOST?.trim();
   const dbPortStr = process.env.DB_PORT?.trim();
   const dbName = process.env.DB_NAME?.trim();
@@ -226,12 +182,19 @@ export function validateDatabaseConfig(): ValidatedDatabaseConfig {
       user: dbUser!,
       password: dbPassword,
       database: dbName!,
-      source: 'GoDaddy native DB_* variables (DB_HOST, DB_NAME, DB_USER)',
+      source: 'GoDaddy native internal DB (DB_HOST, DB_NAME, DB_USER)',
       ...(ssl !== undefined ? { ssl } : {}),
     };
   }
 
-  // 5. Fallback to DATABASE_URL for local development
+  // 2. Dedicated cPanel / External secret (used for local scripts or VPS)
+  const cpanelUrl = process.env.CPANEL_DATABASE_URL?.trim() || process.env.EXTERNAL_DATABASE_URL?.trim();
+  if (cpanelUrl) {
+    return parseDatabaseUrl(cpanelUrl, 'CPANEL_DATABASE_URL secret');
+  }
+
+  // 3. Fallback to DATABASE_URL (for local development)
+  const dbUrl = process.env.DATABASE_URL?.trim();
   if (dbUrl) {
     return parseDatabaseUrl(dbUrl, 'DATABASE_URL environment variable');
   }
