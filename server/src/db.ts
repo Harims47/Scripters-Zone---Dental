@@ -16,6 +16,7 @@ export interface ValidatedDatabaseConfig {
   password?: string;
   database: string;
   ssl?: boolean | (SecureContextOptions & { rejectUnauthorized?: boolean });
+  source?: string;
 }
 
 /**
@@ -130,6 +131,7 @@ export function validateDatabaseConfig(): ValidatedDatabaseConfig {
       user: dbUser!,
       password: dbPassword,
       database: dbName!,
+      source: 'GoDaddy native DB_* variables (DB_HOST, DB_NAME, DB_USER)',
       ...(ssl !== undefined ? { ssl } : {}),
     };
   }
@@ -178,6 +180,7 @@ export function validateDatabaseConfig(): ValidatedDatabaseConfig {
     user: decodeURIComponent(u.username || ''),
     password: decodeURIComponent(u.password || ''),
     database,
+    source: 'DATABASE_URL environment variable',
     ...(ssl !== undefined ? { ssl } : {}),
   };
 }
@@ -208,19 +211,25 @@ function createDatabaseAdapter() {
 
 const { pool, adapter, config: dbConfig } = createDatabaseAdapter();
 
-export { pool };
+export { pool, dbConfig };
 
 export const prisma = new PrismaClient({
   adapter,
   log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
 });
 
+export interface DatabaseProbeResult {
+  activeDb: string;
+  activeUser: string;
+  tableCount: number;
+}
+
 /**
- * Executes a real connectivity probe using direct pool connection and SELECT 1.
- * Logs sanitized diagnostic information without exposing credentials.
+ * Executes a real connectivity probe using direct pool connection and queries connection identity.
+ * Logs active database name, authenticated user, host:port, table count, and configuration source.
  * Fails if either the underlying socket connection or the Prisma query pipeline fails.
  */
-export async function probeDatabaseConnectivity(): Promise<void> {
+export async function probeDatabaseConnectivity(): Promise<DatabaseProbeResult> {
   // Step 1: Probe direct socket connection from the pool to capture underlying driver/socket errors
   let rawConn: PoolConnection | null = null;
   try {
@@ -242,21 +251,32 @@ export async function probeDatabaseConnectivity(): Promise<void> {
     }
   }
 
-  // Step 2: Probe through Prisma query engine pipeline
+  // Step 2: Probe through Prisma query engine pipeline and retrieve active DB diagnostics
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
+    const results = await prisma.$queryRawUnsafe<any[]>(
+      'SELECT DATABASE() AS activeDb, CURRENT_USER() AS activeUser, (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()) AS tableCount'
+    );
+    const row = Array.isArray(results) && results[0] ? results[0] : null;
+    return {
+      activeDb: row?.activeDb || dbConfig.database,
+      activeUser: row?.activeUser || dbConfig.user,
+      tableCount: Number(row?.tableCount ?? 0),
+    };
   } catch (err: any) {
     const errCode = (err as any).code || 'UNKNOWN';
-    console.error(`[Database] SELECT 1 query probe failed via Prisma engine (code: ${errCode}): ${err.message}`);
+    console.error(`[Database] Query probe failed via Prisma engine (code: ${errCode}): ${err.message}`);
     throw err;
   }
 }
 
 // Pre-warm and verify database connection on server boot
 probeDatabaseConnectivity()
-  .then(() => {
+  .then((diag) => {
     if (process.env.NODE_ENV !== 'test') {
-      console.log('[Database] MySQL connection verified successfully via SELECT 1.');
+      console.log(`[Database] MySQL connection verified successfully via SELECT 1.`);
+      console.log(
+        `[Database] Active Database: "${diag.activeDb}" | Connected User: "${diag.activeUser}" | Host: "${dbConfig.host}:${dbConfig.port}" | Total Tables: ${diag.tableCount} (Source: ${dbConfig.source || 'env'})`
+      );
     }
   })
   .catch((err) => {

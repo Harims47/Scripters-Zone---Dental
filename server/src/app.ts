@@ -9,7 +9,7 @@ dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-import { validateDatabaseConfig } from './db';
+import { validateDatabaseConfig, probeDatabaseConnectivity, dbConfig } from './db';
 import { validateJwtSecret } from './config/authConfig';
 
 // Fail-closed validation at startup
@@ -126,9 +126,28 @@ app.use('/api/reimbursements', reimbursementRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/external-advice', externalAdviceRoutes);
 
-// Minimal Health Endpoint for Phase 2.0
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'DentalCore backend is running' });
+// Health & Database Diagnostics Endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const diag = await probeDatabaseConnectivity();
+    res.json({
+      status: 'ok',
+      message: 'DentalCore backend is running',
+      database: {
+        activeDb: diag.activeDb,
+        activeUser: diag.activeUser,
+        host: `${dbConfig.host}:${dbConfig.port}`,
+        tableCount: diag.tableCount,
+        source: dbConfig.source || 'env',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      status: 'error',
+      message: 'DentalCore backend running, but database probe failed',
+      error: err.message,
+    });
+  }
 });
 
 // 404 handler for unmatched API routes
