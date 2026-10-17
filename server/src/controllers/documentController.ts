@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../db';
 import {
   generatePrescriptionPDF,
@@ -7,71 +8,328 @@ import {
   generatePurchaseOrderPDF
 } from '../services/documentService';
 import { getClinicBranding } from '../services/pdf/clinicBranding';
+import { JWT_SECRET } from '../config/authConfig';
+
+/**
+ * Generates a tamper-proof cryptographic token for a given document type and visit/entity ID.
+ * This allows public access by the patient without exposing patient IDs to enumeration.
+ */
+export function generateDocumentToken(type: string, entityId: string): string {
+  return crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${type.toLowerCase()}:${entityId}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+// ==============================================================================
+// PDF BUFFER BUILDERS (Reusable for both authenticated staff & tokenized public)
+// ==============================================================================
+
+export async function buildPrescriptionPDFBuffer(visitId: string): Promise<{ pdfBuffer: Buffer; filename: string }> {
+  const visit = await prisma.visit.findUnique({
+    where: { id: visitId },
+    include: {
+      patient: true,
+      consultation: true,
+      prescription: {
+        include: {
+          items: {
+            include: { medicine: true }
+          }
+        }
+      }
+    }
+  }) as any;
+
+  if (!visit || !visit.prescription) {
+    throw new Error('Prescription not found for this visit.');
+  }
+
+  const staff = visit.doctorId ? await prisma.staff.findUnique({
+    where: { id: visit.doctorId }
+  }) : null;
+
+  const branding = getClinicBranding();
+
+  const prescriptionData = {
+    clinicName: branding.name,
+    clinicAddress: branding.address,
+    clinicPhone: branding.phone,
+    patientName: visit.patient.name,
+    patientAge: visit.patient.age || '',
+    patientGender: visit.patient.gender || '',
+    patientPhone: visit.patient.phone,
+    diagnosis: visit.consultation?.reasonForVisit || visit.reasonForVisit || undefined,
+    notes: visit.prescription.notes || visit.consultation?.clinicalNotes || undefined,
+    visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
+    doctorName: staff ? staff.name : 'Doctor',
+    items: visit.prescription.items.map((item: any) => ({
+      medicineName: item.medicine?.name || 'Medicine',
+      form: item.medicine?.form || undefined,
+      unit: item.medicine?.unit || undefined,
+      quantity: item.quantity,
+      dosage: item.dosage || undefined,
+      frequency: item.frequency || undefined,
+      duration: item.duration || undefined,
+      instructions: item.instructions || undefined
+    }))
+  };
+
+  const pdfBuffer = await generatePrescriptionPDF(prescriptionData);
+  const safePatientName = (visit.patient.name || 'Patient').replace(/[^a-zA-Z0-9]/g, '_');
+  const docCode = visit.id.substring(0, 8).toUpperCase();
+  const filename = `prescription_${safePatientName}_${docCode}.pdf`;
+
+  return { pdfBuffer, filename };
+}
+
+export async function buildReceiptPDFBuffer(
+  visitId: string,
+  requestedPaymentId?: string,
+  receivedBy: string = 'Staff'
+): Promise<{ pdfBuffer: Buffer; filename: string; visit: any }> {
+  const visit = await prisma.visit.findUnique({
+    where: { id: visitId },
+    include: {
+      patient: true,
+      payments: {
+        orderBy: { createdAt: 'asc' }
+      },
+      consultation: true,
+      completedTreatmentItems: {
+        include: { catalogItem: true }
+      },
+      dispensing: {
+        include: {
+          items: {
+            include: { medicine: true }
+          }
+        }
+      }
+    }
+  }) as any;
+
+  if (!visit) {
+    throw new Error('Visit not found.');
+  }
+
+  let doctorName = 'Doctor';
+  if (visit.doctorId) {
+    const doctorStaff = await prisma.staff.findUnique({
+      where: { id: visit.doctorId }
+    });
+    if (doctorStaff) doctorName = doctorStaff.name;
+  }
+
+  const validPayments = (visit.payments || []).filter(
+    (p: any) => p.status === 'Paid' || p.status === 'Completed'
+  );
+
+  let payment = null;
+  let paymentIndex = -1;
+  if (requestedPaymentId) {
+    paymentIndex = validPayments.findIndex((p: any) => p.id === requestedPaymentId);
+    if (paymentIndex !== -1) {
+      payment = validPayments[paymentIndex];
+    }
+  }
+  if (!payment) {
+    payment = validPayments.length > 0 ? validPayments[validPayments.length - 1] : null;
+    paymentIndex = validPayments.length - 1;
+  }
+
+  if (!payment) {
+    throw new Error('Payment is not completed. Cannot generate receipt.');
+  }
+
+  const consultationFee = visit.consultationFee || 0;
+  const treatmentFee = visit.treatmentFee || 0;
+
+  let calculatedMedicineCost = 0;
+  if (visit.dispensing && visit.dispensing.items) {
+    calculatedMedicineCost = visit.dispensing.items.reduce(
+      (sum: number, item: any) => sum + ((item.dispensedQuantity || item.prescribedQuantity || 0) * (item.medicine?.unitPrice || 0)),
+      0
+    );
+  }
+  const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
+  const discount = visit.discount || 0;
+  const itemizedTotal = Math.max(0, Math.round((consultationFee + treatmentFee + medicineCost - discount) * 100) / 100);
+  const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
+
+  const priorPaid = validPayments.slice(0, paymentIndex).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+  const cumulativePaid = priorPaid + payment.amount;
+  const rawBalance = totalAmount - cumulativePaid;
+  const balanceDue = (rawBalance <= 0 || (visit.status === 'COMPLETED' && rawBalance < 1)) ? 0 : rawBalance;
+  const isPartial = balanceDue > 0;
+
+  const branding = getClinicBranding();
+  const receiptNo = payment.id ? `RCPT-${payment.id.substring(0, 8).toUpperCase()}` : 'RCPT-001';
+
+  const receiptData = {
+    clinicName: branding.name,
+    clinicAddress: branding.address,
+    clinicPhone: branding.phone,
+    patientName: visit.patient.name,
+    patientAge: visit.patient?.age ?? undefined,
+    patientGender: visit.patient?.gender || undefined,
+    patientPhone: visit.patient.phone,
+    visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
+    doctorName,
+    consultationFee,
+    treatmentFee,
+    medicineCost,
+    discount: discount > 0 ? discount : undefined,
+    discountReason: visit.discountReason || undefined,
+    totalAmount,
+    amountPaid: payment.amount,
+    cumulativePaid,
+    balanceDue,
+    isPartial,
+    paymentNumber: paymentIndex >= 0 ? paymentIndex + 1 : 1,
+    totalPaymentsCount: validPayments.length,
+    paymentMethod: payment.method || 'Cash',
+    paymentDate: payment.date ? new Date(payment.date).toISOString() : (payment.createdAt ? new Date(payment.createdAt).toISOString() : new Date().toISOString()),
+    paymentStatus: isPartial ? 'Partially Paid' : 'Paid',
+    paymentNotes: payment.notes || undefined,
+    receiptNo,
+    receivedBy,
+  };
+
+  const pdfBuffer = await generateReceiptPDF(receiptData);
+  const filename = `receipt_${receiptNo}.pdf`;
+
+  return { pdfBuffer, filename, visit };
+}
+
+export async function buildInvoicePDFBuffer(visitId: string): Promise<{ pdfBuffer: Buffer; filename: string; visit: any }> {
+  const visit = await prisma.visit.findUnique({
+    where: { id: visitId },
+    include: {
+      patient: true,
+      consultation: true,
+      payments: {
+        orderBy: { createdAt: 'asc' }
+      },
+      completedTreatmentItems: {
+        include: { catalogItem: true }
+      },
+      dispensing: {
+        include: {
+          items: {
+            include: { medicine: true }
+          }
+        }
+      }
+    }
+  }) as any;
+
+  if (!visit) {
+    throw new Error('Visit not found.');
+  }
+
+  let doctorName = 'Doctor';
+  if (visit.doctorId) {
+    const doctorStaff = await prisma.staff.findUnique({
+      where: { id: visit.doctorId }
+    });
+    if (doctorStaff) doctorName = doctorStaff.name;
+  }
+
+  const consultationFee = visit.consultationFee || 0;
+  const treatmentFee = visit.treatmentFee || 0;
+
+  let calculatedMedicineCost = 0;
+  const medicines = (visit.dispensing?.items || []).map((item: any) => {
+    const qty = item.dispensedQuantity || item.prescribedQuantity || 0;
+    const unitPrice = item.medicine?.unitPrice || 0;
+    const total = qty * unitPrice;
+    calculatedMedicineCost += total;
+    return {
+      name: item.medicine?.name || 'Medicine',
+      quantity: qty,
+      unitPrice,
+      total
+    };
+  });
+
+  const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
+  const discount = visit.discount || 0;
+  const grossTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
+  const netTotal = Math.max(0, Math.round((grossTotal - discount) * 100) / 100);
+  const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(netTotal);
+  const roundOff = Math.round((totalAmount - netTotal) * 100) / 100;
+
+  const validPayments = (visit.payments || []).filter((p: any) => p.status === 'Paid' || p.status === 'Completed');
+  const paidTotal = validPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+  const rawDue = totalAmount - paidTotal;
+  const amountDue = (rawDue <= 0 || (visit.status === 'COMPLETED' && rawDue < 1)) ? 0 : rawDue;
+
+  const treatments = (visit.completedTreatmentItems || []).map((t: any) => ({
+    name: t.catalogItem?.name || 'Dental Procedure',
+    category: t.catalogItem?.category,
+    notes: t.notes || undefined,
+  }));
+
+  const payments = validPayments.map((p: any) => ({
+    receiptNo: p.id ? `RCPT-${p.id.substring(0, 8).toUpperCase()}` : 'RCPT',
+    date: p.date ? new Date(p.date).toISOString() : new Date(p.createdAt).toISOString(),
+    method: p.method || 'Cash',
+    amount: p.amount || 0
+  }));
+
+  const status = amountDue === 0 ? 'Fully Paid' : paidTotal > 0 ? 'Partially Paid' : 'Unpaid';
+  const invoiceNumber = `INV-${visit.id.substring(0, 8).toUpperCase()}`;
+
+  const branding = getClinicBranding();
+
+  const pdfBuffer = await generateInvoicePDF({
+    clinicName: branding.name,
+    clinicAddress: branding.address,
+    clinicPhone: branding.phone,
+    invoiceNumber,
+    visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
+    patientName: visit.patient.name,
+    patientAge: visit.patient?.age ?? undefined,
+    patientGender: visit.patient?.gender || undefined,
+    patientPhone: visit.patient.phone,
+    doctorName,
+    consultationFee,
+    treatmentFee,
+    medicineCost,
+    discount: discount > 0 ? discount : undefined,
+    discountReason: visit.discountReason || undefined,
+    subtotal: grossTotal,
+    roundOff: roundOff !== 0 ? roundOff : undefined,
+    totalAmount,
+    amountPaid: paidTotal,
+    amountDue,
+    status,
+    treatments,
+    medicines,
+    payments
+  });
+
+  const filename = `invoice_${invoiceNumber}.pdf`;
+  return { pdfBuffer, filename, visit };
+}
+
+// ==============================================================================
+// AUTHENTICATED STAFF HANDLERS (Download Attachment)
+// ==============================================================================
 
 export const getPrescriptionPDF = async (req: Request, res: Response) => {
   try {
     const visitId = req.params.visitId as string;
-
-    const visit = await prisma.visit.findUnique({
-      where: { id: visitId },
-      include: {
-        patient: true,
-        consultation: true,
-        prescription: {
-          include: {
-            items: {
-              include: { medicine: true }
-            }
-          }
-        }
-      }
-    }) as any;
-
-    if (!visit || !visit.prescription) {
-      return res.status(404).json({ error: 'Prescription not found for this visit.' });
-    }
-
-    const staff = visit.doctorId ? await prisma.staff.findUnique({
-      where: { id: visit.doctorId }
-    }) : null;
-
-    const branding = getClinicBranding();
-
-    const prescriptionData = {
-      clinicName: branding.name,
-      clinicAddress: branding.address,
-      clinicPhone: branding.phone,
-      patientName: visit.patient.name,
-      patientAge: visit.patient.age || '',
-      patientGender: visit.patient.gender || '',
-      patientPhone: visit.patient.phone,
-      diagnosis: visit.consultation?.reasonForVisit || visit.reasonForVisit || undefined,
-      notes: visit.prescription.notes || visit.consultation?.clinicalNotes || undefined,
-      visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
-      doctorName: staff ? staff.name : 'Doctor',
-      items: visit.prescription.items.map((item: any) => ({
-        medicineName: item.medicine?.name || 'Medicine',
-        form: item.medicine?.form || undefined,
-        unit: item.medicine?.unit || undefined,
-        quantity: item.quantity,
-        dosage: item.dosage || undefined,
-        frequency: item.frequency || undefined,
-        duration: item.duration || undefined,
-        instructions: item.instructions || undefined
-      }))
-    };
-
-    const pdfBuffer = await generatePrescriptionPDF(prescriptionData);
-
-    const safePatientName = (visit.patient.name || 'Patient').replace(/[^a-zA-Z0-9]/g, '_');
-    const docCode = visit.id.substring(0, 8).toUpperCase();
+    const { pdfBuffer, filename } = await buildPrescriptionPDFBuffer(visitId);
 
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`prescription_${safePatientName}_${docCode}.pdf`);
+    res.attachment(filename);
     return res.send(pdfBuffer);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating prescription PDF:', error);
-    res.status(500).json({ error: 'Failed to generate prescription PDF' });
+    res.status(error.message?.includes('not found') ? 404 : 500).json({ error: error.message || 'Failed to generate prescription PDF' });
   }
 };
 
@@ -79,31 +337,9 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
   try {
     const visitId = req.params.visitId as string;
     const requestedPaymentId = (req.query.paymentId as string) || undefined;
+    const receivedBy = req.user?.username || 'Staff';
 
-    const visit = await prisma.visit.findUnique({
-      where: { id: visitId },
-      include: {
-        patient: true,
-        payments: {
-          orderBy: { createdAt: 'asc' }
-        },
-        consultation: true,
-        completedTreatmentItems: {
-          include: { catalogItem: true }
-        },
-        dispensing: {
-          include: {
-            items: {
-              include: { medicine: true }
-            }
-          }
-        }
-      }
-    }) as any;
-
-    if (!visit) {
-      return res.status(404).json({ error: 'Visit not found.' });
-    }
+    const { pdfBuffer, filename, visit } = await buildReceiptPDFBuffer(visitId, requestedPaymentId, receivedBy);
 
     // Security Check: If visit is doctor-owned, Receptionists are prohibited from accessing receipt data
     if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist') {
@@ -112,132 +348,19 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch doctor name
-    let doctorName = 'Doctor';
-    if (visit.doctorId) {
-      const doctorStaff = await prisma.staff.findUnique({
-        where: { id: visit.doctorId }
-      });
-      if (doctorStaff) doctorName = doctorStaff.name;
-    }
-
-    const validPayments = (visit.payments || []).filter(
-      (p: any) => p.status === 'Paid' || p.status === 'Completed'
-    );
-
-    let payment = null;
-    let paymentIndex = -1;
-    if (requestedPaymentId) {
-      paymentIndex = validPayments.findIndex((p: any) => p.id === requestedPaymentId);
-      if (paymentIndex !== -1) {
-        payment = validPayments[paymentIndex];
-      }
-    }
-    if (!payment) {
-      payment = validPayments.length > 0 ? validPayments[validPayments.length - 1] : null;
-      paymentIndex = validPayments.length - 1;
-    }
-
-    if (!payment) {
-      return res.status(400).json({ error: 'Payment is not completed. Cannot generate receipt.' });
-    }
-
-    // Authoritative visit charges
-    const consultationFee = visit.consultationFee || 0;
-    const treatmentFee = visit.treatmentFee || 0;
-
-    let calculatedMedicineCost = 0;
-    if (visit.dispensing && visit.dispensing.items) {
-      calculatedMedicineCost = visit.dispensing.items.reduce(
-        (sum: number, item: any) => sum + ((item.dispensedQuantity || item.prescribedQuantity || 0) * (item.medicine?.unitPrice || 0)),
-        0
-      );
-    }
-    const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-    const discount = visit.discount || 0;
-    const itemizedTotal = Math.max(0, Math.round((consultationFee + treatmentFee + medicineCost - discount) * 100) / 100);
-    const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
-
-    // Prior payments made before this installment
-    const priorPaid = validPayments.slice(0, paymentIndex).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-    const cumulativePaid = priorPaid + payment.amount;
-    const rawBalance = totalAmount - cumulativePaid;
-    const balanceDue = (rawBalance <= 0 || (visit.status === 'COMPLETED' && rawBalance < 1)) ? 0 : rawBalance;
-    const isPartial = balanceDue > 0;
-
-    const branding = getClinicBranding();
-    const receiptNo = payment.id ? `RCPT-${payment.id.substring(0, 8).toUpperCase()}` : 'RCPT-001';
-
-    const receiptData = {
-      clinicName: branding.name,
-      clinicAddress: branding.address,
-      clinicPhone: branding.phone,
-      patientName: visit.patient.name,
-      patientAge: visit.patient?.age ?? undefined,
-      patientGender: visit.patient?.gender || undefined,
-      patientPhone: visit.patient.phone,
-      visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
-      doctorName,
-      consultationFee,
-      treatmentFee,
-      medicineCost,
-      discount: discount > 0 ? discount : undefined,
-      discountReason: visit.discountReason || undefined,
-      totalAmount: totalAmount > 0 ? totalAmount : payment.amount,
-      amountPaid: payment.amount,
-      priorPaid,
-      cumulativePaid,
-      balanceDue,
-      isPartial,
-      paymentNumber: paymentIndex >= 0 ? paymentIndex + 1 : 1,
-      totalPaymentsCount: validPayments.length,
-      paymentMethod: payment.method || 'Cash',
-      paymentDate: payment.date ? new Date(payment.date).toISOString() : (payment.createdAt ? new Date(payment.createdAt).toISOString() : new Date().toISOString()),
-      paymentStatus: isPartial ? 'Partially Paid' : 'Paid',
-      paymentNotes: payment.notes || undefined,
-      receiptNo,
-      receivedBy: req.user?.username || 'Staff',
-    };
-
-    const pdfBuffer = await generateReceiptPDF(receiptData);
-
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`receipt_${receiptNo}.pdf`);
+    res.attachment(filename);
     return res.send(pdfBuffer);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating receipt PDF:', error);
-    res.status(500).json({ error: 'Failed to generate receipt PDF' });
+    res.status(error.message?.includes('not found') ? 404 : 500).json({ error: error.message || 'Failed to generate receipt PDF' });
   }
 };
 
 export const getInvoicePDF = async (req: Request, res: Response) => {
   try {
     const visitId = req.params.visitId as string;
-
-    const visit = await prisma.visit.findUnique({
-      where: { id: visitId },
-      include: {
-        patient: true,
-        consultation: true,
-        payments: {
-          orderBy: { createdAt: 'asc' }
-        },
-        completedTreatmentItems: {
-          include: { catalogItem: true }
-        },
-        dispensing: {
-          include: {
-            items: {
-              include: { medicine: true }
-            }
-          }
-        }
-      }
-    }) as any;
-
-    if (!visit) {
-      return res.status(404).json({ error: 'Visit not found.' });
-    }
+    const { pdfBuffer, filename, visit } = await buildInvoicePDFBuffer(visitId);
 
     // Security Check: If visit is doctor-owned, Receptionists are prohibited from accessing invoice data
     if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist') {
@@ -247,95 +370,12 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch doctor name
-    let doctorName = 'Doctor';
-    if (visit.doctorId) {
-      const doctorStaff = await prisma.staff.findUnique({
-        where: { id: visit.doctorId }
-      });
-      if (doctorStaff) doctorName = doctorStaff.name;
-    }
-
-    const consultationFee = visit.consultationFee || 0;
-    const treatmentFee = visit.treatmentFee || 0;
-
-    let calculatedMedicineCost = 0;
-    const medicines = (visit.dispensing?.items || []).map((item: any) => {
-      const qty = item.dispensedQuantity || item.prescribedQuantity || 0;
-      const unitPrice = item.medicine?.unitPrice || 0;
-      const total = qty * unitPrice;
-      calculatedMedicineCost += total;
-      return {
-        name: item.medicine?.name || 'Medicine',
-        quantity: qty,
-        unitPrice,
-        total
-      };
-    });
-
-    const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-    const discount = visit.discount || 0;
-    const grossTotal = Math.round((consultationFee + treatmentFee + medicineCost) * 100) / 100;
-    const netTotal = Math.max(0, Math.round((grossTotal - discount) * 100) / 100);
-    const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(netTotal);
-    const roundOff = Math.round((totalAmount - netTotal) * 100) / 100;
-
-    const validPayments = (visit.payments || []).filter((p: any) => p.status === 'Paid' || p.status === 'Completed');
-    const paidTotal = validPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-    const rawDue = totalAmount - paidTotal;
-    const amountDue = (rawDue <= 0 || (visit.status === 'COMPLETED' && rawDue < 1)) ? 0 : rawDue;
-
-    const treatments = (visit.completedTreatmentItems || []).map((t: any) => ({
-      name: t.catalogItem?.name || 'Dental Procedure',
-      category: t.catalogItem?.category,
-      notes: t.notes || undefined,
-    }));
-
-    const payments = validPayments.map((p: any) => ({
-      receiptNo: p.id ? `RCPT-${p.id.substring(0, 8).toUpperCase()}` : 'RCPT',
-      date: p.date ? new Date(p.date).toISOString() : new Date(p.createdAt).toISOString(),
-      method: p.method || 'Cash',
-      amount: p.amount || 0
-    }));
-
-    const status = amountDue === 0 ? 'Fully Paid' : paidTotal > 0 ? 'Partially Paid' : 'Unpaid';
-    const invoiceNumber = `INV-${visit.id.substring(0, 8).toUpperCase()}`;
-
-    const branding = getClinicBranding();
-
-    const pdfBuffer = await generateInvoicePDF({
-      clinicName: branding.name,
-      clinicAddress: branding.address,
-      clinicPhone: branding.phone,
-      invoiceNumber,
-      visitDate: visit.createdAt ? new Date(visit.createdAt).toISOString() : new Date().toISOString(),
-      patientName: visit.patient.name,
-      patientAge: visit.patient?.age ?? undefined,
-      patientGender: visit.patient?.gender || undefined,
-      patientPhone: visit.patient.phone,
-      doctorName,
-      consultationFee,
-      treatmentFee,
-      medicineCost,
-      discount: discount > 0 ? discount : undefined,
-      discountReason: visit.discountReason || undefined,
-      subtotal: grossTotal,
-      roundOff: roundOff !== 0 ? roundOff : undefined,
-      totalAmount,
-      amountPaid: paidTotal,
-      amountDue,
-      status,
-      treatments,
-      medicines,
-      payments
-    });
-
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`invoice_${invoiceNumber}.pdf`);
+    res.attachment(filename);
     return res.send(pdfBuffer);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating invoice PDF:', error);
-    res.status(500).json({ error: 'Failed to generate invoice PDF' });
+    res.status(error.message?.includes('not found') ? 404 : 500).json({ error: error.message || 'Failed to generate invoice PDF' });
   }
 };
 
@@ -383,5 +423,111 @@ export const getPurchaseOrderPDF = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error generating purchase order PDF:', error);
     res.status(500).json({ error: 'Failed to generate purchase order PDF' });
+  }
+};
+
+// ==============================================================================
+// PUBLIC & SHARING HANDLERS
+// ==============================================================================
+
+/**
+ * Returns signed URLs and formatted text for sharing via WhatsApp (Web / App) or native share.
+ * Strictly checks staff role authorization.
+ */
+export const getDocumentShareLink = async (req: Request, res: Response) => {
+  try {
+    const { type, visitId } = req.params;
+    const requestedPaymentId = (req.query.paymentId as string) || undefined;
+
+    const visit = await prisma.visit.findUnique({
+      where: { id: visitId },
+      include: {
+        patient: true,
+      }
+    });
+
+    if (!visit) {
+      return res.status(404).json({ error: 'Visit not found.' });
+    }
+
+    // Role check: Receptionists cannot share doctor-owned financial docs
+    if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist' && (type === 'receipt' || type === 'invoice')) {
+      return res.status(403).json({
+        error: 'Access denied: Payment and receipt details for this doctor-owned visit are restricted from Reception.'
+      });
+    }
+
+    const token = generateDocumentToken(type, visitId);
+    const branding = getClinicBranding();
+
+    // Determine host origin
+    const hostOrigin = (process.env.FRONTEND_ORIGIN || '')
+      .split(',')[0]
+      ?.trim()
+      ?.replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
+
+    const queryParams = new URLSearchParams({
+      token,
+      ...(requestedPaymentId ? { paymentId: requestedPaymentId } : {}),
+    });
+
+    // Direct PDF download URL
+    const pdfDownloadUrl = `${hostOrigin}/api/documents/public/${encodeURIComponent(type)}/${encodeURIComponent(visitId)}?${queryParams.toString()}`;
+
+    const docName = type === 'prescription' ? 'Prescription' : type === 'receipt' ? 'Payment Receipt' : 'Invoice';
+    const message = `*${branding.name}*\n\nDear *${visit.patient.name}*,\nThank you for visiting us. Your ${docName} is ready.\n\n*Download your ${docName} (PDF):*\n${pdfDownloadUrl}\n\n${branding.address}\nPh: ${branding.phone}`;
+
+    return res.json({
+      success: true,
+      token,
+      viewUrl: pdfDownloadUrl,
+      pdfDownloadUrl,
+      message,
+      patientName: visit.patient.name,
+      patientPhone: visit.patient.phone,
+      documentType: docName,
+    });
+  } catch (error) {
+    console.error('Error generating document share link:', error);
+    res.status(500).json({ error: 'Failed to generate document share link' });
+  }
+};
+
+/**
+ * Public endpoint to stream the document PDF directly to patient browsers.
+ * Triggers direct automatic download with Content-Disposition: attachment.
+ * Secured via cryptographic HMAC token signature verification.
+ */
+export const getPublicDocumentPDF = async (req: Request, res: Response) => {
+  try {
+    const { type, visitId } = req.params;
+    const token = (req.query.token as string) || '';
+    const requestedPaymentId = (req.query.paymentId as string) || undefined;
+
+    // Verify token
+    const expectedToken = generateDocumentToken(type, visitId);
+    if (!token || token !== expectedToken) {
+      return res.status(403).json({ error: 'Invalid or expired document access token.' });
+    }
+
+    let result: { pdfBuffer: Buffer; filename: string };
+
+    if (type === 'prescription') {
+      result = await buildPrescriptionPDFBuffer(visitId);
+    } else if (type === 'receipt') {
+      result = await buildReceiptPDFBuffer(visitId, requestedPaymentId, 'Clinic');
+    } else if (type === 'invoice') {
+      result = await buildInvoicePDFBuffer(visitId);
+    } else {
+      return res.status(400).json({ error: 'Unsupported document type.' });
+    }
+
+    res.header('Content-Type', 'application/pdf');
+    // Forces direct automatic download on patient click
+    res.attachment(result.filename);
+    return res.send(result.pdfBuffer);
+  } catch (error: any) {
+    console.error('Error serving public document PDF:', error);
+    res.status(error.message?.includes('not found') ? 404 : 500).json({ error: error.message || 'Failed to serve document PDF' });
   }
 };

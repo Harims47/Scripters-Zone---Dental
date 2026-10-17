@@ -22,6 +22,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { PublicDocumentViewPage } from './pages/PublicDocumentViewPage';
 import Showcase from './pages/showcase/Showcase';
 import { PremiumReferencePage } from './pages/PremiumReferencePage';
 import { useAuth } from './context/AuthContext';
@@ -43,6 +44,7 @@ function App() {
             {/* Public Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
+            <Route path="/view/document" element={<PublicDocumentViewPage />} />
             
             {/* Main Application Routes inside AppShell (Protected) */}
             <Route path="/" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
