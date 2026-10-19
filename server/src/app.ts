@@ -54,7 +54,7 @@ import { QueueRunner } from './services/communication/queueRunner';
 import { HistoricalBatchService } from './services/historicalMigration/HistoricalBatchService';
 
 const app = express();
-const port = Number(process.env.PORT) || 3001;
+const port = Number(process.env.PORT) || 3000;
 
 // Trust reverse proxy (e.g. Render) for accurate client IP in express-rate-limit and secure cookies
 app.set('trust proxy', 1);

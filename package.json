@@ -2,6 +2,7 @@
   "name": "dental",
   "private": true,
   "version": "0.0.0",
+  "main": "server/dist/src/app.js",
   "type": "module",
   "workspaces": [
     "server"

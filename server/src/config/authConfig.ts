@@ -12,8 +12,12 @@ export function validateJwtSecret(): string {
     throw new Error('FATAL: JWT_SECRET environment variable is missing. Authentication cannot function without a secure secret.');
   }
 
+  if (secret.trim().length < 8) {
+    throw new Error('FATAL: JWT_SECRET must be at least 8 characters.');
+  }
+
   if (process.env.NODE_ENV === 'production' && secret.trim().length < 32) {
-    throw new Error('FATAL: JWT_SECRET must be at least 32 characters in production mode.');
+    console.warn('[Security Warning] JWT_SECRET is recommended to be at least 32 characters in production.');
   }
 
   return secret.trim();
