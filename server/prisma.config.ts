@@ -62,7 +62,7 @@ export function resolvePrismaDatabaseUrl(): string | undefined {
     return process.env.CPANEL_DATABASE_URL.trim();
   }
 
-  return process.env.DATABASE_URL?.trim();
+  return process.env.DATABASE_URL?.trim() || 'mysql://127.0.0.1:3306/dentalcore';
 }
 
 export default defineConfig({

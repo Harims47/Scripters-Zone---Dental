@@ -52,8 +52,5 @@
   },
   "devDependencies": {
     "ts-node-dev": "^2.0.0"
-  },
-  "optionalDependencies": {
-    "@typescript/typescript-linux-x64": "7.0.2"
   }
 }
