@@ -11,7 +11,10 @@ import {
   completeTreatmentSitting,
   rescheduleTreatmentSitting,
   deleteTreatmentSitting,
-  getPatientPendingTreatments
+  getPatientPendingTreatments,
+  snapshotTreatmentPlan,
+  restoreTreatmentPlanSnapshot,
+  commitTreatmentPlanSnapshot
 } from '../controllers/treatmentController';
 
 const router = Router({ mergeParams: true });
@@ -27,6 +30,11 @@ router.get('/catalog', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist')
 // Receptionist & Doctors can view
 router.get('/:patientId/treatment-plan', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getPatientTreatmentPlan);
 router.get('/:patientId/pending-treatments', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getPatientPendingTreatments);
+
+// Snapshot / Staging endpoints for modal sessions
+router.post('/:patientId/treatment-plan/snapshot', requireRole('Head Doctor', 'Duty Doctor'), snapshotTreatmentPlan);
+router.post('/:patientId/treatment-plan/restore-snapshot', requireRole('Head Doctor', 'Duty Doctor'), restoreTreatmentPlanSnapshot);
+router.post('/:patientId/treatment-plan/commit-snapshot', requireRole('Head Doctor', 'Duty Doctor'), commitTreatmentPlanSnapshot);
 
 // Only doctors can modify treatment items
 router.post('/:patientId/treatment-plan/items', requireRole('Head Doctor', 'Duty Doctor'), addTreatmentPlanItem);

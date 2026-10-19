@@ -140,9 +140,27 @@ export function VisitsReport({ dateRange }: VisitsReportProps) {
       }
     },
     {
-      header: () => <div className="text-right font-semibold text-slate-600">Amount Due</div>,
+      header: () => <div className="text-right font-semibold text-slate-600">Actual Amount</div>,
       accessorKey: 'amountDue',
       cell: ({ row }) => <div className="text-right font-medium text-slate-900 font-mono text-xs">₹{row.original.amountDue.toLocaleString()}</div>
+    },
+    {
+      header: () => <div className="text-right font-semibold text-indigo-700">Audit Amount</div>,
+      accessorKey: 'auditAmount',
+      cell: ({ row }) => {
+        const val = row.original.auditAmount;
+        return (
+          <div className="text-right font-semibold font-mono text-xs">
+            {val != null && val > 0 ? (
+              <span className="text-indigo-700 bg-indigo-50/80 px-1.5 py-0.5 rounded border border-indigo-200/80">
+                ₹{val.toLocaleString()}
+              </span>
+            ) : (
+              <span className="text-slate-400 font-normal">—</span>
+            )}
+          </div>
+        );
+      }
     },
     {
       header: () => <div className="text-right font-semibold text-slate-600">Total Paid</div>,

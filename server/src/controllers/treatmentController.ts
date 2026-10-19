@@ -135,7 +135,8 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
       plan = await prisma.treatmentPlan.create({ data: { patientId } });
     }
 
-    const targetStatus = status || (completedVisitId ? 'Completed' : 'Planned');
+    const targetStatus = status || 'Planned';
+    const isDirectCompleted = targetStatus === 'Completed';
 
     // 2. Multi-tooth creation
     if (toothNumbers !== undefined && toothNumbers !== null) {
@@ -168,8 +169,8 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
               notes: notes || null,
               totalSittings,
               status: targetStatus,
-              completedVisitId: completedVisitId || null,
-              completedAt: completedVisitId ? new Date() : null,
+              completedVisitId: isDirectCompleted ? (completedVisitId || null) : null,
+              completedAt: isDirectCompleted ? new Date() : null,
             }
           });
 
@@ -180,10 +181,10 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
                 treatmentPlanItemId: item.id,
                 sittingNumber: s,
                 stage: totalSittings === 1 ? 'Primary Session' : `Sitting ${s}`,
-                status: (s === 1 && targetStatus === 'Completed') ? 'Completed' : 'Planned',
-                actualDate: (s === 1 && targetStatus === 'Completed') ? new Date() : null,
-                plannedDate: (s === 1 && targetStatus === 'Completed') ? new Date() : null,
-                visitId: (s === 1 && targetStatus === 'Completed') ? (completedVisitId || null) : null,
+                status: (s === 1 && isDirectCompleted) ? 'Completed' : 'Planned',
+                actualDate: (s === 1 && isDirectCompleted) ? new Date() : null,
+                plannedDate: null,
+                visitId: (s === 1 && isDirectCompleted) ? (completedVisitId || null) : null,
                 clinicalNotes: null,
               }
             });
@@ -230,8 +231,8 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
           notes: notes || null,
           totalSittings,
           status: targetStatus,
-          completedVisitId: completedVisitId || null,
-          completedAt: completedVisitId ? new Date() : null,
+          completedVisitId: isDirectCompleted ? (completedVisitId || null) : null,
+          completedAt: isDirectCompleted ? new Date() : null,
         }
       });
 
@@ -242,10 +243,10 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
             treatmentPlanItemId: item.id,
             sittingNumber: s,
             stage: totalSittings === 1 ? 'Primary Session' : `Sitting ${s}`,
-            status: (s === 1 && targetStatus === 'Completed') ? 'Completed' : 'Planned',
-            actualDate: (s === 1 && targetStatus === 'Completed') ? new Date() : null,
-            plannedDate: (s === 1 && targetStatus === 'Completed') ? new Date() : null,
-            visitId: (s === 1 && targetStatus === 'Completed') ? (completedVisitId || null) : null,
+            status: (s === 1 && isDirectCompleted) ? 'Completed' : 'Planned',
+            actualDate: (s === 1 && isDirectCompleted) ? new Date() : null,
+            plannedDate: null,
+            visitId: (s === 1 && isDirectCompleted) ? (completedVisitId || null) : null,
             clinicalNotes: null,
           }
         });
@@ -361,6 +362,17 @@ export const updateTreatmentPlanItem = async (req: Request, res: Response, next:
       updateData.status = 'Completed';
       updateData.completedVisitId = targetVisitId;
       updateData.completedAt = item.completedAt || new Date();
+
+      if (item.sessions && item.sessions.length > 0) {
+        await prisma.treatmentSession.updateMany({
+          where: { treatmentPlanItemId: item.id },
+          data: {
+            status: 'Completed',
+            actualDate: new Date(),
+            visitId: targetVisitId
+          }
+        });
+      }
     } else if (status === 'Planned') {
       updateData.status = 'Planned';
       updateData.completedVisitId = null;
@@ -535,6 +547,19 @@ export const updateTreatmentSitting = async (req: Request, res: Response, next: 
         doctor: { select: { id: true, name: true, role: true } },
         visit: true
       }
+    });
+
+    // Re-evaluate overall treatment item status based on all sessions
+    const allSessions = await prisma.treatmentSession.findMany({
+      where: { treatmentPlanItemId: itemId }
+    });
+    const completedCount = allSessions.filter(s => s.status === 'Completed').length;
+    const isAllCompleted = allSessions.length > 0 && completedCount >= allSessions.length;
+    const newItemStatus = isAllCompleted ? 'Completed' : (completedCount > 0 ? 'In Progress' : 'Planned');
+
+    await prisma.treatmentPlanItem.update({
+      where: { id: itemId },
+      data: { status: newItemStatus }
     });
 
     return res.json(updatedSession);
@@ -830,6 +855,139 @@ export const getPatientPendingTreatments = async (req: Request, res: Response, n
     return res.json(list);
   } catch (error) {
     next(error);
+  }
+};
+
+interface PlanSnapshot {
+  timestamp: number;
+  items: any[];
+}
+const treatmentPlanSnapshots = new Map<string, PlanSnapshot>();
+
+/**
+ * POST /api/patients/:patientId/treatment-plan/snapshot
+ * Takes a snapshot of the current treatment plan state before modal editing
+ */
+export const snapshotTreatmentPlan = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const patientId = req.params.patientId as string;
+    const plan = await prisma.treatmentPlan.findUnique({
+      where: { patientId },
+      include: {
+        items: {
+          include: {
+            sessions: true
+          }
+        }
+      }
+    });
+
+    if (plan && plan.items) {
+      treatmentPlanSnapshots.set(patientId, {
+        timestamp: Date.now(),
+        items: JSON.parse(JSON.stringify(plan.items))
+      });
+    } else {
+      treatmentPlanSnapshots.set(patientId, {
+        timestamp: Date.now(),
+        items: []
+      });
+    }
+
+    return res.json({ success: true, count: treatmentPlanSnapshots.get(patientId)?.items.length || 0 });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/patients/:patientId/treatment-plan/restore-snapshot
+ * Restores the treatment plan to the exact state captured at snapshot
+ */
+export const restoreTreatmentPlanSnapshot = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const patientId = req.params.patientId as string;
+    const snapshot = treatmentPlanSnapshots.get(patientId);
+    if (!snapshot) {
+      return res.json({ success: true, restored: false, message: 'No snapshot found' });
+    }
+
+    const plan = await prisma.treatmentPlan.findUnique({
+      where: { patientId }
+    });
+
+    if (plan) {
+      await prisma.$transaction(async (tx) => {
+        // Delete all current sessions and items under this plan
+        await tx.treatmentSession.deleteMany({
+          where: { treatmentPlanItem: { treatmentPlanId: plan.id } }
+        });
+        await tx.treatmentPlanItem.deleteMany({
+          where: { treatmentPlanId: plan.id }
+        });
+
+        // Recreate all items and sessions from the snapshot
+        for (const item of snapshot.items) {
+          const created = await tx.treatmentPlanItem.create({
+            data: {
+              id: item.id,
+              treatmentPlanId: plan.id,
+              treatmentCatalogId: item.treatmentCatalogId,
+              toothNumber: item.toothNumber,
+              status: item.status,
+              notes: item.notes,
+              totalSittings: item.totalSittings,
+              completedVisitId: item.completedVisitId,
+              completedAt: item.completedAt ? new Date(item.completedAt) : null,
+              createdAt: item.createdAt ? new Date(item.createdAt) : undefined
+            }
+          });
+
+          if (Array.isArray(item.sessions)) {
+            for (const s of item.sessions) {
+              await tx.treatmentSession.create({
+                data: {
+                  id: s.id,
+                  treatmentPlanItemId: created.id,
+                  sittingNumber: s.sittingNumber,
+                  stage: s.stage,
+                  status: s.status,
+                  plannedDate: s.plannedDate ? new Date(s.plannedDate) : null,
+                  actualDate: s.actualDate ? new Date(s.actualDate) : null,
+                  visitId: s.visitId || null,
+                  doctorId: s.doctorId || null,
+                  clinicalNotes: s.clinicalNotes || null,
+                  workPerformed: s.workPerformed || null,
+                  materialsUsed: s.materialsUsed || null,
+                  nextSittingDate: s.nextSittingDate ? new Date(s.nextSittingDate) : null,
+                  followUpInstructions: s.followUpInstructions || null,
+                  fee: s.fee ?? 0
+                }
+              });
+            }
+          }
+        }
+      });
+    }
+
+    treatmentPlanSnapshots.delete(patientId);
+    return res.json({ success: true, restored: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/patients/:patientId/treatment-plan/commit-snapshot
+ * Commits the treatment plan changes and clears the snapshot
+ */
+export const commitTreatmentPlanSnapshot = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const patientId = req.params.patientId as string;
+    treatmentPlanSnapshots.delete(patientId);
+    return res.json({ success: true });
+  } catch (err) {
+    next(err);
   }
 };
 

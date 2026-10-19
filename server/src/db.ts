@@ -292,12 +292,21 @@ export async function probeDatabaseConnectivity(): Promise<DatabaseProbeResult> 
 
 // Pre-warm and verify database connection on server boot
 probeDatabaseConnectivity()
-  .then((diag) => {
+  .then(async (diag) => {
     if (process.env.NODE_ENV !== 'test') {
       console.log(`[Database] MySQL connection verified successfully via SELECT 1.`);
       console.log(
         `[Database] Active Database: "${diag.activeDb}" | Connected User: "${diag.activeUser}" | Host: "${dbConfig.host}:${dbConfig.port}" | Total Tables: ${diag.tableCount} (Source: ${dbConfig.source || 'env'})`
       );
+    }
+    // Auto-ensure auditAmount column exists on Visit table for seamless Airo hosting deployments
+    try {
+      await prisma.$executeRawUnsafe(
+        'ALTER TABLE `Visit` ADD COLUMN `auditAmount` DOUBLE NULL'
+      );
+      console.log('[Database] Schema sync: `auditAmount` column verified on Visit table.');
+    } catch {
+      // Ignore if column already exists (MySQL error 1060 / ER_DUP_FIELDNAME)
     }
   })
   .catch((err) => {

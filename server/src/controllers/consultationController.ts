@@ -142,6 +142,9 @@ export const updateConsultation = async (req: Request, res: Response, next: Next
         visitUpdates.treatmentFee = finalTreatmentFee;
         visitUpdates.amountDue = Math.round(finalConsultationFee + (finalTreatmentFee || 0) + (existing.visit.medicineCost || 0));
       }
+      if (req.body.auditAmount !== undefined) {
+        visitUpdates.auditAmount = req.body.auditAmount !== null && Number(req.body.auditAmount) > 0 ? Number(req.body.auditAmount) : null;
+      }
 
       if (Object.keys(visitUpdates).length > 0) {
         await tx.visit.update({
@@ -190,6 +193,11 @@ export const completeConsultation = async (req: Request, res: Response, next: Ne
     }
     const paymentOwner = rawPaymentOwner === 'DOCTOR' ? 'DOCTOR' : 'RECEPTION';
 
+    const rawAuditAmount = req.body?.auditAmount;
+    const auditAmount = rawAuditAmount !== undefined && rawAuditAmount !== null && rawAuditAmount !== ''
+      ? Number(rawAuditAmount)
+      : undefined;
+
     const result = await prisma.$transaction(async (tx) => {
       // 1. Finalize Consultation
       await tx.consultation.update({
@@ -224,7 +232,8 @@ export const completeConsultation = async (req: Request, res: Response, next: Ne
           status: 'READY_FOR_RECEPTION',
           paymentOwner,
           medicineCost: medCost,
-          amountDue: finalAmountDue
+          amountDue: finalAmountDue,
+          ...(auditAmount !== undefined && { auditAmount: auditAmount > 0 ? auditAmount : null })
         }
       });
 

@@ -8,7 +8,8 @@ export const createConsultationSchema = z.object({
     consultationFee: z.number().min(0, 'Fee cannot be negative').optional(),
     treatmentFee: z.number().min(0, 'Treatment fee cannot be negative').optional(),
     consultationWaiverReason: z.string().nullable().optional(),
-    treatmentWaiverReason: z.string().nullable().optional()
+    treatmentWaiverReason: z.string().nullable().optional(),
+    auditAmount: z.number().nullable().optional()
   })
 });
 
@@ -19,12 +20,14 @@ export const updateConsultationSchema = z.object({
     consultationFee: z.number().min(0).optional(),
     treatmentFee: z.number().min(0, 'Treatment fee cannot be negative').optional(),
     consultationWaiverReason: z.string().nullable().optional(),
-    treatmentWaiverReason: z.string().nullable().optional()
+    treatmentWaiverReason: z.string().nullable().optional(),
+    auditAmount: z.number().nullable().optional()
   })
 });
 
 export const completeConsultationSchema = z.object({
   body: z.object({
-    paymentOwner: z.enum(['RECEPTION', 'DOCTOR']).optional().default('RECEPTION')
+    paymentOwner: z.enum(['RECEPTION', 'DOCTOR']).optional().default('RECEPTION'),
+    auditAmount: z.number().nullable().optional()
   })
 });

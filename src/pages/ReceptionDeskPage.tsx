@@ -2915,8 +2915,8 @@ export function ReceptionDeskPage() {
                     )}
                   </DrawerSection>
 
-                  {!isDoctorHandled && (visitPayments.length > 0 || isWorkflowCompleted) && (
-                    <DrawerSection title="3. Print">
+                  {(visitPayments.length > 0 || isWorkflowCompleted || isDoctorHandled) && (
+                    <DrawerSection title="3. Documents & Print">
                       <div className="p-5 bg-white border border-slate-200 rounded-lg space-y-4">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
@@ -2940,7 +2940,7 @@ export function ReceptionDeskPage() {
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="bg-teal-50 text-teal-800 border-teal-300 text-xs py-0.5">
-                              Receipt Ready
+                              Documents Ready
                             </Badge>
                           )}
                         </div>
@@ -2953,6 +2953,15 @@ export function ReceptionDeskPage() {
                           >
                             <FileText className="w-4 h-4 mr-1.5 text-blue-600" />
                             Invoice
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium shadow-xs"
+                            onClick={() => handlePrintDocument('receipt')}
+                            title="Print Payment Receipt"
+                          >
+                            <Receipt className="w-4 h-4 mr-1.5 text-teal-600" />
+                            Receipt
                           </Button>
                           <Button
                             variant="outline"

@@ -87,7 +87,8 @@ export async function buildPrescriptionPDFBuffer(visitId: string): Promise<{ pdf
 export async function buildReceiptPDFBuffer(
   visitId: string,
   requestedPaymentId?: string,
-  receivedBy: string = 'Staff'
+  receivedBy: string = 'Staff',
+  auditAmount?: number
 ): Promise<{ pdfBuffer: Buffer; filename: string; visit: any }> {
   const visit = await prisma.visit.findUnique({
     where: { id: visitId },
@@ -122,6 +123,11 @@ export async function buildReceiptPDFBuffer(
     if (doctorStaff) doctorName = doctorStaff.name;
   }
 
+  const effectiveAuditAmount = (auditAmount !== undefined && !isNaN(auditAmount) && auditAmount > 0)
+    ? auditAmount
+    : (visit.auditAmount && visit.auditAmount > 0 ? visit.auditAmount : undefined);
+  const isAudit = effectiveAuditAmount !== undefined && effectiveAuditAmount > 0;
+
   const validPayments = (visit.payments || []).filter(
     (p: any) => p.status === 'Paid' || p.status === 'Completed'
   );
@@ -140,11 +146,24 @@ export async function buildReceiptPDFBuffer(
   }
 
   if (!payment) {
-    throw new Error('Payment is not completed. Cannot generate receipt.');
+    if (isAudit) {
+      payment = {
+        id: `AUDIT-${visit.id.substring(0, 8)}`,
+        amount: effectiveAuditAmount,
+        method: 'Cash',
+        date: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        status: 'Paid',
+        notes: 'Doctor Workspace Verified Receipt'
+      };
+      paymentIndex = 0;
+    } else {
+      throw new Error('Payment is not completed. Cannot generate receipt.');
+    }
   }
 
-  const consultationFee = visit.consultationFee || 0;
-  const treatmentFee = visit.treatmentFee || 0;
+  let consultationFee = visit.consultationFee || 0;
+  let treatmentFee = visit.treatmentFee || 0;
 
   let calculatedMedicineCost = 0;
   if (visit.dispensing && visit.dispensing.items) {
@@ -153,16 +172,39 @@ export async function buildReceiptPDFBuffer(
       0
     );
   }
-  const medicineCost = visit.medicineCost ?? calculatedMedicineCost;
-  const discount = visit.discount || 0;
+  let medicineCost = visit.medicineCost ?? calculatedMedicineCost;
+  let discount = visit.discount || 0;
   const itemizedTotal = Math.max(0, Math.round((consultationFee + treatmentFee + medicineCost - discount) * 100) / 100);
-  const totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
+  let totalAmount = visit.amountDue != null ? visit.amountDue : Math.round(itemizedTotal);
 
   const priorPaid = validPayments.slice(0, paymentIndex).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-  const cumulativePaid = priorPaid + payment.amount;
-  const rawBalance = totalAmount - cumulativePaid;
-  const balanceDue = (rawBalance <= 0 || (visit.status === 'COMPLETED' && rawBalance < 1)) ? 0 : rawBalance;
-  const isPartial = balanceDue > 0;
+  let amountPaid = payment.amount;
+  let cumulativePaid = priorPaid + payment.amount;
+  let rawBalance = totalAmount - cumulativePaid;
+  let balanceDue = (rawBalance <= 0 || (visit.status === 'COMPLETED' && rawBalance < 1)) ? 0 : rawBalance;
+  let isPartial = balanceDue > 0;
+
+  if (isAudit) {
+    totalAmount = effectiveAuditAmount!;
+    amountPaid = effectiveAuditAmount!;
+    cumulativePaid = effectiveAuditAmount!;
+    balanceDue = 0;
+    isPartial = false;
+    discount = 0;
+    medicineCost = 0;
+
+    const originalTotal = (consultationFee || 0) + (treatmentFee || 0);
+    if (originalTotal > 0 && consultationFee > 0 && treatmentFee > 0) {
+      consultationFee = Math.round((consultationFee / originalTotal) * effectiveAuditAmount!);
+      treatmentFee = effectiveAuditAmount! - consultationFee;
+    } else if (treatmentFee > 0) {
+      treatmentFee = effectiveAuditAmount!;
+      consultationFee = 0;
+    } else {
+      consultationFee = effectiveAuditAmount!;
+      treatmentFee = 0;
+    }
+  }
 
   const branding = getClinicBranding();
   const receiptNo = payment.id ? `RCPT-${payment.id.substring(0, 8).toUpperCase()}` : 'RCPT-001';
@@ -181,24 +223,24 @@ export async function buildReceiptPDFBuffer(
     treatmentFee,
     medicineCost,
     discount: discount > 0 ? discount : undefined,
-    discountReason: visit.discountReason || undefined,
+    discountReason: isAudit ? undefined : (visit.discountReason || undefined),
     totalAmount,
-    amountPaid: payment.amount,
+    amountPaid,
     cumulativePaid,
     balanceDue,
     isPartial,
-    paymentNumber: paymentIndex >= 0 ? paymentIndex + 1 : 1,
-    totalPaymentsCount: validPayments.length,
+    paymentNumber: isAudit ? 1 : (paymentIndex >= 0 ? paymentIndex + 1 : 1),
+    totalPaymentsCount: isAudit ? 1 : Math.max(1, validPayments.length),
     paymentMethod: payment.method || 'Cash',
     paymentDate: payment.date ? new Date(payment.date).toISOString() : (payment.createdAt ? new Date(payment.createdAt).toISOString() : new Date().toISOString()),
-    paymentStatus: isPartial ? 'Partially Paid' : 'Paid',
+    paymentStatus: isAudit ? 'Paid' : (isPartial ? 'Partially Paid' : 'Paid'),
     paymentNotes: payment.notes || undefined,
     receiptNo,
     receivedBy,
   };
 
   const pdfBuffer = await generateReceiptPDF(receiptData);
-  const filename = `receipt_${receiptNo}.pdf`;
+  const filename = isAudit ? `receipt_audit_${effectiveAuditAmount}_${receiptNo}.pdf` : `receipt_${receiptNo}.pdf`;
 
   return { pdfBuffer, filename, visit };
 }
@@ -337,16 +379,13 @@ export const getReceiptPDF = async (req: Request, res: Response) => {
   try {
     const visitId = req.params.visitId as string;
     const requestedPaymentId = (req.query.paymentId as string) || undefined;
+    const auditAmountRaw = req.query.auditAmount as string;
+    const auditAmount = auditAmountRaw ? parseFloat(auditAmountRaw) : undefined;
     const receivedBy = req.user?.username || 'Staff';
 
-    const { pdfBuffer, filename, visit } = await buildReceiptPDFBuffer(visitId, requestedPaymentId, receivedBy);
+    const { pdfBuffer, filename, visit } = await buildReceiptPDFBuffer(visitId, requestedPaymentId, receivedBy, auditAmount);
 
-    // Security Check: If visit is doctor-owned, Receptionists are prohibited from accessing receipt data
-    if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist') {
-      return res.status(403).json({
-        error: 'Access denied: Payment and receipt details for this doctor-owned visit are restricted from Reception.',
-      });
-    }
+
 
     res.header('Content-Type', 'application/pdf');
     res.attachment(filename);
@@ -362,13 +401,7 @@ export const getInvoicePDF = async (req: Request, res: Response) => {
     const visitId = req.params.visitId as string;
     const { pdfBuffer, filename, visit } = await buildInvoicePDFBuffer(visitId);
 
-    // Security Check: If visit is doctor-owned, Receptionists are prohibited from accessing invoice data
-    if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist') {
-      return res.status(403).json({
-        error: 'Access denied: Invoice and financial details for this doctor-owned visit are restricted from Reception.',
-        message: 'Handled by Doctor'
-      });
-    }
+
 
     res.header('Content-Type', 'application/pdf');
     res.attachment(filename);
@@ -451,12 +484,7 @@ export const getDocumentShareLink = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Visit or patient details not found.' });
     }
 
-    // Role check: Receptionists cannot share doctor-owned financial docs
-    if (visit.paymentOwner === 'DOCTOR' && req.user?.role === 'Receptionist' && (type === 'receipt' || type === 'invoice')) {
-      return res.status(403).json({
-        error: 'Access denied: Payment and receipt details for this doctor-owned visit are restricted from Reception.'
-      });
-    }
+
 
     const token = generateDocumentToken(type, visitId);
     const branding = getClinicBranding();
@@ -505,6 +533,8 @@ export const getPublicDocumentPDF = async (req: Request, res: Response) => {
     const visitId = req.params.visitId as string;
     const token = (req.query.token as string) || '';
     const requestedPaymentId = (req.query.paymentId as string) || undefined;
+    const auditAmountRaw = req.query.auditAmount as string;
+    const auditAmount = auditAmountRaw ? parseFloat(auditAmountRaw) : undefined;
 
     // Verify token
     const expectedToken = generateDocumentToken(type, visitId);
@@ -517,7 +547,7 @@ export const getPublicDocumentPDF = async (req: Request, res: Response) => {
     if (type === 'prescription') {
       result = await buildPrescriptionPDFBuffer(visitId);
     } else if (type === 'receipt') {
-      result = await buildReceiptPDFBuffer(visitId, requestedPaymentId, 'Clinic');
+      result = await buildReceiptPDFBuffer(visitId, requestedPaymentId, 'Clinic', auditAmount);
     } else if (type === 'invoice') {
       result = await buildInvoicePDFBuffer(visitId);
     } else {

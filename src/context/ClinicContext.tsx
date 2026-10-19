@@ -38,7 +38,7 @@ interface ClinicContextType {
   // Phase 0P.3 Transitions
   callPatient: (visitId: string) => Promise<boolean>
   startConsultationFlow: (visitId: string) => Promise<boolean>
-  saveConsultation: (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number, consultationWaiverReason?: string | null, treatmentWaiverReason?: string | null }, isComplete?: boolean, paymentOwner?: 'RECEPTION' | 'DOCTOR') => Promise<{ success: boolean, error?: string }>
+  saveConsultation: (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number, consultationWaiverReason?: string | null, treatmentWaiverReason?: string | null, auditAmount?: number | null }, isComplete?: boolean, paymentOwner?: 'RECEPTION' | 'DOCTOR') => Promise<{ success: boolean, error?: string }>
   savePrescription: (prescription: Omit<Prescription, 'id'>) => Promise<{ success: boolean, error?: string }>
 
   // Phase 0P.5
@@ -404,10 +404,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     return true
   }
 
-  const saveConsultation = async (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number, consultationWaiverReason?: string | null, treatmentWaiverReason?: string | null }, isComplete = false, paymentOwner: 'RECEPTION' | 'DOCTOR' = 'RECEPTION') => {
+  const saveConsultation = async (visitId: string, data: { reasonForVisit: string, clinicalNotes: string, consultationFee?: number, treatmentFee?: number, consultationWaiverReason?: string | null, treatmentWaiverReason?: string | null, auditAmount?: number | null }, isComplete = false, paymentOwner: 'RECEPTION' | 'DOCTOR' = 'RECEPTION') => {
     try {
       if (isComplete) {
-        await api.post<{ data: { visit: Visit } }>(`/api/consultations/visit/${visitId}/complete`, { paymentOwner })
+        await api.post<{ data: { visit: Visit } }>(`/api/consultations/visit/${visitId}/complete`, { paymentOwner, auditAmount: data.auditAmount })
         
         // Refresh visits data to pull updated consultation/prescription/queue statuses
         const freshVisitsRes = await api.get<{ data: any[] }>('/api/visits')
@@ -449,7 +449,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
           return [...prev, savedConsultation]
         })
 
-        if (data.reasonForVisit !== undefined || data.consultationFee !== undefined || data.treatmentFee !== undefined) {
+        if (data.reasonForVisit !== undefined || data.consultationFee !== undefined || data.treatmentFee !== undefined || data.auditAmount !== undefined) {
           setVisits(prev => prev.map(v => {
             if (v.id === visitId) {
               const consultationFee = data.consultationFee !== undefined ? data.consultationFee : (v.consultationFee || 0);
@@ -460,6 +460,7 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
                 ...(data.reasonForVisit !== undefined ? { reasonForVisit: data.reasonForVisit } : {}),
                 consultationFee,
                 treatmentFee,
+                ...(data.auditAmount !== undefined ? { auditAmount: data.auditAmount } : {}),
                 amountDue: consultationFee + treatmentFee + medicineCost
               };
             }

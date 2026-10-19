@@ -138,7 +138,8 @@ export function TreatmentSessionsSection({
             actualDate: isCompletedCheck ? (sessionDate ? new Date(sessionDate).toISOString() : new Date().toISOString()) : null,
             clinicalNotes: sessionNotes.trim() || null,
             workPerformed: sessionNotes.trim() || null,
-            status: targetStatus
+            status: targetStatus,
+            visitId: isCompletedCheck ? currentVisitId : (activeSession?.visitId || null)
           }
         );
 
@@ -272,7 +273,8 @@ export function TreatmentSessionsSection({
         <div className="space-y-3">
           {items.map((item) => {
             const sessions = item.sessions || [];
-            const isCompleted = item.status === 'Completed';
+            const allSessionsDone = sessions.length > 0 && sessions.every((s) => s.status === 'Completed');
+            const isCompleted = allSessionsDone || (sessions.length === 0 && item.status === 'Completed');
 
             return (
               <div

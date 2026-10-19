@@ -156,7 +156,8 @@ export const exportVisitsReport = async (req: Request, res: Response, next: Next
       { key: 'doctorName', label: 'Doctor' },
       { key: 'reasonForVisit', label: 'Reason for Visit' },
       { key: 'status', label: 'Status' },
-      { key: 'amountDue', label: 'Amount Due' },
+      { key: 'amountDue', label: 'Actual Amount' },
+      { key: 'auditAmount', label: 'Audit Amount' },
       { key: 'totalPaid', label: 'Total Paid' },
       { key: 'balance', label: 'Balance' }
     ];

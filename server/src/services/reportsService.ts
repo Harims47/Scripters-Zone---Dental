@@ -283,6 +283,7 @@ export async function getVisitsReportData(params: VisitsFilterParams) {
       reasonForVisit: v.reasonForVisit || '—',
       status: v.status,
       amountDue: v.amountDue || 0,
+      auditAmount: v.auditAmount != null ? v.auditAmount : null,
       totalPaid,
       balance
     };
@@ -333,6 +334,7 @@ export async function getVisitsExportData(params: VisitsFilterParams) {
       reasonForVisit: v.reasonForVisit || '—',
       status: v.status,
       amountDue: `₹${v.amountDue || 0}`,
+      auditAmount: v.auditAmount != null ? `₹${v.auditAmount}` : '—',
       totalPaid: `₹${totalPaid}`,
       balance: `₹${balance}`
     };

@@ -33,6 +33,85 @@ import { getToothInfo } from '../../lib/toothMetadata';
 import { DentalImagingSection } from './DentalImagingSection';
 import { TreatmentSessionsSection } from './TreatmentSessionsSection';
 
+function getSessionDueInfo(rawDate?: string | null): {
+  badgeText: string;
+  cardText: string;
+  isToday: boolean;
+  isTomorrow: boolean;
+  isOverdue: boolean;
+  dateStr: string;
+} {
+  if (!rawDate) {
+    return {
+      badgeText: 'Due',
+      cardText: 'Date Pending',
+      isToday: false,
+      isTomorrow: false,
+      isOverdue: false,
+      dateStr: ''
+    };
+  }
+
+  const d = new Date(rawDate);
+  if (isNaN(d.getTime())) {
+    return {
+      badgeText: 'Due',
+      cardText: 'Date Pending',
+      isToday: false,
+      isTomorrow: false,
+      isOverdue: false,
+      dateStr: ''
+    };
+  }
+
+  const dateStr = d.toLocaleDateString();
+
+  // Compare using local year, month, and day
+  const sessionMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const diffDays = Math.round((sessionMidnight - todayMidnight) / ONE_DAY_MS);
+
+  if (diffDays === 0) {
+    return {
+      badgeText: 'Due Today',
+      cardText: 'Due Today',
+      isToday: true,
+      isTomorrow: false,
+      isOverdue: false,
+      dateStr
+    };
+  } else if (diffDays === 1) {
+    return {
+      badgeText: `Due Tomorrow (${dateStr})`,
+      cardText: `Due Tomorrow (${dateStr})`,
+      isToday: false,
+      isTomorrow: true,
+      isOverdue: false,
+      dateStr
+    };
+  } else if (diffDays < 0) {
+    return {
+      badgeText: `Overdue (${dateStr})`,
+      cardText: `Overdue (${dateStr})`,
+      isToday: false,
+      isTomorrow: false,
+      isOverdue: true,
+      dateStr
+    };
+  } else {
+    return {
+      badgeText: `Due ${dateStr}`,
+      cardText: `Scheduled: ${dateStr}`,
+      isToday: false,
+      isTomorrow: false,
+      isOverdue: false,
+      dateStr
+    };
+  }
+}
+
 export function TreatmentPlanUI({
   patientId,
   currentVisitId,
@@ -52,7 +131,7 @@ export function TreatmentPlanUI({
   treatmentFee?: number;
   initialTreatmentZeroReason?: string;
   onSaveTreatmentFee?: (fee: number, zeroReason?: string) => void;
-  onDone?: (noProcedureReason?: string) => void;
+  onDone?: (noProcedureReason?: string, finalFee?: number) => void;
   onCancel?: () => void;
   onRegisterRollback?: (rollbackFn: () => Promise<void>) => void;
   initialEdit?: boolean;
@@ -84,19 +163,12 @@ export function TreatmentPlanUI({
   const imagingCommitRef = useRef<() => void>(() => {});
 
   const rollback = useCallback(async () => {
-    if (sessionCreatedItemIds.current.length > 0) {
-      const idsToDelete = [...sessionCreatedItemIds.current];
-      sessionCreatedItemIds.current = [];
-      try {
-        await Promise.all(
-          idsToDelete.map(id =>
-            api.delete(`/api/patients/${patientId}/treatment-plan/items/${id}`)
-          )
-        );
-      } catch (err) {
-        console.error('Failed to rollback treatment items:', err);
-      }
+    try {
+      await api.post(`/api/patients/${patientId}/treatment-plan/restore-snapshot`);
+    } catch (err) {
+      console.error('Failed to restore treatment plan snapshot:', err);
     }
+    sessionCreatedItemIds.current = [];
     await imagingRollbackRef.current();
   }, [patientId]);
 
@@ -140,6 +212,7 @@ export function TreatmentPlanUI({
   const [selectedProcedure, setSelectedProcedure] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [formResetKey, setFormResetKey] = useState<number>(0);
 
   // Editing state for an existing planned item
   const [editingItem, setEditingItem] = useState<TreatmentPlanItem | null>(null);
@@ -183,7 +256,9 @@ export function TreatmentPlanUI({
       setNotes('');
       setEditingItem(null);
       setErrorMsg(null);
+      setFormResetKey((k) => k + 1);
       try {
+        await api.post(`/api/patients/${patientId}/treatment-plan/snapshot`).catch(() => {});
         const imgEndpoint = currentVisitId
           ? `/api/patients/${patientId}/dental-images?visitId=${currentVisitId}`
           : `/api/patients/${patientId}/dental-images`;
@@ -313,8 +388,7 @@ export function TreatmentPlanUI({
               treatmentCatalogId: selectedProcedure,
               toothNumbers: selectedTeeth,
               notes: notes || undefined,
-              totalSittings: plannedSittings,
-              completedVisitId: currentVisitId
+              totalSittings: plannedSittings
             }
           );
 
@@ -332,8 +406,7 @@ export function TreatmentPlanUI({
               treatmentCatalogId: selectedProcedure,
               toothNumber: singleTooth,
               notes: notes || undefined,
-              totalSittings: plannedSittings,
-              completedVisitId: currentVisitId
+              totalSittings: plannedSittings
             }
           );
           sessionCreatedItemIds.current.push(res.id);
@@ -352,6 +425,7 @@ export function TreatmentPlanUI({
       setSelectedTeeth([]);
       setPlannedSittings(1);
       setCustomSittingsInput('');
+      setFormResetKey((k) => k + 1);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Failed to save treatment procedure.');
@@ -384,6 +458,7 @@ export function TreatmentPlanUI({
     setPlannedSittings(1);
     setCustomSittingsInput('');
     setErrorMsg(null);
+    setFormResetKey((k) => k + 1);
   };
 
   const handleMarkCompleted = async (itemId: string) => {
@@ -440,16 +515,20 @@ export function TreatmentPlanUI({
   // Categorize items by visit context
   const ongoingItems = plan?.items.filter((item) =>
     item.status === 'In Progress' ||
-    (item.status !== 'Completed' && (item.sessions || []).some((s: any) => s.status === 'Planned' || s.status === 'In Progress'))
+    (item.sessions || []).some((s: any) => s.status === 'In Progress') ||
+    ((item.sessions || []).some((s: any) => s.status === 'Completed') && (item.sessions || []).some((s: any) => s.status === 'Planned'))
   ) || [];
 
   const currentVisitItems = currentVisitId
-    ? plan?.items.filter((item) => item.completedVisitId === currentVisitId) || []
+    ? plan?.items.filter((item) => 
+        item.completedVisitId === currentVisitId ||
+        (item.sessions && item.sessions.some((s: any) => s.visitId === currentVisitId && s.status === 'Completed'))
+      ) || []
     : plan?.items || [];
 
-  const plannedItems = currentVisitId
-    ? plan?.items.filter((item) => item.status === 'Planned' && !ongoingItems.some((o) => o.id === item.id)) || []
-    : [];
+  const plannedItems = plan?.items.filter((item) =>
+    item.status === 'Planned' && !ongoingItems.some((o) => o.id === item.id)
+  ) || [];
 
   const pastCompletedItems = currentVisitId
     ? plan?.items.filter(
@@ -566,9 +645,15 @@ export function TreatmentPlanUI({
                 <span className="text-xs font-bold text-slate-900">Active Multi-Sitting Treatment:</span>
                 {ongoingItems.map((item) => {
                   const completedS = (item.sessions || []).filter((s: any) => s.status === 'Completed').length;
+                  const pendingSessions = (item.sessions || []).filter((s: any) => s.status !== 'Completed' && s.status !== 'Cancelled');
+                  const nextSession = pendingSessions.sort((a: any, b: any) => a.sittingNumber - b.sittingNumber)[0];
+                  const nextSessionNum = nextSession?.sittingNumber || (completedS + 1);
+                  const nextSessionDate = nextSession?.plannedDate || nextSession?.actualDate;
+                  const dueInfo = getSessionDueInfo(nextSessionDate);
+
                   return (
                     <span key={item.id} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                      {item.catalogItem?.name} {item.toothNumber ? `(Tooth ${item.toothNumber})` : ''} — Sitting {completedS + 1} of {item.totalSittings || 1} Due
+                      {item.catalogItem?.name} {item.toothNumber ? `(Tooth ${item.toothNumber})` : ''} — Sitting {nextSessionNum} of {item.totalSittings || 1} ({dueInfo.badgeText})
                     </span>
                   );
                 })}
@@ -708,7 +793,8 @@ export function TreatmentPlanUI({
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">Treatment Category</label>
               <Select
-                value={selectedCategory || undefined}
+                key={`cat-select-${formResetKey}`}
+                value={selectedCategory}
                 onValueChange={(val) => {
                   setSelectedCategory(val);
                   setSelectedBaseProcedure('');
@@ -731,7 +817,8 @@ export function TreatmentPlanUI({
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">Treatment Procedure</label>
               <Select
-                value={selectedBaseProcedure || undefined}
+                key={`proc-select-${formResetKey}-${selectedCategory}`}
+                value={selectedBaseProcedure}
                 onValueChange={(procName) => {
                   setSelectedBaseProcedure(procName);
                   const matching = categoryProcedures.filter((p) => p.name === procName);
@@ -766,7 +853,8 @@ export function TreatmentPlanUI({
                   </span>
                 </div>
                 <Select
-                  value={selectedProcedure || undefined}
+                  key={`var-select-${formResetKey}-${selectedBaseProcedure}`}
+                  value={selectedProcedure}
                   onValueChange={(val) => setSelectedProcedure(val)}
                 >
                   <SelectTrigger className="bg-white text-xs h-9 border-teal-200 focus:border-teal-400">
@@ -908,9 +996,14 @@ export function TreatmentPlanUI({
               </div>
 
               {ongoingItems.map((item) => {
-                const completedSessions = (item.sessions || []).filter((s: any) => s.status === 'Completed');
-                const nextSessionNum = completedSessions.length + 1;
                 const totalS = item.totalSittings || 1;
+                const completedSessions = (item.sessions || []).filter((s: any) => s.status === 'Completed');
+                const pendingSessions = (item.sessions || []).filter((s: any) => s.status !== 'Completed' && s.status !== 'Cancelled');
+                const nextSession = pendingSessions.sort((a: any, b: any) => a.sittingNumber - b.sittingNumber)[0];
+                const nextSessionNum = nextSession?.sittingNumber || (completedSessions.length + 1);
+                const nextSessionDate = nextSession?.plannedDate || nextSession?.actualDate;
+                const dueInfo = getSessionDueInfo(nextSessionDate);
+
                 return (
                   <div
                     key={item.id}
@@ -943,8 +1036,16 @@ export function TreatmentPlanUI({
                     </div>
 
                     <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200/70 flex-wrap">
-                      <span className="text-[11px] font-semibold text-amber-900">
-                        👉 Next: Sitting {nextSessionNum} (Due Today)
+                      <span className={`text-[11px] font-semibold flex items-center gap-1 ${
+                        dueInfo.isOverdue
+                          ? 'text-rose-700 font-bold'
+                          : dueInfo.isToday
+                          ? 'text-amber-900 font-bold'
+                          : dueInfo.isTomorrow
+                          ? 'text-indigo-950 font-bold'
+                          : 'text-slate-700'
+                      }`}>
+                        👉 Next: Sitting {nextSessionNum} ({dueInfo.cardText})
                       </span>
                       <Button
                         type="button"
@@ -1199,15 +1300,26 @@ export function TreatmentPlanUI({
                     </div>
                   )}
 
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                    disabled={saving}
-                    onClick={() => handleMarkCompleted(item.id)}
-                  >
-                    <Check className="w-3 h-3 mr-1" /> Complete Today
-                  </Button>
+                  {((item.totalSittings ?? 1) > 1) ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-50 font-bold"
+                      onClick={() => setWorkspaceView('sessions')}
+                    >
+                      <Clock className="w-3 h-3 mr-1 text-amber-600" /> Start / Manage Sittings &rarr;
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold"
+                      disabled={saving}
+                      onClick={() => handleMarkCompleted(item.id)}
+                    >
+                      <Check className="w-3 h-3 mr-1" /> Complete Today
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1295,18 +1407,10 @@ export function TreatmentPlanUI({
                       num = 0;
                     }
                     setLocalTreatmentFee(String(num));
-                    lastPropFee.current = num;
-                    if (onSaveTreatmentFee) {
-                      onSaveTreatmentFee(num, num === 0 ? treatmentZeroReason : '');
-                    }
                   }}
                   onChange={(e) => {
                     const val = e.target.value;
                     setLocalTreatmentFee(val);
-                    const num = Number(val);
-                    if (val !== '' && !isNaN(num) && num >= 0 && onSaveTreatmentFee) {
-                      onSaveTreatmentFee(num, '');
-                    }
                   }}
                 />
               </div>
@@ -1339,11 +1443,16 @@ export function TreatmentPlanUI({
                     }
 
                     isConfirmed.current = true;
+                    try {
+                      await api.post(`/api/patients/${patientId}/treatment-plan/commit-snapshot`);
+                    } catch (e) {
+                      console.error('Failed to commit snapshot:', e);
+                    }
                     sessionCreatedItemIds.current = [];
                     imagingCommitRef.current();
                     const finalReason = totalProcedures === 0 ? noProcedureReason.trim() : treatmentZeroReason;
-                    if (onDone) onDone(totalProcedures === 0 ? noProcedureReason.trim() : undefined);
                     if (onSaveTreatmentFee) await onSaveTreatmentFee(feeNum, finalReason);
+                    if (onDone) onDone(totalProcedures === 0 ? noProcedureReason.trim() : undefined, feeNum);
                   }}
                 >
                   Done
@@ -1482,9 +1591,6 @@ export function TreatmentPlanUI({
                 }
                 // Close ONLY this waiver reason modal
                 setIsZeroFeeModalOpen(false);
-                if (onSaveTreatmentFee) {
-                  await onSaveTreatmentFee(0, treatmentZeroReason.trim());
-                }
               }}
             >
               Confirm Reason
@@ -1573,23 +1679,16 @@ export function TreatmentPlanUI({
             <Button
               size="sm"
               className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
-              onClick={async () => {
+              onClick={() => {
                 if (!noProcedureReason.trim()) {
                   setNoProcedureError('Please select or provide a reason why no procedure was added.');
                   return;
                 }
+                setNoProcedureError('');
                 setIsNoProcedureModalOpen(false);
-                const feeNum = Number(localTreatmentFee) || 0;
-                isConfirmed.current = true;
-                sessionCreatedItemIds.current = [];
-                imagingCommitRef.current();
-                if (onDone) onDone(noProcedureReason.trim());
-                if (onSaveTreatmentFee) {
-                  await onSaveTreatmentFee(feeNum, noProcedureReason.trim());
-                }
               }}
             >
-              Confirm Reason & Done
+              Confirm Reason
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -40,6 +40,7 @@ export interface VisitReportItem {
   reasonForVisit: string;
   status: string;
   amountDue: number;
+  auditAmount?: number | null;
   totalPaid: number;
   balance: number;
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle, Stethoscope } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Search, Info, Edit, Eye, FileText, Pill, Plus, Minus, Trash2, GripVertical, Printer, History, Clock, CreditCard, AlertCircle, Stethoscope, Download, Receipt } from 'lucide-react'
 import { DndContext, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { ExternalDoctorAdviceModal } from '../components/consultation/ExternalDoctorAdviceModal'
@@ -384,6 +384,7 @@ export function DoctorWorkspacePage() {
   const visitDoctor = staff.find(s => s.id === visit?.doctorId)
 
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false)
+  const initialModalTreatmentFee = useRef<number>(0)
   const rollbackTreatmentPlan = useRef<() => Promise<void>>(() => Promise.resolve())
   const [treatmentZeroReason, setTreatmentZeroReason] = useState<string>('')
   const [treatmentModalInitialEdit, setTreatmentModalInitialEdit] = useState(false)
@@ -444,6 +445,110 @@ export function DoctorWorkspacePage() {
   const [consultationZeroError, setConsultationZeroError] = useState<string>('')
   const [isConsultationZeroFeeModalOpen, setIsConsultationZeroFeeModalOpen] = useState(false)
 
+  // Audit Amount & Receipt State (Doctor Workspace Only)
+  const [auditAmount, setAuditAmount] = useState<string>(() => {
+    if (visit?.auditAmount && visit.auditAmount > 0) return String(visit.auditAmount);
+    return visitId ? localStorage.getItem(`audit_amount_${visitId}`) || '' : '';
+  })
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false)
+
+  useEffect(() => {
+    if (visit?.auditAmount && visit.auditAmount > 0) {
+      setAuditAmount(String(visit.auditAmount));
+    }
+  }, [visit?.auditAmount]);
+
+  const handleAuditAmountChange = async (val: string) => {
+    setAuditAmount(val)
+    if (visitId) {
+      const numVal = val && !isNaN(Number(val)) && Number(val) > 0 ? Number(val) : null;
+      if (numVal) {
+        localStorage.setItem(`audit_amount_${visitId}`, val)
+      } else {
+        localStorage.removeItem(`audit_amount_${visitId}`)
+      }
+      try {
+        await api.patch(`/api/visits/${visitId}`, { auditAmount: numVal });
+      } catch (e) {
+        console.error('Failed to sync auditAmount to visit:', e);
+      }
+    }
+  }
+
+  const handleDownloadReceipt = async (customAmt?: number) => {
+    if (!visitId) {
+      alert('Visit ID is missing.')
+      return
+    }
+    const amtToUse = customAmt !== undefined ? customAmt : (auditAmount ? parseFloat(auditAmount) : undefined)
+    setIsDownloadingReceipt(true)
+    try {
+      const url = `${API_BASE_URL}/api/documents/receipt/${visitId}${amtToUse && amtToUse > 0 ? `?auditAmount=${encodeURIComponent(amtToUse)}` : ''}`
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      })
+      if (!response.ok) {
+        let errorMsg = 'Failed to generate receipt PDF'
+        try {
+          const errJson = await response.json()
+          if (errJson.error) errorMsg = errJson.error
+        } catch (_) {
+          // not json
+        }
+        throw new Error(errorMsg)
+      }
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = amtToUse && amtToUse > 0 ? `receipt_audit_₹${amtToUse}.pdf` : `receipt_${visitId.substring(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000)
+    } catch (err: any) {
+      console.error('Error downloading receipt:', err)
+      alert(err.message || 'Could not download receipt PDF')
+    } finally {
+      setIsDownloadingReceipt(false)
+    }
+  }
+
+  const handleDownloadInvoice = async () => {
+    if (!visitId) {
+      alert('Visit ID is missing.')
+      return
+    }
+    try {
+      const url = `${API_BASE_URL}/api/documents/invoice/${visitId}`
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      })
+      if (!response.ok) {
+        let errorMsg = 'Failed to generate invoice PDF'
+        try {
+          const errJson = await response.json()
+          if (errJson.error) errorMsg = errJson.error
+        } catch (_) {}
+        throw new Error(errorMsg)
+      }
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = `invoice_${visitId.substring(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000)
+    } catch (err: any) {
+      console.error('Error downloading invoice:', err)
+      alert(err.message || 'Could not download invoice PDF')
+    }
+  }
+
   // Prescription State
   const [activePrescription, setActivePrescription] = useState<PrescriptionLineItem[]>([])
   const [medSearch, setMedSearch] = useState('')
@@ -465,11 +570,24 @@ export function DoctorWorkspacePage() {
     }
   }, [patientId, treatmentModalOpen]) // Re-fetch when treatment modal closes
 
-  // Filter treatment procedures that were completed or added specifically for this active visit
+  // Filter treatment procedures that were completed or added specifically for this active visit,
+  // or had treatment sessions (sittings) conducted in this visit
   const currentVisitTreatments = useMemo(() => {
     if (!treatmentPlan?.items || !visitId) return []
-    return treatmentPlan.items.filter((item: any) => item.completedVisitId === visitId)
+    return treatmentPlan.items.filter((item: any) => 
+      item.completedVisitId === visitId ||
+      (item.sessions && item.sessions.some((s: any) => s.visitId === visitId))
+    )
   }, [treatmentPlan, visitId])
+
+  const hasTreatmentRecordForVisit = useMemo(() => {
+    return (
+      currentVisitTreatments.length > 0 ||
+      treatmentFee > 0 ||
+      Boolean(treatmentZeroReason) ||
+      Boolean((consultation as any)?.treatmentWaiverReason)
+    );
+  }, [currentVisitTreatments.length, treatmentFee, treatmentZeroReason, consultation]);
 
   // Unfinished treatments with pending sittings (for Ongoing Treatment banner)
   const pendingTreatments = useMemo(() => {
@@ -741,7 +859,8 @@ export function DoctorWorkspacePage() {
             consultationFee,
             treatmentFee,
             consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-            treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null
+            treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null,
+            auditAmount: auditAmount ? parseFloat(auditAmount) : null
           },
           true,
           paymentOwner
@@ -1127,7 +1246,7 @@ export function DoctorWorkspacePage() {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[400px] content-start">
 
             {/* Render Saved Sections */}
-            {currentVisitTreatments.length > 0 && (
+            {hasTreatmentRecordForVisit && (
               <div className="md:col-span-6 space-y-4 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 tracking-wider uppercase flex items-center">
@@ -1145,43 +1264,57 @@ export function DoctorWorkspacePage() {
                 <div className="bg-slate-50/50 rounded-lg p-4 border border-slate-100 text-sm text-slate-700 space-y-4">
                   <div>
                     <strong className="block mb-1 text-slate-900">Procedures</strong>
-                    <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-                      {currentVisitTreatments.map((item: any) => {
-                        const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
-                        const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
-                        const category = item.catalogItem?.category || item.category
-                        const notes = item.notes
+                    {currentVisitTreatments.length > 0 ? (
+                      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                        {currentVisitTreatments.map((item: any) => {
+                          const procedure = item.catalogItem?.name || item.treatmentName || 'Unknown Treatment'
+                          const variant = item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''
+                          const category = item.catalogItem?.category || item.category
+                          const notes = item.notes
 
-                        return (
-                          <div key={item.id} className="text-slate-800">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {item.toothNumber && (
-                                <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
-                                  Tooth {item.toothNumber}
-                                </span>
-                              )}
-                              <span className="font-medium text-slate-900">{procedure} {variant}</span>
-                              {category && <span className="text-xs text-slate-500 ml-1">({category})</span>}
-                            </div>
-                            {item.sessions && item.sessions.filter((s: any) => s.visitId === visitId).length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {item.sessions.filter((s: any) => s.visitId === visitId).map((s: any) => (
-                                  <span key={s.id} className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
-                                    Sitting {s.sittingNumber}/{item.totalSittings || 1}: {s.stage || 'Completed'}
-                                    {s.workPerformed ? ` • ${s.workPerformed}` : ''}
+                          return (
+                            <div key={item.id} className="text-slate-800">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {item.toothNumber && (
+                                  <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
+                                    Tooth {item.toothNumber}
                                   </span>
-                                ))}
+                                )}
+                                <span className="font-medium text-slate-900">{procedure} {variant}</span>
+                                {category && <span className="text-xs text-slate-500 ml-1">({category})</span>}
                               </div>
-                            )}
-                            {notes && (
-                              <div className="text-xs text-slate-600 mt-0.5 ml-1">
-                                Notes: {notes}
-                              </div>
-                            )}
+                              {item.sessions && item.sessions.filter((s: any) => s.visitId === visitId).length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {item.sessions.filter((s: any) => s.visitId === visitId).map((s: any) => (
+                                    <span key={s.id} className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                                      Sitting {s.sittingNumber}/{item.totalSittings || 1}: {s.stage || 'Completed'}
+                                      {s.workPerformed ? ` • ${s.workPerformed}` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {notes && (
+                                <div className="text-xs text-slate-600 mt-0.5 ml-1">
+                                  Notes: {notes}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-100/70 rounded-xl border border-slate-200/60 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                          <Info className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          <span>No new procedure added for this visit</span>
+                        </div>
+                        {(treatmentZeroReason || (consultation as any)?.treatmentWaiverReason) && (
+                          <div className="text-slate-600 mt-1">
+                            Clinical Reason: <span className="font-semibold text-slate-900">{treatmentZeroReason || (consultation as any)?.treatmentWaiverReason}</span>
                           </div>
-                        )
-                      })}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="pt-2 border-t border-slate-200/60">
                     <div><strong className="text-slate-900">Treatment Fee:</strong> ₹{treatmentFee}</div>
@@ -1366,7 +1499,7 @@ export function DoctorWorkspacePage() {
               </div>
             )}
 
-            {currentVisitTreatments.length === 0 && !consultation && (!prescription || prescription.items.length === 0) && (
+            {!hasTreatmentRecordForVisit && !consultation && (!prescription || prescription.items.length === 0) && (
               <div className="md:col-span-12 text-center text-slate-400 py-12 flex flex-col items-center bg-white rounded-2xl border border-slate-100 shadow-sm">
                 <div className="w-16 h-16 bg-slate-50 rounded-full border border-dashed border-slate-200 flex items-center justify-center mb-4">
                   <Info className="w-6 h-6 text-slate-400" />
@@ -1601,7 +1734,18 @@ export function DoctorWorkspacePage() {
         <Dialog open={treatmentModalOpen} onOpenChange={async (open) => {
           if (!open) {
             await rollbackTreatmentPlan.current();
+            setTreatmentFee(initialModalTreatmentFee.current);
             setTreatmentModalOpen(false);
+            setTreatmentModalInitialView('planning');
+            setTreatmentModalTargetItemId(null);
+            setTreatmentModalTargetSessionId(null);
+            if (visitId) {
+              try {
+                const cRes = await api.get<any>(`/api/consultations/visit/${visitId}`);
+                if (cRes?.treatmentFee !== undefined) setTreatmentFee(cRes.treatmentFee);
+                if (cRes?.treatmentWaiverReason !== undefined) setTreatmentZeroReason(cRes.treatmentWaiverReason || '');
+              } catch (e) {}
+            }
             if (patientId) {
               try {
                 const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
@@ -1611,6 +1755,7 @@ export function DoctorWorkspacePage() {
               }
             }
           } else {
+            initialModalTreatmentFee.current = treatmentFee;
             setTreatmentModalOpen(true);
           }
         }}>
@@ -1634,7 +1779,7 @@ export function DoctorWorkspacePage() {
                   onSaveTreatmentFee={async (newFee, zeroReason) => {
                     setTreatmentFee(newFee);
                     if (zeroReason !== undefined) setTreatmentZeroReason(zeroReason);
-                    if (visitId && consultation) {
+                    if (visitId) {
                       await saveConsultation(visitId, {
                         reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
                         clinicalNotes: notes.trim(),
@@ -1643,12 +1788,11 @@ export function DoctorWorkspacePage() {
                         consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
                         treatmentWaiverReason: newFee === 0 ? (zeroReason || treatmentZeroReason).trim() : null
                       });
-                    } else if (visitId) {
-                      await api.put(`/api/visits/${visitId}`, { treatmentFee: newFee });
-                      await refreshClinicOperations();
                     }
                   }}
-                  onDone={async (noProcedureReason) => {
+                  onDone={async (noProcedureReason, finalFee) => {
+                    const currentFee = finalFee !== undefined ? finalFee : treatmentFee;
+                    setTreatmentFee(currentFee);
                     setTreatmentModalOpen(false);
                     setTreatmentModalInitialView('planning');
                     setTreatmentModalTargetItemId(null);
@@ -1667,11 +1811,20 @@ export function DoctorWorkspacePage() {
                           reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
                           clinicalNotes: updatedNotes,
                           consultationFee,
-                          treatmentFee: 0,
+                          treatmentFee: currentFee,
                           consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-                          treatmentWaiverReason: noProcedureReason.trim()
+                          treatmentWaiverReason: currentFee === 0 ? noProcedureReason.trim() : null
                         });
                       }
+                    } else if (visitId) {
+                      await saveConsultation(visitId, {
+                        reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
+                        clinicalNotes: notes.trim(),
+                        consultationFee,
+                        treatmentFee: currentFee,
+                        consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+                        treatmentWaiverReason: currentFee === 0 ? treatmentZeroReason.trim() : null
+                      });
                     }
                     if (patientId) {
                       try {
@@ -1681,13 +1834,22 @@ export function DoctorWorkspacePage() {
                         console.error(e);
                       }
                     }
+                    await refreshClinicOperations();
                   }}
                   onCancel={async () => {
                     await rollbackTreatmentPlan.current();
+                    setTreatmentFee(initialModalTreatmentFee.current);
                     setTreatmentModalOpen(false);
                     setTreatmentModalInitialView('planning');
                     setTreatmentModalTargetItemId(null);
                     setTreatmentModalTargetSessionId(null);
+                    if (visitId) {
+                      try {
+                        const cRes = await api.get<any>(`/api/consultations/visit/${visitId}`);
+                        if (cRes?.treatmentFee !== undefined) setTreatmentFee(cRes.treatmentFee);
+                        if (cRes?.treatmentWaiverReason !== undefined) setTreatmentZeroReason(cRes.treatmentWaiverReason || '');
+                      } catch (e) {}
+                    }
                     if (patientId) {
                       try {
                         const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
@@ -1748,7 +1910,14 @@ export function DoctorWorkspacePage() {
                       )
                     })
                   ) : (
-                    <p className="text-sm text-slate-400">No procedures recorded for this visit.</p>
+                    <div className="p-3 bg-slate-100/70 rounded-xl border border-slate-200/60 text-xs space-y-1">
+                      <p className="font-medium text-slate-700">No new procedure added for this visit.</p>
+                      {(treatmentZeroReason || (consultation as any)?.treatmentWaiverReason) && (
+                        <p className="text-slate-500">
+                          Clinical Reason: <strong className="text-slate-800">{treatmentZeroReason || (consultation as any)?.treatmentWaiverReason}</strong>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -2294,6 +2463,84 @@ export function DoctorWorkspacePage() {
                     <span>Total Amount Due:</span>
                     <span>₹{totalCalculatedDue}</span>
                   </div>
+
+                  {/* Audit Amount Field (Specialized for Doctor Workspace) */}
+                  <div className="pt-2.5 mt-2 border-t border-slate-200/90 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="auditAmountInput" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span>Audit Amount (₹)</span>
+                        <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Optional</span>
+                      </Label>
+                      {auditAmount && parseFloat(auditAmount) > 0 && (
+                        <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          Receipt Scale: ₹{parseFloat(auditAmount).toLocaleString('en-IN')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="auditAmountInput"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="e.g. 20000 (enter to generate audit receipt)"
+                        value={auditAmount}
+                        onChange={(e) => handleAuditAmountChange(e.target.value)}
+                        className="h-9 text-sm bg-white border-slate-300 focus:border-indigo-500 pr-8"
+                      />
+                      {auditAmount && (
+                        <button
+                          type="button"
+                          onClick={() => handleAuditAmountChange('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs px-1 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 leading-tight">
+                      When provided, the downloadable receipt PDF considers only ₹{auditAmount || '...'} as the amount without altering clinic records or reception desk process visit billing.
+                    </p>
+
+                    {/* Downloadable PDF Documents */}
+                    <div className="pt-1 flex flex-col gap-1.5">
+                      {auditAmount && parseFloat(auditAmount) > 0 ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadReceipt(parseFloat(auditAmount))}
+                          disabled={isDownloadingReceipt}
+                          className="w-full h-9 bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                        >
+                          <Download className="w-4 h-4 text-emerald-600" />
+                          {isDownloadingReceipt ? 'Generating Receipt...' : `Download Audit Receipt (₹${parseFloat(auditAmount).toLocaleString('en-IN')})`}
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadReceipt()}
+                          disabled={isDownloadingReceipt}
+                          className="w-full h-9 bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                        >
+                          <Receipt className="w-4 h-4 text-emerald-600" />
+                          {isDownloadingReceipt ? 'Generating Receipt...' : 'Download Payment Receipt'}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDownloadInvoice}
+                        className="w-full h-8 bg-blue-50/70 hover:bg-blue-100/80 border-blue-200 text-blue-700 font-medium text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-blue-600" />
+                        Download Tax Invoice
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2343,6 +2590,41 @@ export function DoctorWorkspacePage() {
                 <div className="flex justify-between text-xs text-amber-700 font-bold pt-1 border-t border-dashed border-slate-200">
                   <span>Remaining Balance:</span>
                   <span>₹{remainingBalance}</span>
+                </div>
+              </div>
+
+              {/* Audit Receipt & Invoice in Doctor Payment Dialog */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-700 text-xs">Documents Ready for Download</span>
+                  {auditAmount && parseFloat(auditAmount) > 0 && (
+                    <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      Audit: ₹{parseFloat(auditAmount).toLocaleString('en-IN')}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownloadReceipt(auditAmount ? parseFloat(auditAmount) : undefined)}
+                    disabled={isDownloadingReceipt}
+                    className="flex-1 h-8 bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-medium text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                    Receipt
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadInvoice}
+                    className="flex-1 h-8 bg-white border-blue-300 text-blue-700 hover:bg-blue-50 font-medium text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-blue-600" />
+                    Invoice
+                  </Button>
                 </div>
               </div>
 

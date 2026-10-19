@@ -43,6 +43,7 @@ export interface Visit {
   discountReason?: string | null
   reasonForVisit?: string
   paymentOwner?: 'RECEPTION' | 'DOCTOR'
+  auditAmount?: number | null
   
   // Workflow linkages (populated as the visit progresses)
   queueEntryId?: string

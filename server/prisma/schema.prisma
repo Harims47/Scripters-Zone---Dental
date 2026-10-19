@@ -80,6 +80,7 @@ model Visit {
   appointmentId   String?       @unique
   status          String
   amountDue       Float         @default(0)
+  auditAmount     Float?
   consultationFee Float?
   treatmentFee    Float?
   medicineCost    Float?
