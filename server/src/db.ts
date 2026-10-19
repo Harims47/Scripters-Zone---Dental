@@ -216,6 +216,8 @@ function createDatabaseAdapter() {
     connectionLimit: 10,
     connectTimeout: 10000, // 10 seconds for initial TCP / TLS socket handshake
     acquireTimeout: 10000, // 10 seconds for pool connection retrieval
+    idleTimeout: 60, // Close idle pool connections after 60s to prevent stale socket EPIPE
+    minDelayValidation: 500, // Validate connection health with ping if idle >500ms
     prepareCacheLength: 0, // Required for Prisma MariaDB adapter to prevent statement cache collisions
     allowPublicKeyRetrieval: true,
     ...(config.ssl !== undefined ? { ssl: config.ssl } : {}),
