@@ -5,7 +5,7 @@
   "main": "src/app.ts",
   "scripts": {
     "dev": "tsx watch src/app.ts",
-    "build": "prisma generate && tsc",
+    "build": "node -e \"console.log('[1/3] Generating Prisma Client...')\" && prisma generate && node -e \"console.log('[2/3] Compiling TypeScript...')\" && tsc && node -e \"console.log('[3/3] Server build finished successfully!')\"",
     "start": "node dist/src/app.js",
     "test": "tsx scripts/qa/run_full_mysql_regression.ts",
     "db:push": "prisma db push",
