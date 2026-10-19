@@ -5,7 +5,7 @@
   "main": "src/app.ts",
   "scripts": {
     "dev": "tsx watch src/app.ts",
-    "build": "prisma generate && tsc",
+    "build": "cross-env DEBUG=\"prisma*\" prisma generate && tsc",
     "start": "node dist/src/app.js",
     "test": "tsx scripts/qa/run_full_mysql_regression.ts",
     "db:push": "prisma db push",
@@ -43,6 +43,7 @@
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
+    "cross-env": "^10.1.0",
     "prisma": "^7.10.0",
     "qrcode": "^1.5.4",
     "ts-node": "^10.9.2",

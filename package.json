@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "cross-env NODE_OPTIONS=\"--max-old-space-size=384\" npm run build:client && cross-env NODE_OPTIONS=\"--max-old-space-size=384\" npm run build:server",
+    "build": "npm run build:client && npm run build:server",
     "build:client": "tsc -b && vite build",
     "build:server": "npm --prefix server run build",
     "start": "node server/dist/src/app.js",
