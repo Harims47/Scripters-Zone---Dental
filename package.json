@@ -8,8 +8,8 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "node --max-old-space-size=384 ./node_modules/typescript/lib/tsc.js -b && node --max-old-space-size=384 ./node_modules/vite/bin/vite.js build",
+    "build": "cross-env NODE_OPTIONS=\"--max-old-space-size=384\" npm run build:client && cross-env NODE_OPTIONS=\"--max-old-space-size=384\" npm run build:server",
+    "build:client": "tsc -b && vite build",
     "build:server": "npm --prefix server run build",
     "start": "node server/dist/src/app.js",
     "lint": "oxlint",
@@ -46,7 +46,8 @@
     "sweetalert2-react-content": "^5.1.2",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "cross-env": "^10.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -55,7 +56,6 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
-    "cross-env": "^10.1.0",
     "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
