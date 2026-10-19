@@ -2450,7 +2450,10 @@ export function ReceptionDeskPage() {
             {/* Dynamic Step Calculations */}
             {(() => {
               const isDoctorHandled = activeProcessVisit?.paymentOwner === 'DOCTOR';
-              const hasPrescription = prescriptions.some(p => p.visitId === processVisitId && p.status === 'Finalized');
+              const hasPrescription = Boolean(
+                (activeProcessVisit as any)?.prescription ||
+                prescriptions.some(p => p.visitId === processVisitId && (p.status === 'Finalized' || (p.items && p.items.length > 0)))
+              );
               const hasCompletedDispensing = dispensings.some(d => d.visitId === processVisitId);
               const isDispensingStep = hasPrescription && !hasCompletedDispensing;
 
@@ -2953,9 +2956,10 @@ export function ReceptionDeskPage() {
                           </Button>
                           <Button
                             variant="outline"
-                            className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium shadow-xs"
+                            className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
                             onClick={() => handlePrintDocument('prescription')}
-                            title="Print Prescription"
+                            disabled={!hasPrescription}
+                            title={hasPrescription ? "Print Prescription" : "No prescription available for this visit"}
                           >
                             <Pill className="w-4 h-4 mr-1.5 text-emerald-600" />
                             Prescription
@@ -2973,6 +2977,24 @@ export function ReceptionDeskPage() {
                               whatsappAvailable={activeProcessPatient.whatsappAvailable}
                               variant="outline"
                               className="h-9 px-3"
+                              label="Share Receipt"
+                            />
+                          )}
+                          {activeProcessVisit && activeProcessPatient && (
+                            <WhatsAppActionButton
+                              type="PRESCRIPTION"
+                              entityType="VISIT"
+                              entityId={activeProcessVisit.id}
+                              patientId={activeProcessPatient.id}
+                              recipientName={activeProcessPatient.name}
+                              recipientPhone={activeProcessPatient.phone}
+                              preferredCommunicationChannel={activeProcessPatient.preferredCommunicationChannel}
+                              whatsappAvailable={activeProcessPatient.whatsappAvailable}
+                              variant="outline"
+                              className="h-9 px-3"
+                              label="Share Rx"
+                              disabled={!hasPrescription}
+                              title={hasPrescription ? "Share Prescription via WhatsApp" : "No prescription available for this visit"}
                             />
                           )}
                         </div>
