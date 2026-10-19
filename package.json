@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run build:client && npm run build:server",
-    "build:client": "tsc -b && vite build",
+    "build:client": "node --max-old-space-size=384 ./node_modules/typescript/lib/tsc.js -b && node --max-old-space-size=384 ./node_modules/vite/bin/vite.js build",
     "build:server": "npm --prefix server run build",
     "start": "node server/dist/src/app.js",
     "lint": "oxlint",
