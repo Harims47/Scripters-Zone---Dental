@@ -765,14 +765,6 @@ export function PatientsPage() {
             <PatientCompleteHistory 
               patientId={historyModalPatient.id}
               onClose={() => setHistoryModalPatient(null)}
-              onEditPatient={() => {
-                setSelectedPatient(historyModalPatient);
-                setDrawerMode('edit');
-                const activeVisit = getActiveVisit(historyModalPatient.id);
-                setVisitReason(activeVisit?.reasonForVisit || '');
-                setHistoryModalPatient(null);
-                setDrawerOpen(true);
-              }}
             />
           )}
         </DialogContent>

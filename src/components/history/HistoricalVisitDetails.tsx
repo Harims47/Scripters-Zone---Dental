@@ -252,7 +252,7 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
               </div>
 
               {/* Fee Waivers and Financial Justifications if any */}
-              {(consultation.consultationWaiverReason || consultation.treatmentWaiverReason || (visit.discount && visit.discount > 0)) && (
+              {Boolean(consultation.consultationWaiverReason || consultation.treatmentWaiverReason || (visit.discount && visit.discount > 0)) && (
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
                     Financial Adjustments & Waivers
@@ -270,7 +270,7 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
                         {consultation.treatmentWaiverReason}
                       </div>
                     )}
-                    {visit.discount && visit.discount > 0 && (
+                    {Boolean(visit.discount && visit.discount > 0) && (
                       <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-lg text-emerald-900">
                         <span className="font-bold block text-emerald-950">Discount Applied: ₹{visit.discount}</span>
                         {visit.discountReason || 'Authorized discount'}

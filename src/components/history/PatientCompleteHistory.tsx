@@ -29,13 +29,11 @@ import { Button } from '../ui/button'
 
 interface PatientCompleteHistoryProps {
   patientId: string
-  onEditPatient?: () => void
   onClose?: () => void
 }
 
 export function PatientCompleteHistory({
   patientId,
-  onEditPatient,
   onClose
 }: PatientCompleteHistoryProps) {
   const [data, setData] = useState<PatientHistoryData | null>(null)
@@ -223,11 +221,6 @@ export function PatientCompleteHistory({
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-center">
-            {onEditPatient && (
-              <Button variant="outline" size="sm" onClick={onEditPatient} className="h-8 text-xs font-medium border-slate-200">
-                Edit Profile
-              </Button>
-            )}
             {onClose && (
               <Button variant="outline" size="sm" onClick={onClose} className="h-8 text-xs font-medium border-slate-200">
                 Close
@@ -462,7 +455,7 @@ export function PatientCompleteHistory({
                           </div>
 
                           {/* Fee Waivers and Adjustments if present */}
-                          {(visit.consultation?.consultationWaiverReason || visit.consultation?.treatmentWaiverReason || (visit.discount && visit.discount > 0)) && (
+                          {Boolean(visit.consultation?.consultationWaiverReason || visit.consultation?.treatmentWaiverReason || (visit.discount && visit.discount > 0)) && (
                             <div className="pt-2 border-t border-slate-100 space-y-2">
                               <span className="text-amber-600 font-bold block uppercase tracking-wider text-[10px]">
                                 Financial Adjustments & Waivers
@@ -480,7 +473,7 @@ export function PatientCompleteHistory({
                                     {visit.consultation.treatmentWaiverReason}
                                   </div>
                                 )}
-                                {visit.discount && visit.discount > 0 && (
+                                {Boolean(visit.discount && visit.discount > 0) && (
                                   <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-lg text-emerald-900">
                                     <span className="font-bold block text-emerald-950">Discount Applied: ₹{visit.discount}</span>
                                     {visit.discountReason || 'Authorized discount'}
