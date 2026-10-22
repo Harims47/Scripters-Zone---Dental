@@ -1315,11 +1315,10 @@ export function ReceptionDeskPage() {
           <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight whitespace-nowrap">Reception Desk</h1>
             {selectedDate !== todayStr && (
-              <Badge className={`font-semibold px-2.5 py-0.5 text-xs ${
-                selectedDate < todayStr
+              <Badge className={`font-semibold px-2.5 py-0.5 text-xs ${selectedDate < todayStr
                   ? 'bg-amber-100 text-amber-800 border-amber-200'
                   : 'bg-purple-100 text-purple-800 border-purple-200 animate-pulse'
-              }`}>
+                }`}>
                 Viewing: {selectedDate === tomorrowStr ? 'Tomorrow' : selectedDate}
               </Badge>
             )}
@@ -1328,8 +1327,8 @@ export function ReceptionDeskPage() {
             {selectedDate === todayStr
               ? "Register patients, manage today's visits, and complete reception tasks."
               : selectedDate < todayStr
-              ? `Reviewing clinic records, visits, and payments for ${selectedDate}.`
-              : `Reviewing scheduled queue and transferred patients for ${selectedDate}.`}
+                ? `Reviewing clinic records, visits, and payments for ${selectedDate}.`
+                : `Reviewing scheduled queue and transferred patients for ${selectedDate}.`}
           </p>
         </div>
 
@@ -1455,8 +1454,8 @@ export function ReceptionDeskPage() {
                 const badgeClass = isAvailable
                   ? 'bg-white/20 text-white border-white/20'
                   : isLeave
-                  ? 'bg-slate-300 text-slate-700 border-slate-400'
-                  : 'bg-white/20 text-white border-white/20';
+                    ? 'bg-slate-300 text-slate-700 border-slate-400'
+                    : 'bg-white/20 text-white border-white/20';
 
                 const activeQueueItem = queue.find(q => q.assignedDoctorId === doc.id && q.status === 'In Progress');
                 const activePatient = activeQueueItem ? patients.find(p => p.id === activeQueueItem.patientId) : null;
@@ -1509,9 +1508,8 @@ export function ReceptionDeskPage() {
                     </div>
 
                     {/* Bottom: Context indicator */}
-                    <div className={`mt-3 pt-2.5 border-t text-xs flex items-center justify-between ${
-                      isLeave ? 'border-slate-300 text-slate-600' : 'border-white/20 text-white/90'
-                    }`}>
+                    <div className={`mt-3 pt-2.5 border-t text-xs flex items-center justify-between ${isLeave ? 'border-slate-300 text-slate-600' : 'border-white/20 text-white/90'
+                      }`}>
                       {isAvailable ? (
                         <span className="text-xs font-medium flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Ready for next patient
@@ -2525,7 +2523,6 @@ export function ReceptionDeskPage() {
                           </p>
                         </div>
                       )}
-
                       {/* Treatment Plan Section (if existed for this active visit) */}
                       {processTreatmentPlan && processTreatmentPlan.items && processTreatmentPlan.items.filter((item: any) => item.completedVisitId === activeProcessVisit?.id).length > 0 && (
                         <div className="pt-2 border-t border-slate-100 space-y-2">

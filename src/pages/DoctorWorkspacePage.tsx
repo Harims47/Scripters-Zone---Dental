@@ -571,11 +571,14 @@ export function DoctorWorkspacePage() {
   }, [patientId, treatmentModalOpen]) // Re-fetch when treatment modal closes
 
   // Filter treatment procedures that were completed or added specifically for this active visit,
-  // or had treatment sessions (sittings) conducted in this visit
+  // or had treatment sessions (sittings) conducted in this visit,
+  // or are currently active (Planned / In Progress)
   const currentVisitTreatments = useMemo(() => {
     if (!treatmentPlan?.items || !visitId) return []
     return treatmentPlan.items.filter((item: any) => 
       item.completedVisitId === visitId ||
+      item.status === 'Planned' ||
+      item.status === 'In Progress' ||
       (item.sessions && item.sessions.some((s: any) => s.visitId === visitId))
     )
   }, [treatmentPlan, visitId])
@@ -1283,7 +1286,7 @@ export function DoctorWorkspacePage() {
                                 <span className="font-medium text-slate-900">{procedure} {variant}</span>
                                 {category && <span className="text-xs text-slate-500 ml-1">({category})</span>}
                               </div>
-                              {item.sessions && item.sessions.filter((s: any) => s.visitId === visitId).length > 0 && (
+                              {item.sessions && item.sessions.filter((s: any) => s.visitId === visitId).length > 0 ? (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {item.sessions.filter((s: any) => s.visitId === visitId).map((s: any) => (
                                     <span key={s.id} className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
@@ -1292,7 +1295,17 @@ export function DoctorWorkspacePage() {
                                     </span>
                                   ))}
                                 </div>
-                              )}
+                              ) : (item.status === 'Planned' || item.status === 'In Progress') ? (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                                    item.status === 'In Progress'
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : 'bg-sky-50 text-sky-700 border-sky-200'
+                                  }`}>
+                                    {item.status} ({(item.sessions || []).filter((s: any) => s.status === 'Completed').length}/{item.totalSittings || 1} sittings)
+                                  </span>
+                                </div>
+                              ) : null}
                               {notes && (
                                 <div className="text-xs text-slate-600 mt-0.5 ml-1">
                                   Notes: {notes}
@@ -1652,7 +1665,11 @@ export function DoctorWorkspacePage() {
 
                   // Procedure Check: Adding a procedure is mandatory unless clinical reason provided
                   const currentProcs = (treatmentPlan?.items || []).filter(
-                    (item: any) => item.completedVisitId === visitId || item.status === 'Planned'
+                    (item: any) =>
+                      item.completedVisitId === visitId ||
+                      item.status === 'Planned' ||
+                      item.status === 'In Progress' ||
+                      (item.sessions && item.sessions.some((s: any) => s.visitId === visitId))
                   );
                   const hasProcedures = currentProcs.length > 0;
                   const hasProcReason = Boolean(
@@ -1901,6 +1918,26 @@ export function DoctorWorkspacePage() {
                             <span>{procedure} {variant}</span>
                             {category && <span className="text-xs font-medium text-slate-500 ml-1">({category})</span>}
                           </div>
+                          {item.sessions && item.sessions.filter((s: any) => s.visitId === visitId).length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {item.sessions.filter((s: any) => s.visitId === visitId).map((s: any) => (
+                                <span key={s.id} className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                                  Sitting {s.sittingNumber}/{item.totalSittings || 1}: {s.stage || 'Completed'}
+                                  {s.workPerformed ? ` • ${s.workPerformed}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (item.status === 'Planned' || item.status === 'In Progress') ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                                item.status === 'In Progress'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-sky-50 text-sky-700 border-sky-200'
+                              }`}>
+                                {item.status} ({(item.sessions || []).filter((s: any) => s.status === 'Completed').length}/{item.totalSittings || 1} sittings)
+                              </span>
+                            </div>
+                          ) : null}
                           {notes && (
                             <div className="text-xs text-slate-600 mt-0.5">
                               Notes: <span className="font-medium text-slate-800">{notes}</span>
