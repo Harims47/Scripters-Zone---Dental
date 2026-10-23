@@ -178,12 +178,8 @@ export const completeConsultation = async (req: Request, res: Response, next: Ne
       return res.status(409).json({ error: 'Visit is not in WITH_DOCTOR state' });
     }
 
-    if (!visit.consultation) {
-      return res.status(409).json({ error: 'Cannot complete visit without a consultation' });
-    }
-
-    // Check doctor ownership (Head Doctor can complete any consultation; Duty Doctor must own it)
-    if (req.user?.role === 'Duty Doctor' && visit.consultation.doctorId !== doctorId) {
+    // Check doctor ownership if consultation exists (Head Doctor can complete any consultation; Duty Doctor must own it)
+    if (visit.consultation && req.user?.role === 'Duty Doctor' && visit.consultation.doctorId !== doctorId) {
       return res.status(403).json({ error: 'You are not the doctor for this consultation' });
     }
 
@@ -199,11 +195,13 @@ export const completeConsultation = async (req: Request, res: Response, next: Ne
       : undefined;
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Finalize Consultation
-      await tx.consultation.update({
-        where: { id: visit.consultation!.id },
-        data: { status: 'Completed' }
-      });
+      // 1. Finalize Consultation if exists
+      if (visit.consultation) {
+        await tx.consultation.update({
+          where: { id: visit.consultation.id },
+          data: { status: 'Completed' }
+        });
+      }
 
       // 2. Finalize Prescription if exists
       if (visit.prescription) {

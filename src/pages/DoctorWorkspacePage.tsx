@@ -374,7 +374,7 @@ export function DoctorWorkspacePage() {
   const visitId = searchParams.get('visitId')
   const navigate = useNavigate()
 
-  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, savePrescription, recordPayment, payments, queue, staff, assignDoctor, refreshClinicOperations } = useClinicContext()
+  const { visits, patients, consultations, prescriptions, medicines, saveConsultation, updateVisit, savePrescription, recordPayment, payments, queue, staff, assignDoctor, refreshClinicOperations } = useClinicContext()
 
   // Canonical Entities
   const visit = visits.find(v => v.id === visitId)
@@ -849,43 +849,60 @@ export function DoctorWorkspacePage() {
 
   const handleComplete = async () => {
     if (visitId) {
-      if (consultationFee === 0 && !consultationZeroReason.trim()) {
+      if (consultation && consultationFee === 0 && !consultationZeroReason.trim()) {
         setIsConsultationZeroFeeModalOpen(true);
         return;
       }
       try {
-        const result = await saveConsultation(
-          visitId,
-          {
-            reasonForVisit: reason || visit?.reasonForVisit || '',
-            clinicalNotes: notes.trim(),
-            consultationFee,
-            treatmentFee,
-            consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-            treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null,
+        if (consultation) {
+          const result = await saveConsultation(
+            visitId,
+            {
+              reasonForVisit: reason || visit?.reasonForVisit || '',
+              clinicalNotes: notes.trim(),
+              consultationFee,
+              treatmentFee,
+              consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+              treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null,
+              auditAmount: auditAmount ? parseFloat(auditAmount) : null
+            },
+            true,
+            paymentOwner
+          );
+          if (result.success) {
+            setCompleteModalOpen(false);
+            if (paymentOwner === 'DOCTOR') {
+              const initialAmt = remainingBalance > 0 ? remainingBalance : totalCalculatedDue;
+              setDoctorPaymentAmount(initialAmt > 0 ? String(initialAmt) : '');
+              setDoctorPaymentModalOpen(true);
+            } else {
+              navigate('/queue');
+            }
+          } else {
+            alert('Failed to complete consultation: ' + result.error);
+          }
+        } else {
+          // Complete visit without consultation (e.g. follow-up treatment sitting only)
+          await api.post(`/api/consultations/visit/${visitId}/complete`, {
+            paymentOwner,
             auditAmount: auditAmount ? parseFloat(auditAmount) : null
-          },
-          true,
-          paymentOwner
-        )
-        if (result.success) {
-          setCompleteModalOpen(false)
+          });
+          await refreshClinicOperations();
+          setCompleteModalOpen(false);
           if (paymentOwner === 'DOCTOR') {
             const initialAmt = remainingBalance > 0 ? remainingBalance : totalCalculatedDue;
             setDoctorPaymentAmount(initialAmt > 0 ? String(initialAmt) : '');
-            setDoctorPaymentModalOpen(true)
+            setDoctorPaymentModalOpen(true);
           } else {
-            navigate('/queue')
+            navigate('/queue');
           }
-        } else {
-          alert('Failed to complete consultation: ' + result.error)
         }
-      } catch (err) {
-        console.error(err)
-        alert('Failed to complete consultation')
+      } catch (err: any) {
+        console.error('Error completing visit:', err);
+        alert(err.response?.data?.error || err.message || 'Failed to complete visit');
       }
     }
-  }
+  };
 
   const handleConfirmDoctorPayment = async () => {
     if (!visitId) return;
@@ -1653,7 +1670,7 @@ export function DoctorWorkspacePage() {
                     const updatedNotes = notes ? (notes.includes('[No Medication Prescribed:') ? notes.replace(/\[No Medication Prescribed:[^\]]+\]/, noMedNote) : `${notes}\n\n${noMedNote}`) : noMedNote
                     setNotes(updatedNotes)
 
-                    if (visitId) {
+                    if (visitId && consultation) {
                       await saveConsultation(visitId, {
                         reasonForVisit: reason || visit?.reasonForVisit || '',
                         clinicalNotes: updatedNotes,
@@ -1725,7 +1742,7 @@ export function DoctorWorkspacePage() {
                     const procUpdatedNotes = notes ? (notes.includes('[No Procedure Added:') ? notes.replace(/\[No Procedure Added:[^\]]+\]/, noProcNote) : `${notes}\n\n${noProcNote}`) : noProcNote;
                     setNotes(procUpdatedNotes);
 
-                    if (visitId) {
+                    if (visitId && consultation) {
                       await saveConsultation(visitId, {
                         reasonForVisit: reason || visit?.reasonForVisit || '',
                         clinicalNotes: procUpdatedNotes,
@@ -1797,14 +1814,21 @@ export function DoctorWorkspacePage() {
                     setTreatmentFee(newFee);
                     if (zeroReason !== undefined) setTreatmentZeroReason(zeroReason);
                     if (visitId) {
-                      await saveConsultation(visitId, {
-                        reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
-                        clinicalNotes: notes.trim(),
-                        consultationFee,
-                        treatmentFee: newFee,
-                        consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-                        treatmentWaiverReason: newFee === 0 ? (zeroReason || treatmentZeroReason).trim() : null
-                      });
+                      if (consultation) {
+                        await saveConsultation(visitId, {
+                          reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
+                          clinicalNotes: notes.trim(),
+                          consultationFee: consultation.consultationFee ?? consultationFee,
+                          treatmentFee: newFee,
+                          consultationWaiverReason: consultation.consultationWaiverReason,
+                          treatmentWaiverReason: newFee === 0 ? (zeroReason || treatmentZeroReason).trim() : null
+                        });
+                      } else {
+                        await updateVisit(visitId, {
+                          treatmentFee: newFee
+                        });
+                        await refreshClinicOperations();
+                      }
                     }
                   }}
                   onDone={async (noProcedureReason, finalFee) => {
@@ -1824,24 +1848,38 @@ export function DoctorWorkspacePage() {
                         : noProcNote;
                       setNotes(updatedNotes);
                       if (visitId) {
-                        await saveConsultation(visitId, {
-                          reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
-                          clinicalNotes: updatedNotes,
-                          consultationFee,
-                          treatmentFee: currentFee,
-                          consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-                          treatmentWaiverReason: currentFee === 0 ? noProcedureReason.trim() : null
-                        });
+                        if (consultation) {
+                          await saveConsultation(visitId, {
+                            reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
+                            clinicalNotes: updatedNotes,
+                            consultationFee: consultation.consultationFee ?? consultationFee,
+                            treatmentFee: currentFee,
+                            consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+                            treatmentWaiverReason: currentFee === 0 ? noProcedureReason.trim() : null
+                          });
+                        } else {
+                          await updateVisit(visitId, {
+                            treatmentFee: currentFee
+                          });
+                          await refreshClinicOperations();
+                        }
                       }
                     } else if (visitId) {
-                      await saveConsultation(visitId, {
-                        reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
-                        clinicalNotes: notes.trim(),
-                        consultationFee,
-                        treatmentFee: currentFee,
-                        consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-                        treatmentWaiverReason: currentFee === 0 ? treatmentZeroReason.trim() : null
-                      });
+                      if (consultation) {
+                        await saveConsultation(visitId, {
+                          reasonForVisit: reason || visit?.reasonForVisit || 'Consultation',
+                          clinicalNotes: notes.trim(),
+                          consultationFee: consultation.consultationFee ?? consultationFee,
+                          treatmentFee: currentFee,
+                          consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
+                          treatmentWaiverReason: currentFee === 0 ? treatmentZeroReason.trim() : null
+                        });
+                      } else {
+                        await updateVisit(visitId, {
+                          treatmentFee: currentFee
+                        });
+                        await refreshClinicOperations();
+                      }
                     }
                     if (patientId) {
                       try {
