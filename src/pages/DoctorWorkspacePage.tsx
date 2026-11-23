@@ -570,18 +570,17 @@ export function DoctorWorkspacePage() {
     }
   }, [patientId, treatmentModalOpen]) // Re-fetch when treatment modal closes
 
-  // Filter treatment procedures that were completed or added specifically for this active visit,
-  // or had treatment sessions (sittings) conducted in this visit,
-  // or are currently active (Planned / In Progress)
+  // Filter treatment procedures that were completed specifically for this active visit,
+  // or had treatment sessions (sittings) conducted in this visit
   const currentVisitTreatments = useMemo(() => {
     if (!treatmentPlan?.items || !visitId) return []
+    const visitTime = visit?.createdAt ? new Date(visit.createdAt).getTime() - 1000 : 0
     return treatmentPlan.items.filter((item: any) => 
       item.completedVisitId === visitId ||
-      item.status === 'Planned' ||
-      item.status === 'In Progress' ||
-      (item.sessions && item.sessions.some((s: any) => s.visitId === visitId))
+      (item.sessions && item.sessions.some((s: any) => s.visitId === visitId)) ||
+      (visitTime > 0 && item.createdAt && new Date(item.createdAt).getTime() >= visitTime)
     )
-  }, [treatmentPlan, visitId])
+  }, [treatmentPlan, visitId, visit?.createdAt])
 
   const hasTreatmentRecordForVisit = useMemo(() => {
     return (
@@ -793,13 +792,14 @@ export function DoctorWorkspacePage() {
         setIsConsultationZeroFeeModalOpen(true);
         return;
       }
+      const effectiveTreatmentFee = treatmentFee > 0 ? treatmentFee : (visit?.treatmentFee || 0);
       const res = await saveConsultation(visitId, {
         reasonForVisit: reason,
         clinicalNotes: notes.trim(),
         consultationFee,
-        treatmentFee: treatmentFee as any,
+        treatmentFee: effectiveTreatmentFee,
         consultationWaiverReason: consultationFee === 0 ? consultationZeroReason.trim() : null,
-        treatmentWaiverReason: treatmentFee === 0 ? treatmentZeroReason.trim() : null
+        treatmentWaiverReason: effectiveTreatmentFee === 0 ? treatmentZeroReason.trim() : null
       });
       if (res && !res.success) {
         alert(res.error || 'Failed to save consultation');
@@ -1681,14 +1681,7 @@ export function DoctorWorkspacePage() {
                   }
 
                   // Procedure Check: Adding a procedure is mandatory unless clinical reason provided
-                  const currentProcs = (treatmentPlan?.items || []).filter(
-                    (item: any) =>
-                      item.completedVisitId === visitId ||
-                      item.status === 'Planned' ||
-                      item.status === 'In Progress' ||
-                      (item.sessions && item.sessions.some((s: any) => s.visitId === visitId))
-                  );
-                  const hasProcedures = currentProcs.length > 0;
+                  const hasProcedures = currentVisitTreatments.length > 0;
                   const hasProcReason = Boolean(
                     treatmentZeroReason?.trim() ||
                     (consultation as any)?.treatmentWaiverReason?.trim() ||

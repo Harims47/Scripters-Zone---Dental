@@ -55,6 +55,10 @@ export const createConsultation = async (req: Request, res: Response, next: Next
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      const finalTreatmentFee = (treatmentFee !== undefined && treatmentFee !== null && treatmentFee > 0)
+        ? treatmentFee
+        : (visit.treatmentFee || 0);
+
       const consultation = await tx.consultation.create({
         data: {
           visitId,
@@ -62,7 +66,7 @@ export const createConsultation = async (req: Request, res: Response, next: Next
           reasonForVisit,
           clinicalNotes,
           consultationFee: consultationFee || 0,
-          treatmentFee: treatmentFee || 0,
+          treatmentFee: finalTreatmentFee,
           consultationWaiverReason: consultationWaiverReason || null,
           treatmentWaiverReason: treatmentWaiverReason || null,
           status: 'In Progress'
@@ -75,8 +79,8 @@ export const createConsultation = async (req: Request, res: Response, next: Next
         data: { 
           ...(reasonForVisit ? { reasonForVisit } : {}),
           consultationFee: consultationFee || 0,
-          treatmentFee: treatmentFee || 0,
-          amountDue: Math.round((consultationFee || 0) + (treatmentFee || 0) + (visit.medicineCost || 0))
+          treatmentFee: finalTreatmentFee,
+          amountDue: Math.round((consultationFee || 0) + finalTreatmentFee + (visit.medicineCost || 0))
         }
       });
 
