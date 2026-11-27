@@ -1,16 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
-import { api } from '../lib/api';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
+import { useState, useEffect, useMemo } from "react";
+import { api } from "../lib/api";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter
-} from '../components/ui/dialog';
+  DialogFooter,
+} from "../components/ui/dialog";
 import {
   FlaskConical,
   Plus,
@@ -29,53 +29,60 @@ import {
   Package,
   Check,
   Building2,
-  Palette
-} from 'lucide-react';
-import toast from 'react-hot-toast';
-import type { DentalLab, LabRequest } from '../types/domain';
+  Palette,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import type { DentalLab, LabRequest } from "../types/domain";
 
 const PRESET_COLORS = [
-  { name: 'Teal', hex: '#0D9488' },
-  { name: 'Royal Blue', hex: '#2563EB' },
-  { name: 'Purple', hex: '#9333EA' },
-  { name: 'Orange', hex: '#EA580C' },
-  { name: 'Emerald', hex: '#059669' },
-  { name: 'Rose', hex: '#E11D48' },
-  { name: 'Indigo', hex: '#4F46E5' },
-  { name: 'Amber', hex: '#D97706' },
-  { name: 'Cyan', hex: '#0891B2' },
-  { name: 'Slate', hex: '#475569' }
+  { name: "Teal", hex: "#0D9488" },
+  { name: "Royal Blue", hex: "#2563EB" },
+  { name: "Purple", hex: "#9333EA" },
+  { name: "Orange", hex: "#EA580C" },
+  { name: "Emerald", hex: "#059669" },
+  { name: "Rose", hex: "#E11D48" },
+  { name: "Indigo", hex: "#4F46E5" },
+  { name: "Amber", hex: "#D97706" },
+  { name: "Cyan", hex: "#0891B2" },
+  { name: "Slate", hex: "#475569" },
 ];
 
 export function LabPage() {
   const [labs, setLabs] = useState<DentalLab[]>([]);
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'Received'>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "pending" | "Received"
+  >("all");
 
   // Accordion open state for each lab (by lab.id)
-  const [expandedLabIds, setExpandedLabIds] = useState<Record<string, boolean>>({});
+  const [expandedLabIds, setExpandedLabIds] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Lab modal state (Create / Edit)
   const [isLabModalOpen, setIsLabModalOpen] = useState(false);
   const [editingLab, setEditingLab] = useState<DentalLab | null>(null);
   const [labFormData, setLabFormData] = useState({
-    name: '',
-    contactPerson: '',
-    phone: '',
-    email: '',
-    address: '',
-    color: '#0D9488',
-    notes: ''
+    name: "",
+    contactPerson: "",
+    phone: "",
+    email: "",
+    address: "",
+    color: "#0D9488",
+    notes: "",
   });
   const [savingLab, setSavingLab] = useState(false);
 
   // Receive modal state
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
-  const [activeRequestToReceive, setActiveRequestToReceive] = useState<LabRequest | null>(null);
-  const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [receivedNotes, setReceivedNotes] = useState('');
+  const [activeRequestToReceive, setActiveRequestToReceive] =
+    useState<LabRequest | null>(null);
+  const [receivedDate, setReceivedDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [receivedNotes, setReceivedNotes] = useState("");
   const [savingReceive, setSavingReceive] = useState(false);
 
   // Fetch labs and requests
@@ -83,18 +90,22 @@ export function LabPage() {
     try {
       setLoading(true);
       const [labsRes, reqsRes] = await Promise.all([
-        api.get<DentalLab[]>('/api/labs'),
-        api.get<LabRequest[]>('/api/labs/requests')
+        api.get<DentalLab[]>("/api/labs"),
+        api.get<LabRequest[]>("/api/labs/requests"),
       ]);
 
-      const labList = Array.isArray(labsRes) ? labsRes : (labsRes as any)?.data || [];
-      const reqList = Array.isArray(reqsRes) ? reqsRes : (reqsRes as any)?.data || [];
+      const labList = Array.isArray(labsRes)
+        ? labsRes
+        : (labsRes as any)?.data || [];
+      const reqList = Array.isArray(reqsRes)
+        ? reqsRes
+        : (reqsRes as any)?.data || [];
 
       setLabs(labList);
       setRequests(reqList);
     } catch (err: any) {
-      console.error('Failed to load lab data:', err);
-      toast.error('Failed to load lab data');
+      console.error("Failed to load lab data:", err);
+      toast.error((err as any)?.data?.error || err?.message || "Failed to load lab data");
     } finally {
       setLoading(false);
     }
@@ -108,19 +119,19 @@ export function LabPage() {
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
       // Status filter
-      if (statusFilter === 'pending' && r.status === 'Received') return false;
-      if (statusFilter === 'Received' && r.status !== 'Received') return false;
+      if (statusFilter === "pending" && r.status === "Received") return false;
+      if (statusFilter === "Received" && r.status !== "Received") return false;
 
       // Search query filter
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
-      const patientName = r.patient?.name?.toLowerCase() || '';
-      const patientPhone = r.patient?.phone?.toLowerCase() || '';
+      const patientName = r.patient?.name?.toLowerCase() || "";
+      const patientPhone = r.patient?.phone?.toLowerCase() || "";
       const workType = r.workType.toLowerCase();
-      const tooth = r.toothNumbers?.toLowerCase() || '';
-      const shade = r.shade?.toLowerCase() || '';
-      const labName = r.lab?.name?.toLowerCase() || '';
-      const instructions = r.instructions?.toLowerCase() || '';
+      const tooth = r.toothNumbers?.toLowerCase() || "";
+      const shade = r.shade?.toLowerCase() || "";
+      const labName = r.lab?.name?.toLowerCase() || "";
+      const instructions = r.instructions?.toLowerCase() || "";
 
       return (
         patientName.includes(q) ||
@@ -149,8 +160,12 @@ export function LabPage() {
   const stats = useMemo(() => {
     const totalLabs = uniqueLabs.length;
     const totalRequests = requests.length;
-    const pendingRequests = requests.filter((r) => r.status !== 'Received').length;
-    const receivedRequests = requests.filter((r) => r.status === 'Received').length;
+    const pendingRequests = requests.filter(
+      (r) => r.status !== "Received",
+    ).length;
+    const receivedRequests = requests.filter(
+      (r) => r.status === "Received",
+    ).length;
     return { totalLabs, totalRequests, pendingRequests, receivedRequests };
   }, [uniqueLabs, requests]);
 
@@ -158,7 +173,7 @@ export function LabPage() {
   const toggleLabAccordion = (labId: string) => {
     setExpandedLabIds((prev) => ({
       ...prev,
-      [labId]: !prev[labId]
+      [labId]: !prev[labId],
     }));
   };
 
@@ -175,13 +190,13 @@ export function LabPage() {
   const handleOpenCreateLab = () => {
     setEditingLab(null);
     setLabFormData({
-      name: '',
-      contactPerson: '',
-      phone: '',
-      email: '',
-      address: '',
-      color: '#0D9488',
-      notes: ''
+      name: "",
+      contactPerson: "",
+      phone: "",
+      email: "",
+      address: "",
+      color: "#0D9488",
+      notes: "",
     });
     setIsLabModalOpen(true);
   };
@@ -192,12 +207,12 @@ export function LabPage() {
     setEditingLab(lab);
     setLabFormData({
       name: lab.name,
-      contactPerson: lab.contactPerson || '',
-      phone: lab.phone || '',
-      email: lab.email || '',
-      address: lab.address || '',
-      color: lab.color || '#0D9488',
-      notes: lab.notes || ''
+      contactPerson: lab.contactPerson || "",
+      phone: lab.phone || "",
+      email: lab.email || "",
+      address: lab.address || "",
+      color: lab.color || "#0D9488",
+      notes: lab.notes || "",
     });
     setIsLabModalOpen(true);
   };
@@ -206,7 +221,7 @@ export function LabPage() {
   const handleSaveLab = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!labFormData.name.trim()) {
-      toast.error('Lab name is required');
+      toast.error("Lab name is required");
       return;
     }
 
@@ -214,16 +229,16 @@ export function LabPage() {
       setSavingLab(true);
       if (editingLab) {
         await api.put(`/api/labs/${editingLab.id}`, labFormData);
-        toast.success('Lab details updated successfully');
+        toast.success("Lab details updated successfully");
       } else {
-        await api.post('/api/labs', labFormData);
-        toast.success('New dental lab registered');
+        await api.post("/api/labs", labFormData);
+        toast.success("New dental lab registered");
       }
       setIsLabModalOpen(false);
       fetchData();
     } catch (err: any) {
-      console.error('Failed to save lab:', err);
-      toast.error(err?.response?.data?.error || 'Failed to save lab');
+      console.error("Failed to save lab:", err);
+      toast.error((err as any)?.data?.error || err?.message || "Failed to save lab");
     } finally {
       setSavingLab(false);
     }
@@ -232,8 +247,8 @@ export function LabPage() {
   // Open Receive modal
   const handleOpenReceive = (req: LabRequest) => {
     setActiveRequestToReceive(req);
-    setReceivedDate(new Date().toISOString().split('T')[0]);
-    setReceivedNotes(req.receivedNotes || '');
+    setReceivedDate(new Date().toISOString().split("T")[0]);
+    setReceivedNotes(req.receivedNotes || "");
     setIsReceiveModalOpen(true);
   };
 
@@ -242,17 +257,22 @@ export function LabPage() {
     if (!activeRequestToReceive) return;
     try {
       setSavingReceive(true);
-      await api.post(`/api/labs/requests/${activeRequestToReceive.id}/receive`, {
-        receivedDate,
-        receivedNotes: receivedNotes.trim() || undefined
-      });
-      toast.success('Lab work recorded as received');
+      await api.post(
+        `/api/labs/requests/${activeRequestToReceive.id}/receive`,
+        {
+          receivedDate,
+          receivedNotes: receivedNotes.trim() || undefined,
+        },
+      );
+      toast.success("Lab work recorded as received");
       setIsReceiveModalOpen(false);
       setActiveRequestToReceive(null);
       fetchData();
     } catch (err: any) {
-      console.error('Failed to mark received:', err);
-      toast.error(err?.response?.data?.error || 'Failed to update order status');
+      console.error("Failed to mark received:", err);
+      toast.error(
+        (err as any)?.data?.error || err?.message || "Failed to update order status",
+      );
     } finally {
       setSavingReceive(false);
     }
@@ -262,29 +282,29 @@ export function LabPage() {
   const handleDeleteLab = async (lab: DentalLab, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const confirmed = window.confirm(
-      `Are you sure you want to remove "${lab.name}"? If there are existing records, it will be deactivated.`
+      `Are you sure you want to remove "${lab.name}"? If there are existing records, it will be deactivated.`,
     );
     if (!confirmed) return;
 
     try {
       await api.delete(`/api/labs/${lab.id}`);
-      toast.success('Lab removed successfully');
+      toast.success("Lab removed successfully");
       fetchData();
     } catch (err: any) {
-      console.error('Failed to delete lab:', err);
-      toast.error('Failed to delete lab');
+      console.error("Failed to delete lab:", err);
+      toast.error((err as any)?.data?.error || err?.message || "Failed to delete lab");
     }
   };
 
   // Format date helper
   const formatDate = (dateStr?: string | null) => {
-    if (!dateStr) return '-';
+    if (!dateStr) return "-";
     try {
       const d = new Date(dateStr);
-      return d.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
+      return d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
       });
     } catch {
       return dateStr;
@@ -293,7 +313,7 @@ export function LabPage() {
 
   // Check if expected delivery is overdue
   const isOverdue = (dateStr?: string | null, status?: string) => {
-    if (!dateStr || status === 'Received') return false;
+    if (!dateStr || status === "Received") return false;
     const due = new Date(dateStr);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -314,7 +334,8 @@ export function LabPage() {
                 Dental Lab Orders
               </h1>
               <p className="text-sm text-slate-500">
-                Track outsourced prosthetic orders, fabrication progress, delivery dates, and partner labs
+                Track outsourced prosthetic orders, fabrication progress,
+                delivery dates, and partner labs
               </p>
             </div>
           </div>
@@ -338,8 +359,12 @@ export function LabPage() {
             <span>Partner Labs</span>
             <Building2 className="w-4 h-4 text-teal-600" />
           </div>
-          <div className="text-2xl font-bold text-slate-900">{stats.totalLabs}</div>
-          <div className="text-[11px] text-slate-400">Registered fabrication labs</div>
+          <div className="text-2xl font-bold text-slate-900">
+            {stats.totalLabs}
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Registered fabrication labs
+          </div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-amber-200/80 bg-amber-50/20 shadow-2xs space-y-1">
@@ -347,8 +372,12 @@ export function LabPage() {
             <span>Pending Orders</span>
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-2xl font-bold text-amber-900">{stats.pendingRequests}</div>
-          <div className="text-[11px] text-amber-600 font-medium">Awaiting lab delivery</div>
+          <div className="text-2xl font-bold text-amber-900">
+            {stats.pendingRequests}
+          </div>
+          <div className="text-[11px] text-amber-600 font-medium">
+            Awaiting lab delivery
+          </div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-emerald-200/80 bg-emerald-50/20 shadow-2xs space-y-1">
@@ -356,8 +385,12 @@ export function LabPage() {
             <span>Received Work</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-bold text-emerald-900">{stats.receivedRequests}</div>
-          <div className="text-[11px] text-emerald-600 font-medium">Delivered to clinic</div>
+          <div className="text-2xl font-bold text-emerald-900">
+            {stats.receivedRequests}
+          </div>
+          <div className="text-[11px] text-emerald-600 font-medium">
+            Delivered to clinic
+          </div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-1">
@@ -365,8 +398,12 @@ export function LabPage() {
             <span>Total Requests</span>
             <Package className="w-4 h-4 text-indigo-600" />
           </div>
-          <div className="text-2xl font-bold text-slate-900">{stats.totalRequests}</div>
-          <div className="text-[11px] text-slate-400">All-time outsourced orders</div>
+          <div className="text-2xl font-bold text-slate-900">
+            {stats.totalRequests}
+          </div>
+          <div className="text-[11px] text-slate-400">
+            All-time outsourced orders
+          </div>
         </div>
       </div>
 
@@ -388,33 +425,33 @@ export function LabPage() {
           <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
             <button
               type="button"
-              onClick={() => setStatusFilter('all')}
+              onClick={() => setStatusFilter("all")}
               className={`px-3 py-1 font-semibold rounded-md transition-all ${
-                statusFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                statusFilter === "all"
+                  ? "bg-white text-slate-900 shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               All ({requests.length})
             </button>
             <button
               type="button"
-              onClick={() => setStatusFilter('pending')}
+              onClick={() => setStatusFilter("pending")}
               className={`px-3 py-1 font-semibold rounded-md transition-all ${
-                statusFilter === 'pending'
-                  ? 'bg-amber-500 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                statusFilter === "pending"
+                  ? "bg-amber-500 text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Pending ({stats.pendingRequests})
             </button>
             <button
               type="button"
-              onClick={() => setStatusFilter('Received')}
+              onClick={() => setStatusFilter("Received")}
               className={`px-3 py-1 font-semibold rounded-md transition-all ${
-                statusFilter === 'Received'
-                  ? 'bg-emerald-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                statusFilter === "Received"
+                  ? "bg-emerald-600 text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Received ({stats.receivedRequests})
@@ -451,11 +488,17 @@ export function LabPage() {
       ) : labs.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
           <FlaskConical className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800">No Dental Labs Found</h3>
+          <h3 className="text-base font-bold text-slate-800">
+            No Dental Labs Found
+          </h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-            Register your dental fabrication lab partners to start tracking crown, denture, and aligner orders.
+            Register your dental fabrication lab partners to start tracking
+            crown, denture, and aligner orders.
           </p>
-          <Button onClick={handleOpenCreateLab} className="bg-teal-600 hover:bg-teal-700 text-white text-xs">
+          <Button
+            onClick={handleOpenCreateLab}
+            className="bg-teal-600 hover:bg-teal-700 text-white text-xs"
+          >
             <Plus className="w-4 h-4 mr-1.5" />
             Add First Lab
           </Button>
@@ -463,17 +506,23 @@ export function LabPage() {
       ) : (
         <div className="space-y-4">
           {uniqueLabs.map((lab) => {
-            const labRequests = filteredRequests.filter((r) => r.labId === lab.id);
+            const labRequests = filteredRequests.filter(
+              (r) => r.labId === lab.id,
+            );
             const isExpanded = Boolean(expandedLabIds[lab.id]);
-            const labPendingCount = requests.filter((r) => r.labId === lab.id && r.status !== 'Received').length;
-            const labReceivedCount = requests.filter((r) => r.labId === lab.id && r.status === 'Received').length;
+            const labPendingCount = requests.filter(
+              (r) => r.labId === lab.id && r.status !== "Received",
+            ).length;
+            const labReceivedCount = requests.filter(
+              (r) => r.labId === lab.id && r.status === "Received",
+            ).length;
 
             return (
               <div
                 key={lab.id}
                 className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all duration-200"
                 style={{
-                  borderLeft: `5px solid ${lab.color || '#0D9488'}`
+                  borderLeft: `5px solid ${lab.color || "#0D9488"}`,
                 }}
               >
                 {/* Accordion Header */}
@@ -485,7 +534,7 @@ export function LabPage() {
                     {/* Lab Color Swatch */}
                     <div
                       className="w-4 h-4 rounded-full shadow-2xs shrink-0 ring-2 ring-white"
-                      style={{ backgroundColor: lab.color || '#0D9488' }}
+                      style={{ backgroundColor: lab.color || "#0D9488" }}
                       title={`Color: ${lab.color}`}
                     />
 
@@ -508,7 +557,9 @@ export function LabPage() {
                         )}
                       </div>
                       {lab.notes && (
-                        <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{lab.notes}</p>
+                        <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
+                          {lab.notes}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -591,7 +642,10 @@ export function LabPage() {
                     {/* Table of requests */}
                     <div className="flex items-center justify-between pt-1 pb-0.5 border-b border-slate-200/60">
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5" style={{ color: lab.color || '#0D9488' }} />
+                        <Package
+                          className="w-3.5 h-3.5"
+                          style={{ color: lab.color || "#0D9488" }}
+                        />
                         Orders Sent to {lab.name} ({labRequests.length})
                       </h4>
                       <span className="text-[11px] text-slate-400">
@@ -601,7 +655,9 @@ export function LabPage() {
 
                     {labRequests.length === 0 ? (
                       <div className="py-7 text-center text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
-                        No prosthetic orders sent to {lab.name} yet. Orders created in patient treatment plans with this lab will appear here.
+                        No prosthetic orders sent to {lab.name} yet. Orders
+                        created in patient treatment plans with this lab will
+                        appear here.
                       </div>
                     ) : (
                       <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-2xs">
@@ -615,21 +671,29 @@ export function LabPage() {
                               <th className="py-3 px-3.5">Delivery Expected</th>
                               <th className="py-3 px-3.5">Status</th>
                               <th className="py-3 px-3.5">Cost (₹)</th>
-                              <th className="py-3 px-3.5 text-right">Actions</th>
+                              <th className="py-3 px-3.5 text-right">
+                                Actions
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {labRequests.map((req) => {
-                              const overdue = isOverdue(req.expectedDeliveryDate, req.status);
-                              const isReceived = req.status === 'Received';
+                              const overdue = isOverdue(
+                                req.expectedDeliveryDate,
+                                req.status,
+                              );
+                              const isReceived = req.status === "Received";
 
                               return (
-                                <tr key={req.id} className="hover:bg-slate-50/60 transition-colors">
+                                <tr
+                                  key={req.id}
+                                  className="hover:bg-slate-50/60 transition-colors"
+                                >
                                   {/* Patient Name */}
                                   <td className="py-3 px-3.5 font-medium text-slate-900">
                                     <div>
                                       <span className="font-bold text-slate-900 block">
-                                        {req.patient?.name || 'Unknown Patient'}
+                                        {req.patient?.name || "Unknown Patient"}
                                       </span>
                                       {req.patient?.phone && (
                                         <span className="text-[11px] text-slate-400">
@@ -646,7 +710,9 @@ export function LabPage() {
                                         #{req.toothNumbers}
                                       </span>
                                     ) : (
-                                      <span className="text-slate-400 text-[11px]">General</span>
+                                      <span className="text-slate-400 text-[11px]">
+                                        General
+                                      </span>
                                     )}
                                   </td>
 
@@ -662,7 +728,10 @@ export function LabPage() {
                                         </span>
                                       )}
                                       {req.instructions && (
-                                        <p className="text-[11px] text-slate-500 italic mt-0.5 line-clamp-1" title={req.instructions}>
+                                        <p
+                                          className="text-[11px] text-slate-500 italic mt-0.5 line-clamp-1"
+                                          title={req.instructions}
+                                        >
                                           "{req.instructions}"
                                         </p>
                                       )}
@@ -679,7 +748,9 @@ export function LabPage() {
                                     <div className="flex items-center gap-1.5">
                                       <span
                                         className={`font-medium ${
-                                          overdue ? 'text-rose-600 font-bold' : 'text-slate-700'
+                                          overdue
+                                            ? "text-rose-600 font-bold"
+                                            : "text-slate-700"
                                         }`}
                                       >
                                         {formatDate(req.expectedDeliveryDate)}
@@ -716,7 +787,9 @@ export function LabPage() {
 
                                   {/* Cost */}
                                   <td className="py-3 px-3.5 font-semibold text-slate-700">
-                                    {req.cost ? `₹${req.cost.toLocaleString()}` : '—'}
+                                    {req.cost
+                                      ? `₹${req.cost.toLocaleString()}`
+                                      : "—"}
                                   </td>
 
                                   {/* Action: Receive button */}
@@ -770,7 +843,7 @@ export function LabPage() {
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <FlaskConical className="w-5 h-5 text-teal-600" />
-              {editingLab ? 'Edit Dental Lab' : 'Register New Dental Lab'}
+              {editingLab ? "Edit Dental Lab" : "Register New Dental Lab"}
             </DialogTitle>
           </DialogHeader>
 
@@ -783,7 +856,9 @@ export function LabPage() {
               <Input
                 placeholder="e.g. Apex Precision Dental Lab"
                 value={labFormData.name}
-                onChange={(e) => setLabFormData({ ...labFormData, name: e.target.value })}
+                onChange={(e) =>
+                  setLabFormData({ ...labFormData, name: e.target.value })
+                }
                 className="h-9 text-xs"
                 required
               />
@@ -807,7 +882,8 @@ export function LabPage() {
                 </div>
               </div>
               <p className="text-[11px] text-slate-500">
-                This color will be used on treatment plans, procedure cards, and order accordions to differentiate this lab.
+                This color will be used on treatment plans, procedure cards, and
+                order accordions to differentiate this lab.
               </p>
 
               {/* Color Palettes */}
@@ -816,16 +892,19 @@ export function LabPage() {
                   <button
                     key={c.hex}
                     type="button"
-                    onClick={() => setLabFormData({ ...labFormData, color: c.hex })}
+                    onClick={() =>
+                      setLabFormData({ ...labFormData, color: c.hex })
+                    }
                     className={`w-7 h-7 rounded-lg transition-transform flex items-center justify-center ${
                       labFormData.color.toLowerCase() === c.hex.toLowerCase()
-                        ? 'scale-110 ring-2 ring-slate-900 ring-offset-1 shadow-xs'
-                        : 'hover:scale-105 opacity-90'
+                        ? "scale-110 ring-2 ring-slate-900 ring-offset-1 shadow-xs"
+                        : "hover:scale-105 opacity-90"
                     }`}
                     style={{ backgroundColor: c.hex }}
                     title={c.name}
                   >
-                    {labFormData.color.toLowerCase() === c.hex.toLowerCase() && (
+                    {labFormData.color.toLowerCase() ===
+                      c.hex.toLowerCase() && (
                       <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
                     )}
                   </button>
@@ -836,7 +915,9 @@ export function LabPage() {
                   <input
                     type="color"
                     value={labFormData.color}
-                    onChange={(e) => setLabFormData({ ...labFormData, color: e.target.value })}
+                    onChange={(e) =>
+                      setLabFormData({ ...labFormData, color: e.target.value })
+                    }
                     className="w-7 h-7 rounded-lg border border-slate-300 cursor-pointer p-0.5 bg-white"
                     title="Custom color"
                   />
@@ -848,20 +929,31 @@ export function LabPage() {
             {/* Contact Person & Phone */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Contact Person</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Contact Person
+                </Label>
                 <Input
                   placeholder="e.g. Mr. Rajesh (Technician)"
                   value={labFormData.contactPerson}
-                  onChange={(e) => setLabFormData({ ...labFormData, contactPerson: e.target.value })}
+                  onChange={(e) =>
+                    setLabFormData({
+                      ...labFormData,
+                      contactPerson: e.target.value,
+                    })
+                  }
                   className="h-9 text-xs"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Phone Number</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Phone Number
+                </Label>
                 <Input
                   placeholder="e.g. 9876543210"
                   value={labFormData.phone}
-                  onChange={(e) => setLabFormData({ ...labFormData, phone: e.target.value })}
+                  onChange={(e) =>
+                    setLabFormData({ ...labFormData, phone: e.target.value })
+                  }
                   className="h-9 text-xs"
                 />
               </div>
@@ -870,21 +962,29 @@ export function LabPage() {
             {/* Email & Address */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Email Address</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Email Address
+                </Label>
                 <Input
                   type="email"
                   placeholder="orders@lab.com"
                   value={labFormData.email}
-                  onChange={(e) => setLabFormData({ ...labFormData, email: e.target.value })}
+                  onChange={(e) =>
+                    setLabFormData({ ...labFormData, email: e.target.value })
+                  }
                   className="h-9 text-xs"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Address / City</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Address / City
+                </Label>
                 <Input
                   placeholder="e.g. Guindy Industrial Estate"
                   value={labFormData.address}
-                  onChange={(e) => setLabFormData({ ...labFormData, address: e.target.value })}
+                  onChange={(e) =>
+                    setLabFormData({ ...labFormData, address: e.target.value })
+                  }
                   className="h-9 text-xs"
                 />
               </div>
@@ -892,11 +992,15 @@ export function LabPage() {
 
             {/* Notes / Specializations */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Specializations & Notes</Label>
+              <Label className="text-xs font-semibold text-slate-700">
+                Specializations & Notes
+              </Label>
               <Textarea
                 placeholder="e.g. Specialized in Zirconia crowns, digital CAD/CAM milling, 3-day turnaround"
                 value={labFormData.notes}
-                onChange={(e) => setLabFormData({ ...labFormData, notes: e.target.value })}
+                onChange={(e) =>
+                  setLabFormData({ ...labFormData, notes: e.target.value })
+                }
                 className="text-xs resize-none min-h-[55px]"
               />
             </div>
@@ -917,8 +1021,10 @@ export function LabPage() {
                 disabled={savingLab}
                 className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs"
               >
-                {savingLab ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
-                {editingLab ? 'Save Changes' : 'Register Lab'}
+                {savingLab ? (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : null}
+                {editingLab ? "Save Changes" : "Register Lab"}
               </Button>
             </DialogFooter>
           </form>
@@ -948,26 +1054,37 @@ export function LabPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Work / Prosthetic:</span>
+                  <span className="text-slate-500 font-medium">
+                    Work / Prosthetic:
+                  </span>
                   <span className="font-bold text-slate-900">
                     {activeRequestToReceive.workType}
-                    {activeRequestToReceive.shade ? ` (Shade ${activeRequestToReceive.shade})` : ''}
+                    {activeRequestToReceive.shade
+                      ? ` (Shade ${activeRequestToReceive.shade})`
+                      : ""}
                   </span>
                 </div>
                 {activeRequestToReceive.toothNumbers && (
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Tooth Numbers:</span>
+                    <span className="text-slate-500 font-medium">
+                      Tooth Numbers:
+                    </span>
                     <span className="font-bold text-sky-800">
                       #{activeRequestToReceive.toothNumbers}
                     </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Lab Partner:</span>
+                  <span className="text-slate-500 font-medium">
+                    Lab Partner:
+                  </span>
                   <span className="font-bold text-slate-900 flex items-center gap-1.5">
                     <span
                       className="w-2.5 h-2.5 rounded-full inline-block"
-                      style={{ backgroundColor: activeRequestToReceive.lab?.color || '#0D9488' }}
+                      style={{
+                        backgroundColor:
+                          activeRequestToReceive.lab?.color || "#0D9488",
+                      }}
                     />
                     {activeRequestToReceive.lab?.name}
                   </span>
@@ -976,7 +1093,9 @@ export function LabPage() {
 
               {/* Received Date */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Date Received</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Date Received
+                </Label>
                 <Input
                   type="date"
                   value={receivedDate}
@@ -1016,7 +1135,9 @@ export function LabPage() {
                   onClick={handleConfirmReceive}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
                 >
-                  {savingReceive ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
+                  {savingReceive ? (
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  ) : null}
                   Confirm Receipt
                 </Button>
               </DialogFooter>

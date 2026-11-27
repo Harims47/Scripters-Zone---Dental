@@ -496,34 +496,19 @@ export function TreatmentPlanUI({
             treatmentCatalogId: selectedProcedure,
             toothNumbers: selectedTeeth.length > 0 ? selectedTeeth : null,
             notes: finalNotes || null,
-            totalSittings: plannedSittings
+            totalSittings: plannedSittings,
+            labRequest: labRequestPayload || null
           }
         );
 
-        if (labRequestPayload) {
-          if (editingItem.labRequests && editingItem.labRequests.length > 0) {
-            await api.put(`/api/labs/requests/${editingItem.labRequests[0].id}`, labRequestPayload);
-          } else {
-            await api.post('/api/labs/requests', {
-              ...labRequestPayload,
-              treatmentPlanItemId: editingItem.id,
-              patientId,
-              visitId: currentVisitId,
-              toothNumbers: selectedTeeth.length > 0 ? selectedTeeth.join(',') : null
-            });
-          }
-          const refreshed = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
-          setPlan(refreshed?.data || refreshed);
-        } else {
-          setPlan((prev) =>
-            prev
-              ? {
+        setPlan((prev) =>
+          prev
+            ? {
                 ...prev,
                 items: prev.items.map((i) => (i.id === editingItem.id ? res : i))
               }
-              : null
-          );
-        }
+            : null
+        );
 
         setEditingItem(null);
         setPlannedSittings(1);
@@ -561,7 +546,7 @@ export function TreatmentPlanUI({
       setFormResetKey((k) => k + 1);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'Failed to save treatment procedure.');
+      setErrorMsg((err as any)?.data?.error || err.message || 'Failed to save treatment procedure.');
     } finally {
       setSaving(false);
     }

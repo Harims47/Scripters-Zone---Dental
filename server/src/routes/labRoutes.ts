@@ -17,17 +17,17 @@ const router = Router();
 // Protect all lab endpoints with auth
 router.use(requireAuth);
 
-// Labs CRUD
-router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getLabs);
-router.post('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), createLab);
-router.put('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), updateLab);
-router.delete('/:id', requireRole('Head Doctor'), deleteLab);
-
-// Lab Requests
+// Lab Requests (Must precede parameterized /:id routes to prevent route collisions)
 router.get('/requests', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getLabRequests);
 router.post('/requests', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), createLabRequest);
 router.put('/requests/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), updateLabRequest);
 router.post('/requests/:id/receive', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), receiveLabRequest);
 router.delete('/requests/:id', requireRole('Head Doctor', 'Duty Doctor'), deleteLabRequest);
+
+// Labs CRUD
+router.get('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), getLabs);
+router.post('/', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), createLab);
+router.put('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), updateLab);
+router.delete('/:id', requireRole('Head Doctor'), deleteLab);
 
 export default router;
