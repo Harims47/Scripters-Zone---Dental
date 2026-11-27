@@ -111,7 +111,17 @@ export function PatientSelector({
   }, [])
 
   const { patients } = useClinicContext()
-  const filtered = patients.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || (p.phone && p.phone.includes(search)))
+  const q = search.trim().toLowerCase()
+  const cleanQ = q.replace(/\D/g, '')
+  const filtered = patients.filter(p => {
+    if (!q) return true
+    const nameMatch = (p.name || '').toLowerCase().includes(q)
+    const phoneMatch = (p.phone || '').includes(q)
+    const altPhoneMatch = (p.alternatePhone || '').includes(q)
+    const cleanPhoneMatch = cleanQ.length >= 3 && p.phone ? p.phone.replace(/\D/g, '').includes(cleanQ) : false
+    const cleanAltPhoneMatch = cleanQ.length >= 3 && p.alternatePhone ? p.alternatePhone.replace(/\D/g, '').includes(cleanQ) : false
+    return nameMatch || phoneMatch || altPhoneMatch || cleanPhoneMatch || cleanAltPhoneMatch
+  })
   const selected = patients.find(p => p.id === value)
 
   return (
@@ -149,7 +159,7 @@ export function PatientSelector({
               >
                 <div className="flex flex-col text-left">
                   <span className="font-medium text-slate-900">{p.name}</span>
-                  <span className="text-xs text-slate-500 font-mono">{p.phone}</span>
+                  <span className="text-xs text-slate-500 font-mono">{p.phone}{p.alternatePhone ? ` · Alt: ${p.alternatePhone}` : ''}</span>
                 </div>
                 {value === p.id && <Check className="ml-auto h-4 w-4 text-slate-900" />}
               </div>

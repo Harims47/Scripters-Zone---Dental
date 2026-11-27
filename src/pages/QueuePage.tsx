@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, PlayCircle, Users, Tag, Clock } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
@@ -37,7 +37,7 @@ type QueueRow = {
 
 
 export function QueuePage() {
-  const { queue, patients, visits, consultations, appointments, updateVisit } = useClinicContext()
+  const { queue, patients, visits, consultations, appointments, updateVisit, refreshClinicOperations } = useClinicContext()
   const { currentUser } = useAuth()
   const canManageClinical = currentUser ? canAccessRoute(currentUser.role, '/doctor') : false
   const [search, setSearch] = useState('')
@@ -46,11 +46,23 @@ export function QueuePage() {
   
   const navigate = useNavigate()
 
+  // Real-time queue sync on QueuePage
+  useEffect(() => {
+    refreshClinicOperations();
+    const timer = setInterval(() => {
+      refreshClinicOperations();
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [refreshClinicOperations]);
+
   // Map Canonical Context Data to UI view model
   const queueRows: QueueRow[] = useMemo(() => {
     return queue.map(q => {
-      const p = patients.find(pt => pt.id === q.patientId)
       const v = visits.find(visit => visit.id === q.visitId)
+      const p = patients.find(pt => pt.id === q.patientId) || 
+                (q as any).visit?.patient || 
+                (v as any)?.patient ||
+                patients.find(pt => pt.id === v?.patientId)
 
       // Determine Visit Type: Appointment if visit is linked to appointment or appointment exists for this visit, else Walk-in
       const isAppointment = Boolean(v?.appointmentId) || appointments.some(a => a.id === v?.appointmentId)
@@ -64,9 +76,9 @@ export function QueuePage() {
       return {
         id: q.id,
         visitId: q.visitId,
-        patientId: q.patientId,
+        patientId: p?.id || q.patientId,
         assignedDoctorId: q.assignedDoctorId || null,
-        name: p?.name || 'Unknown Patient',
+        name: p?.name || (q as any).visit?.patient?.name || (v as any)?.patient?.name || 'Unknown Patient',
         reasonForVisit: v?.reasonForVisit || 'Not Specified',
         visitType,
         patientType,
@@ -230,7 +242,7 @@ export function QueuePage() {
                                     normalizedStatus === 'payment';
 
         if (!isReadyForReception) {
-          return <span className="text-slate-300 text-xs pl-4">—</span>;
+          return <span className="text-slate-400 text-xs pl-4 font-medium">Nil</span>;
         }
 
         const discount = item.discount || 0;
@@ -256,7 +268,7 @@ export function QueuePage() {
                 Discount: <span className="font-bold text-amber-900">₹{discount}</span>
               </span>
             ) : (
-              <span>+ Discount</span>
+              <span>Nil <span className="text-[10px] text-slate-400 font-normal">(+ Add)</span></span>
             )}
           </button>
         );

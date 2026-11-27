@@ -36,6 +36,7 @@ model Patient {
   id        String    @id @default(uuid())
   name      String
   phone     String?   @unique
+  alternatePhone String?
   age       Int?
   gender    String?
   status    String    @default("Active")

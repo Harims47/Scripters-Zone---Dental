@@ -81,6 +81,7 @@ export function PatientsPage() {
   const [newPatient, setNewPatient] = useState({
     name: '',
     phone: '',
+    alternatePhone: '',
     age: '',
     gender: 'Male' as 'Male' | 'Female' | 'Other',
     photoUrl: '',
@@ -143,11 +144,13 @@ export function PatientsPage() {
       return;
     }
 
+    const cleanAltPhone = (newPatient.alternatePhone || '').replace(/\D/g, '');
     try {
       setIsSavingPatient(true);
       const created = await addPatient({
         name: newPatient.name.trim(),
         phone: cleanPhone,
+        alternatePhone: cleanAltPhone || undefined,
         age: ageNum,
         gender: newPatient.gender,
         status: 'Active',
@@ -190,12 +193,14 @@ export function PatientsPage() {
       return;
     }
 
+    const cleanAltPhone = (newPatient.alternatePhone !== undefined ? newPatient.alternatePhone : (selectedPatient.alternatePhone || '')).replace(/\D/g, '');
     try {
       setIsSavingPatient(true);
       if (updatePatient) {
         await updatePatient(selectedPatient.id, {
           name: nameVal,
           phone: cleanPhone,
+          alternatePhone: cleanAltPhone || null,
           age: ageNum,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
@@ -206,6 +211,7 @@ export function PatientsPage() {
           ...prev,
           name: nameVal,
           phone: cleanPhone,
+          alternatePhone: cleanAltPhone || null,
           age: ageNum,
           gender: newPatient.gender || selectedPatient.gender,
           address: (newPatient as any).address || selectedPatient.address,
@@ -274,6 +280,9 @@ export function PatientsPage() {
       cell: ({ row }) => (
         <div className="flex flex-col">
           <span className="text-slate-900 font-medium">{row.original.phone}</span>
+          {row.original.alternatePhone && (
+            <span className="text-xs text-slate-500">Alt: {row.original.alternatePhone}</span>
+          )}
         </div>
       )
     },
@@ -445,6 +454,7 @@ export function PatientsPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
                         <ReadOnlyField label="Full Name" value={selectedPatient.name} />
                         <ReadOnlyField label="Phone" value={selectedPatient.phone || '—'} />
+                        <ReadOnlyField label="Alternative Phone" value={selectedPatient.alternatePhone || '—'} />
                         <ReadOnlyField label="Age" value={selectedPatient.age != null ? `${selectedPatient.age} Yrs` : '—'} />
                         <ReadOnlyField label="Gender" value={selectedPatient.gender || '—'} />
                         <div className="sm:col-span-2 mt-2">
@@ -539,7 +549,7 @@ export function PatientsPage() {
                             autoFocus={drawerMode === 'create' || drawerMode === 'edit'}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700">Phone <span className="text-red-500">*</span></label>
                             <Input 
@@ -554,6 +564,21 @@ export function PatientsPage() {
                             />
                           </div>
                           <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Alternative Phone (Optional)</label>
+                            <Input 
+                              value={drawerMode === 'create' ? newPatient.alternatePhone : (newPatient.alternatePhone !== undefined && newPatient.alternatePhone !== '' ? newPatient.alternatePhone : (selectedPatient?.alternatePhone || ''))} 
+                              onChange={e => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, alternatePhone: val})
+                              }}
+                              className="bg-white" 
+                              placeholder="10 digit number"
+                              maxLength={10}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700">Age <span className="text-red-500">*</span></label>
                             <Input 
                               value={drawerMode === 'create' ? newPatient.age : (newPatient.age || selectedPatient?.age || '')} 
@@ -567,23 +592,23 @@ export function PatientsPage() {
                               maxLength={3}
                             />
                           </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">Gender <span className="text-red-500">*</span></label>
-                          <Select 
-                            value={drawerMode === 'create' ? newPatient.gender : (newPatient.gender || selectedPatient?.gender)} 
-                            onValueChange={(val) => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, gender: val as any})}
-                            disabled={drawerMode === 'view' as any}
-                          >
-                            <SelectTrigger className="w-full h-10 rounded-xl bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                              <SelectValue placeholder="Select Gender" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Male">Male</SelectItem>
-                              <SelectItem value="Female">Female</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Gender <span className="text-red-500">*</span></label>
+                            <Select 
+                              value={drawerMode === 'create' ? newPatient.gender : (newPatient.gender || selectedPatient?.gender)} 
+                              onValueChange={(val) => (drawerMode === 'create' || drawerMode === 'edit') && setNewPatient({...newPatient, gender: val as any})}
+                              disabled={drawerMode === 'view' as any}
+                            >
+                              <SelectTrigger className="w-full h-10 rounded-xl bg-white border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <SelectValue placeholder="Select Gender" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Male">Male</SelectItem>
+                                <SelectItem value="Female">Female</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-2">

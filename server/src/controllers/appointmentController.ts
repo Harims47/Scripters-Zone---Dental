@@ -3,13 +3,14 @@ import { prisma } from '../db';
 
 export const getAppointments = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const isAll = req.query.all === 'true' || req.query.limit === 'all' || (!req.query.page && !req.query.limit);
+    const page = isAll ? 1 : (parseInt(req.query.page as string) || 1);
+    const limit = isAll ? undefined : (parseInt(req.query.limit as string) || 10);
     const search = req.query.search as string;
     const status = req.query.status as string;
     const date = req.query.date as string;
     const doctor = req.query.doctor as string;
-    const skip = (page - 1) * limit;
+    const skip = isAll ? undefined : (page - 1) * (limit as number);
 
     const where: any = {};
     if (search) {
@@ -45,8 +46,8 @@ export const getAppointments = async (req: Request, res: Response, next: NextFun
     const [appointments, totalRecords] = await Promise.all([
       prisma.appointment.findMany({
         where,
-        skip,
-        take: limit,
+        ...(skip !== undefined ? { skip } : {}),
+        ...(limit !== undefined ? { take: limit } : {}),
 
         orderBy: [
           { date: 'asc' },
@@ -60,9 +61,9 @@ export const getAppointments = async (req: Request, res: Response, next: NextFun
       data: appointments,
       meta: {
         currentPage: page,
-        pageSize: limit,
+        pageSize: limit ?? totalRecords,
         totalRecords,
-        totalPages: Math.ceil(totalRecords / limit)
+        totalPages: limit ? Math.ceil(totalRecords / limit) : 1
       }
     });
   } catch (error) {

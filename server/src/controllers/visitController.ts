@@ -158,6 +158,7 @@ export const getVisits = async (req: Request, res: Response, next: NextFunction)
     const visits = await prisma.visit.findMany({
       orderBy: { createdAt: 'desc' },
       include: { 
+        patient: true,
         queueEntry: true,
         consultation: true,
         prescription: { include: { items: true } },
@@ -254,6 +255,86 @@ export const cancelVisit = async (req: Request, res: Response, next: NextFunctio
     });
 
     return res.json(updatedVisit);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteVisit = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+
+    const visit = await prisma.visit.findUnique({
+      where: { id },
+      include: {
+        payments: true,
+        queueEntry: true,
+        consultation: true,
+        prescription: { include: { items: true } },
+        dispensing: { include: { items: true } },
+        dentalImages: true,
+        externalAdvices: true,
+        treatmentSessions: true
+      }
+    });
+
+    if (!visit) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+
+    // Financial integrity safety check: prevent deleting visits with recorded payments
+    if (visit.payments && visit.payments.length > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete visit with recorded payments. Please cancel the visit or handle payment refunds first.'
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete associated queue entry
+      if (visit.queueEntry) {
+        await tx.queueEntry.delete({ where: { visitId: id } });
+      }
+
+      // 2. Delete dispensing and its items
+      if (visit.dispensing) {
+        await tx.dispensingItem.deleteMany({ where: { dispensingId: visit.dispensing.id } });
+        await tx.dispensing.delete({ where: { id: visit.dispensing.id } });
+      }
+
+      // 3. Delete prescription and its items
+      if (visit.prescription) {
+        await tx.prescriptionItem.deleteMany({ where: { prescriptionId: visit.prescription.id } });
+        await tx.prescription.delete({ where: { id: visit.prescription.id } });
+      }
+
+      // 4. Delete consultation
+      if (visit.consultation) {
+        await tx.consultation.delete({ where: { id: visit.consultation.id } });
+      }
+
+      // 5. Delete dental images
+      if (visit.dentalImages && visit.dentalImages.length > 0) {
+        await tx.dentalImage.deleteMany({ where: { visitId: id } });
+      }
+
+      // 6. Delete external doctor advices
+      if (visit.externalAdvices && visit.externalAdvices.length > 0) {
+        await tx.externalDoctorAdvice.deleteMany({ where: { visitId: id } });
+      }
+
+      // 7. Revert appointment status if visit was generated from an appointment
+      if (visit.appointmentId) {
+        await tx.appointment.update({
+          where: { id: visit.appointmentId },
+          data: { status: 'Confirmed' }
+        }).catch(() => {});
+      }
+
+      // 8. Delete the visit record
+      await tx.visit.delete({ where: { id } });
+    });
+
+    return res.json({ success: true, message: 'Visit deleted successfully', id });
   } catch (error) {
     next(error);
   }

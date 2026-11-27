@@ -4,6 +4,7 @@ export interface Patient {
   id: string
   name: string
   phone: string
+  alternatePhone?: string | null
   age: number
   gender: 'Male' | 'Female' | 'Other'
   status: 'Active' | 'Inactive'

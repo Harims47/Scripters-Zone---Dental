@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Camera, AlertTriangle, ArrowRightLeft, FileText, Tag, Pill } from 'lucide-react';
+import { Users, Receipt, CheckCircle, Search, Calendar, CheckCircle2, Pencil, Eye, Send, CreditCard, Activity, XCircle, Trash2, Camera, AlertTriangle, ArrowRightLeft, FileText, Tag, Pill } from 'lucide-react';
 import { useClinicContext } from '../context/ClinicContext';
 import { soundService } from '../lib/soundUtils';
 import { api } from '../lib/api';
@@ -55,7 +55,7 @@ function isVisitOnDate(v: any, targetDate: string): boolean {
 }
 
 export function ReceptionDeskPage() {
-  const { queue, visits, patients, staff, refreshClinicOperations, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, consultations, transferVisitsToNextDay } = useClinicContext();
+  const { queue, visits, patients, staff, refreshClinicOperations, startVisit, updateVisit, assignDoctor, appointments, addAppointment, confirmAppointmentArrival, addPatient, updatePatient, prescriptions, dispensings, completeDispensing, recordPayment, medicines, payments, cancelVisit, deleteVisit, consultations, transferVisitsToNextDay } = useClinicContext();
 
   // Selected Queue Date (defaults to today)
   const todayStr = new Date().toISOString().split('T')[0];
@@ -98,7 +98,7 @@ export function ReceptionDeskPage() {
   const [regType, setRegType] = useState<'walk-in' | 'appointment'>('walk-in');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  const [regData, setRegData] = useState({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
+  const [regData, setRegData] = useState({ name: '', phone: '', alternatePhone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
   const [apptData, setApptData] = useState({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
 
   const [isNewPatient, setIsNewPatient] = useState(false);
@@ -107,7 +107,7 @@ export function ReceptionDeskPage() {
   const [draftPatientId, setDraftPatientId] = useState<string | null>(null);
 
   const resetRegistrationForm = () => {
-    setRegData({ name: '', phone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
+    setRegData({ name: '', phone: '', alternatePhone: '', age: '', gender: 'Male', address: '', reasonForVisit: '', photoUrl: '' });
     setApptData({ date: new Date().toISOString().split('T')[0], time: '10:00', type: 'Consultation', notes: '' });
     setIsNewPatient(false);
     setSelectedExistingPatientId('');
@@ -218,10 +218,10 @@ export function ReceptionDeskPage() {
     // 1. Immediate fetch on mount so Reception Desk never shows stale data
     refreshClinicOperations();
 
-    // 2. Operational polling every 5 seconds
+    // 2. Operational polling every 2.5 seconds
     const timer = setInterval(() => {
       refreshClinicOperations();
-    }, 5000);
+    }, 2500);
 
     // 3. Immediately refresh when user switches back to this tab/window
     const handleFocus = () => {
@@ -323,7 +323,10 @@ export function ReceptionDeskPage() {
       // 1. Live Queue Entries
       const queueItems = queue.map(q => {
         const v = visits.find(v => v.id === q.visitId);
-        const p = patients.find(p => p.id === q.patientId);
+        const p = patients.find(p => p.id === q.patientId) || 
+                  (q as any).visit?.patient || 
+                  (v as any)?.patient ||
+                  patients.find(p => p.id === v?.patientId);
         const d = doctors.find(doc => doc.id === q.assignedDoctorId) || staff.find(s => s.id === q.assignedDoctorId);
         const isAppointment = v?.appointmentId != null;
         const isTransferred = v?.reasonForVisit?.startsWith('[Transferred') || q.status === 'Transferred';
@@ -358,9 +361,9 @@ export function ReceptionDeskPage() {
         return {
           id: q.id,
           visitId: q.visitId,
-          patientId: p?.id,
-          patientName: p?.name || 'Unknown',
-          patientPhone: p?.phone || '',
+          patientId: p?.id || q.patientId,
+          patientName: p?.name || (q as any).visit?.patient?.name || (v as any)?.patient?.name || (v as any)?.patientName || 'Unknown',
+          patientPhone: p?.phone || (q as any).visit?.patient?.phone || (v as any)?.patient?.phone || '',
           visitType: isAppointment ? 'Appointment' : 'Walk-in',
           token: q.position || '-',
           doctor: d?.name || '-',
@@ -379,7 +382,7 @@ export function ReceptionDeskPage() {
       const todayInactiveVisits = visits.filter(v => isVisitOnDate(v, selectedDate) && !activeVisitIds.has(v.id));
 
       const inactiveItems = todayInactiveVisits.map(v => {
-        const p = patients.find(p => p.id === v.patientId);
+        const p = patients.find(p => p.id === v.patientId) || (v as any)?.patient;
         const d = doctors.find(doc => doc.id === v.doctorId) || staff.find(s => s.id === v.doctorId);
         const isAppointment = v.appointmentId != null;
         const isTransferred = v.reasonForVisit?.startsWith('[Transferred');
@@ -414,9 +417,9 @@ export function ReceptionDeskPage() {
         return {
           id: v.id,
           visitId: v.id,
-          patientId: p?.id,
-          patientName: p?.name || 'Unknown',
-          patientPhone: p?.phone || '',
+          patientId: p?.id || v.patientId,
+          patientName: p?.name || (v as any)?.patient?.name || (v as any)?.patientName || 'Unknown',
+          patientPhone: p?.phone || (v as any)?.patient?.phone || '',
           visitType: isAppointment ? 'Appointment' : 'Walk-in',
           token: oldQueueEntry?.position || '-',
           doctor: d?.name || '-',
@@ -469,7 +472,7 @@ export function ReceptionDeskPage() {
       const visitedApptIds = new Set(dateVisits.map(v => v.appointmentId).filter(Boolean));
 
       const visitItems = dateVisits.map((v, idx) => {
-        const p = patients.find(p => p.id === v.patientId);
+        const p = patients.find(p => p.id === v.patientId) || (v as any)?.patient;
         const d = doctors.find(doc => doc.id === v.doctorId) || staff.find(s => s.id === v.doctorId);
         const isAppointment = v.appointmentId != null;
         const isTransferred = v.reasonForVisit?.startsWith('[Transferred') || (v.status as any) === 'TRANSFERRED';
@@ -510,9 +513,9 @@ export function ReceptionDeskPage() {
         return {
           id: v.id,
           visitId: v.id,
-          patientId: p?.id,
-          patientName: p?.name || 'Unknown',
-          patientPhone: p?.phone || '',
+          patientId: p?.id || v.patientId,
+          patientName: p?.name || (v as any)?.patient?.name || (v as any)?.patientName || 'Unknown',
+          patientPhone: p?.phone || (v as any)?.patient?.phone || '',
           visitType: isAppointment ? 'Appointment' : 'Walk-in',
           token: tokenDisplay,
           doctor: d?.name || '-',
@@ -755,6 +758,7 @@ export function ReceptionDeskPage() {
                   setRegData({
                     name: patient.name,
                     phone: patient.phone || '',
+                    alternatePhone: (patient as any).alternatePhone || '',
                     age: patient.age != null && patient.age > 0 ? patient.age.toString() : '',
                     gender: patient.gender || 'Male',
                     address: patient.address || '',
@@ -784,6 +788,7 @@ export function ReceptionDeskPage() {
                   setRegData({
                     name: patient.name,
                     phone: patient.phone || '',
+                    alternatePhone: (patient as any).alternatePhone || '',
                     age: patient.age != null && patient.age > 0 ? patient.age.toString() : '',
                     gender: patient.gender || 'Male',
                     address: patient.address || '',
@@ -849,6 +854,20 @@ export function ReceptionDeskPage() {
                 </Button>
               );
             })()}
+
+            {/* Delete Visit */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="w-8 h-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer"
+              title="Delete Visit"
+              onClick={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                handleDeleteVisit(row.original.visitId, row.original.patientName);
+              }}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
           </div>
         );
       }
@@ -884,6 +903,75 @@ export function ReceptionDeskPage() {
         });
       } else {
         MySwal.fire('Error', res.error || 'Failed to cancel the visit', 'error');
+      }
+    }
+  };
+
+  const handleDeleteVisit = async (visitId: string, patientName?: string) => {
+    const result = await MySwal.fire({
+      title: 'Delete this visit?',
+      text: `Are you sure you want to permanently delete the visit for "${patientName || 'this patient'}"? This will remove it from the reception desk and queue.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Delete',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#e11d48', // rose-600
+      cancelButtonColor: '#94a3b8', // slate-400
+      customClass: {
+        popup: 'rounded-2xl',
+        confirmButton: 'rounded-lg font-semibold px-6 py-2',
+        cancelButton: 'rounded-lg font-semibold px-6 py-2'
+      }
+    });
+
+    if (result.isConfirmed) {
+      const res = await deleteVisit(visitId);
+      if (res.success) {
+        toast.success('Visit record deleted successfully');
+        setSelectedWaitingIds(prev => prev.filter(id => id !== visitId));
+      } else {
+        MySwal.fire('Cannot Delete Visit', res.error || 'Failed to delete the visit', 'error');
+      }
+    }
+  };
+
+  const handleDeleteSelectedVisits = async () => {
+    if (selectedWaitingIds.length === 0) return;
+
+    const result = await MySwal.fire({
+      title: `Delete ${selectedWaitingIds.length} selected visit${selectedWaitingIds.length > 1 ? 's' : ''}?`,
+      text: `Are you sure you want to permanently delete these ${selectedWaitingIds.length} visit records? This will remove them from the reception desk and queue.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Delete All',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#e11d48',
+      cancelButtonColor: '#94a3b8',
+      customClass: {
+        popup: 'rounded-2xl',
+        confirmButton: 'rounded-lg font-semibold px-6 py-2',
+        cancelButton: 'rounded-lg font-semibold px-6 py-2'
+      }
+    });
+
+    if (result.isConfirmed) {
+      let successCount = 0;
+      const failedErrors: string[] = [];
+      for (const id of selectedWaitingIds) {
+        const res = await deleteVisit(id);
+        if (res.success) {
+          successCount++;
+        } else {
+          failedErrors.push(res.error || `Failed to delete ${id}`);
+        }
+      }
+
+      setSelectedWaitingIds([]);
+      if (successCount > 0) {
+        toast.success(`${successCount} visit record${successCount > 1 ? 's' : ''} deleted successfully`);
+      }
+      if (failedErrors.length > 0) {
+        MySwal.fire('Deletion Notice', `${failedErrors.length} visit(s) could not be deleted: ${failedErrors[0]}`, 'warning');
       }
     }
   };
@@ -933,11 +1021,13 @@ export function ReceptionDeskPage() {
     // 3. Register Patient (only if not already created in this draft attempt)
     if (isNewPatient && !draftPatientId) {
       const cleanPhone = regData.phone.replace(/\D/g, '');
+      const cleanAltPhone = regData.alternatePhone ? regData.alternatePhone.replace(/\D/g, '') : '';
       const parsedAge = parseInt(regData.age as string, 10);
       try {
         const newPatient = await addPatient({
           name: regData.name.trim(),
           phone: cleanPhone,
+          alternatePhone: cleanAltPhone || null,
           age: parsedAge,
           gender: regData.gender as any,
           status: 'Active',
@@ -1615,6 +1705,15 @@ export function ReceptionDeskPage() {
                   </Button>
                   <Button
                     size="sm"
+                    variant="outline"
+                    className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 font-semibold text-xs flex items-center gap-1.5"
+                    onClick={handleDeleteSelectedVisits}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Selected ({selectedWaitingIds.length})
+                  </Button>
+                  <Button
+                    size="sm"
                     className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1.5"
                     onClick={() => setIsTransferDialogOpen(true)}
                   >
@@ -2028,7 +2127,9 @@ export function ReceptionDeskPage() {
 
                   {!isNewPatient ? (
                     <div className="space-y-3">
-                      <label className="text-sm font-medium text-slate-700 block">Search & Select Patient *</label>
+                      <label className="text-sm font-medium text-slate-700 block">
+                        Search & Select Patient *
+                      </label>
 
                       {selectedExistingPatientId ? (
                         <div className="flex items-center justify-between p-3 border border-teal-200 bg-teal-50/50 rounded-lg shadow-sm">
@@ -2066,7 +2167,17 @@ export function ReceptionDeskPage() {
 
                           <div className="border border-slate-200 rounded-md bg-white max-h-48 overflow-y-auto shadow-sm">
                             {patients
-                              .filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()) || (p.phone && p.phone.includes(patientSearch)))
+                              .filter(p => {
+                                const q = patientSearch.trim().toLowerCase();
+                                if (!q) return true;
+                                const nameMatch = (p.name || '').toLowerCase().includes(q);
+                                const phoneMatch = (p.phone || '').includes(q);
+                                const altPhoneMatch = (p.alternatePhone || '').includes(q);
+                                const cleanQ = q.replace(/\D/g, '');
+                                const cleanPhoneMatch = cleanQ.length >= 3 && p.phone ? p.phone.replace(/\D/g, '').includes(cleanQ) : false;
+                                const cleanAltPhoneMatch = cleanQ.length >= 3 && p.alternatePhone ? p.alternatePhone.replace(/\D/g, '').includes(cleanQ) : false;
+                                return nameMatch || phoneMatch || altPhoneMatch || cleanPhoneMatch || cleanAltPhoneMatch;
+                              })
                               .map(p => (
                                 <div
                                   key={p.id}
@@ -2080,7 +2191,17 @@ export function ReceptionDeskPage() {
                                   <div className="text-xs text-slate-500 mt-0.5">{p.phone || 'No phone recorded'}</div>
                                 </div>
                               ))}
-                            {patients.filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()) || (p.phone && p.phone.includes(patientSearch))).length === 0 && (
+                            {patients.filter(p => {
+                              const q = patientSearch.trim().toLowerCase();
+                              if (!q) return true;
+                              const nameMatch = (p.name || '').toLowerCase().includes(q);
+                              const phoneMatch = (p.phone || '').includes(q);
+                              const altPhoneMatch = (p.alternatePhone || '').includes(q);
+                              const cleanQ = q.replace(/\D/g, '');
+                              const cleanPhoneMatch = cleanQ.length >= 3 && p.phone ? p.phone.replace(/\D/g, '').includes(cleanQ) : false;
+                              const cleanAltPhoneMatch = cleanQ.length >= 3 && p.alternatePhone ? p.alternatePhone.replace(/\D/g, '').includes(cleanQ) : false;
+                              return nameMatch || phoneMatch || altPhoneMatch || cleanPhoneMatch || cleanAltPhoneMatch;
+                            }).length === 0 && (
                               <div className="px-3 py-6 text-center text-sm text-slate-500">
                                 No patients found.
                               </div>
@@ -2138,6 +2259,10 @@ export function ReceptionDeskPage() {
                       <div>
                         <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number <span className="text-red-500">*</span></label>
                         <Input placeholder="10-digit mobile number" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} maxLength={10} />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-1 block">Alternative Phone (Optional)</label>
+                        <Input placeholder="Optional secondary contact number" value={regData.alternatePhone} onChange={e => setRegData({ ...regData, alternatePhone: e.target.value.replace(/\D/g, '').slice(0, 10) })} maxLength={10} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -2325,6 +2450,10 @@ export function ReceptionDeskPage() {
                     <label className="text-sm font-medium text-slate-700 mb-1 block">Phone Number <span className="text-red-500">*</span></label>
                     <Input disabled={editDrawerMode === 'view'} placeholder="e.g. 9876543210" value={regData.phone} onChange={e => setRegData({ ...regData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} maxLength={10} />
                   </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700 mb-1 block">Alternative Phone (Optional)</label>
+                    <Input disabled={editDrawerMode === 'view'} placeholder="Optional secondary contact number" value={regData.alternatePhone} onChange={e => setRegData({ ...regData, alternatePhone: e.target.value.replace(/\D/g, '').slice(0, 10) })} maxLength={10} />
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-slate-700 mb-1 block">Age <span className="text-red-500">*</span></label>
@@ -2391,9 +2520,11 @@ export function ReceptionDeskPage() {
                     if (editingPatientId && updatePatient) {
                       try {
                         setIsSavingPatientEdit(true);
+                        const cleanAltPhone = regData.alternatePhone ? regData.alternatePhone.replace(/\D/g, '') : '';
                         await updatePatient(editingPatientId, {
                           name: regData.name.trim(),
                           phone: cleanPhone,
+                          alternatePhone: cleanAltPhone || null,
                           age: parsedAge,
                           gender: regData.gender as any,
                           photoUrl: (regData as any).photoUrl,

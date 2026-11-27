@@ -3,11 +3,12 @@ import { prisma } from '../db';
 
 export const getPatients = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const isAll = req.query.all === 'true' || req.query.limit === 'all' || (!req.query.page && !req.query.limit);
+    const page = isAll ? 1 : (parseInt(req.query.page as string) || 1);
+    const limit = isAll ? undefined : (parseInt(req.query.limit as string) || 10);
     const search = req.query.search as string;
     const gender = req.query.gender as string;
-    const skip = (page - 1) * limit;
+    const skip = isAll ? undefined : (page - 1) * (limit as number);
 
     const where: any = {};
     if (gender && gender !== 'all') {
@@ -17,6 +18,7 @@ export const getPatients = async (req: Request, res: Response, next: NextFunctio
       where.OR = [
         { name: { contains: search } },
         { phone: { contains: search } },
+        { alternatePhone: { contains: search } },
         { id: { contains: search } }
       ];
     }
@@ -24,8 +26,8 @@ export const getPatients = async (req: Request, res: Response, next: NextFunctio
     const [patients, totalRecords] = await Promise.all([
       prisma.patient.findMany({
         where,
-        skip,
-        take: limit,
+        ...(skip !== undefined ? { skip } : {}),
+        ...(limit !== undefined ? { take: limit } : {}),
         orderBy: { createdAt: 'desc' }
       }),
       prisma.patient.count({ where })
@@ -35,9 +37,9 @@ export const getPatients = async (req: Request, res: Response, next: NextFunctio
       data: patients,
       meta: {
         currentPage: page,
-        pageSize: limit,
+        pageSize: limit ?? totalRecords,
         totalRecords,
-        totalPages: Math.ceil(totalRecords / limit)
+        totalPages: limit ? Math.ceil(totalRecords / limit) : 1
       }
     });
   } catch (error) {
@@ -77,6 +79,7 @@ export const createPatient = async (req: Request, res: Response, next: NextFunct
       data: {
         name: data.name,
         phone: data.phone && data.phone.trim() !== '' ? data.phone.trim() : null,
+        alternatePhone: data.alternatePhone && data.alternatePhone.trim() !== '' ? data.alternatePhone.trim() : null,
         age: data.age,
         gender: data.gender,
         status: data.status || 'Active',
@@ -118,6 +121,9 @@ export const updatePatient = async (req: Request, res: Response, next: NextFunct
     if (data.phone !== undefined) {
       data.phone = data.phone && data.phone.trim() !== '' ? data.phone.trim() : null;
     }
+    if (data.alternatePhone !== undefined) {
+      data.alternatePhone = data.alternatePhone && data.alternatePhone.trim() !== '' ? data.alternatePhone.trim() : null;
+    }
 
     const patient = await prisma.patient.update({
       where: { id },
@@ -145,6 +151,7 @@ export const exportPatients = async (req: Request, res: Response, next: NextFunc
       where.OR = [
         { name: { contains: search } },
         { phone: { contains: search } },
+        { alternatePhone: { contains: search } },
         { id: { contains: search } }
       ];
     }
@@ -158,6 +165,7 @@ export const exportPatients = async (req: Request, res: Response, next: NextFunc
       { key: 'id', label: 'Patient ID' },
       { key: 'name', label: 'Name' },
       { key: 'phone', label: 'Phone' },
+      { key: 'alternatePhone', label: 'Alt Phone' },
       { key: 'age', label: 'Age' },
       { key: 'gender', label: 'Gender' },
       { key: 'status', label: 'Status' }

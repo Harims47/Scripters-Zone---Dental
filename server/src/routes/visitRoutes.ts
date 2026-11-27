@@ -8,6 +8,7 @@ import {
   startWalkInVisit,
   checkInAppointment,
   cancelVisit,
+  deleteVisit,
   updateVisit,
   exportVisits,
   transferVisits
@@ -36,6 +37,9 @@ router.patch('/:id', requireRole('Head Doctor', 'Duty Doctor', 'Receptionist'), 
 
 // Cancel visit
 router.patch('/:id/cancel', requireRole('Head Doctor', 'Receptionist'), cancelVisit);
+
+// Delete visit (Receptionist, Head Doctor)
+router.delete('/:id', requireRole('Head Doctor', 'Receptionist'), deleteVisit);
 
 
 export default router;

@@ -17,6 +17,7 @@ interface ClinicContextType {
   payments: Payment[]
   medicines: Medicine[]
   staff: any[]
+  reloadPatients: () => Promise<void>
   reloadStaff: () => Promise<void>
   reloadInventory: () => Promise<void>
   refreshClinicOperations: () => Promise<void>
@@ -30,6 +31,7 @@ interface ClinicContextType {
   startVisit: (patientId: string, doctorId?: string, isUrgent?: boolean, reasonForVisit?: string) => Promise<{ visit: Visit, queueEntry: QueueEntry }>
   updateVisit: (visitId: string, updates: Partial<Visit>) => Promise<{ success: boolean, error?: string }>
   cancelVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
+  deleteVisit: (visitId: string) => Promise<{ success: boolean, error?: string }>
   transferVisitsToNextDay: (visitIds: string[], targetDate: string, reason?: string, isPriority?: boolean) => Promise<{ success: boolean, count?: number, message?: string, transferredCount?: number, error?: string }>
 
   assignDoctor: (queueId: string, doctorId: string) => Promise<{ success: boolean, error?: string }>
@@ -61,8 +63,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (isAuthenticated) {
-      api.get<Patient[]>('/api/patients').then(res => setPatients((res as any).data || res)).catch(console.error)
-      api.get<Appointment[]>('/api/appointments').then(res => setAppointments((res as any).data || res)).catch(console.error)
+      api.get<Patient[]>('/api/patients?limit=all').then(res => setPatients((res as any).data || res)).catch(console.error)
+      api.get<Appointment[]>('/api/appointments?limit=all').then(res => setAppointments((res as any).data || res)).catch(console.error)
       api.get<any[]>('/api/visits').then(res => {
         const visitsData = (res as any).data || res;
         setVisits(visitsData)
@@ -121,6 +123,15 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [reloadStaff])
 
+  const reloadPatients = React.useCallback(async () => {
+    try {
+      const res = await api.get<Patient[]>('/api/patients?limit=all')
+      setPatients((res as any).data || res || [])
+    } catch (e) {
+      console.error('Failed to reload patients in ClinicContext', e)
+    }
+  }, [])
+
   const reloadInventory = React.useCallback(async () => {
     try {
       const res = await api.get<{ data: Medicine[] }>('/api/inventory?limit=200')
@@ -132,19 +143,42 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
 
   const refreshClinicOperations = React.useCallback(async () => {
     try {
-      const [queueRes, visitsRes, staffRes] = await Promise.all([
+      const [queueRes, visitsRes, staffRes, patientsRes, apptsRes] = await Promise.all([
         api.get<QueueEntry[]>('/api/queue'),
         api.get<any[]>('/api/visits'),
-        api.get<any>('/api/staff?limit=100')
+        api.get<any>('/api/staff?limit=100'),
+        api.get<Patient[]>('/api/patients?limit=all'),
+        api.get<Appointment[]>('/api/appointments?limit=all')
       ])
       
       const newQueue = (queueRes as any).data || queueRes || []
       const newVisits = (visitsRes as any).data || visitsRes || []
       const newStaff = (staffRes as any).data?.data || (staffRes as any).data || staffRes || []
+      const newPatients = (patientsRes as any).data || patientsRes || []
+      const newAppointments = (apptsRes as any).data || apptsRes || []
+
+      // Merge any embedded patient objects from visits & queue so no patient ever shows 'Unknown'
+      const patientMap = new Map<string, Patient>()
+      newPatients.forEach((p: Patient) => {
+        if (p && p.id) patientMap.set(p.id, p)
+      })
+      newVisits.forEach((v: any) => {
+        if (v?.patient?.id && !patientMap.has(v.patient.id)) {
+          patientMap.set(v.patient.id, v.patient)
+        }
+      })
+      newQueue.forEach((q: any) => {
+        if (q?.visit?.patient?.id && !patientMap.has(q.visit.patient.id)) {
+          patientMap.set(q.visit.patient.id, q.visit.patient)
+        }
+      })
+      const mergedPatients = Array.from(patientMap.values())
 
       setQueue(newQueue)
       setVisits(newVisits)
       setStaff(newStaff)
+      setPatients(mergedPatients)
+      setAppointments(newAppointments)
 
       const allConsultations: Consultation[] = []
       const allPrescriptions: Prescription[] = []
@@ -173,6 +207,32 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       setStaff([])
     }
   }, [isAuthenticated, reloadStaff, reloadInventory])
+
+  // Real-time synchronization heartbeat across clinic systems (System A <-> System B)
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Heartbeat every 2.5 seconds
+    const intervalTimer = setInterval(() => {
+      refreshClinicOperations();
+    }, 2500);
+
+    // Immediate sync on window focus or visibility change
+    const handleSyncFocus = () => {
+      if (!document.hidden) {
+        refreshClinicOperations();
+      }
+    };
+
+    window.addEventListener('focus', handleSyncFocus);
+    document.addEventListener('visibilitychange', handleSyncFocus);
+
+    return () => {
+      clearInterval(intervalTimer);
+      window.removeEventListener('focus', handleSyncFocus);
+      document.removeEventListener('visibilitychange', handleSyncFocus);
+    };
+  }, [isAuthenticated, refreshClinicOperations]);
 
   // Remove old LocalStorage for migrated domains
   React.useEffect(() => {
@@ -298,6 +358,18 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error('Failed to cancel visit:', err);
       return { success: false, error: err.response?.data?.error || err.message || 'Error cancelling visit' };
+    }
+  }
+
+  const deleteVisit = async (visitId: string) => {
+    try {
+      await api.delete(`/api/visits/${visitId}`);
+      setVisits(prev => prev.filter(v => v.id !== visitId));
+      setQueue(prev => prev.filter(q => q.visitId !== visitId));
+      return { success: true };
+    } catch (err: any) {
+      console.error('Failed to delete visit:', err);
+      return { success: false, error: err.response?.data?.error || err.message || 'Error deleting visit' };
     }
   }
 
@@ -572,8 +644,8 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
   return (
     <ClinicContext.Provider value={{
       patients, appointments, visits, queue, consultations, prescriptions, dispensings, payments, medicines,
-      staff, reloadStaff, reloadInventory, refreshClinicOperations, updateStaffAttendance,
-      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit, transferVisitsToNextDay,
+      staff, reloadPatients, reloadStaff, reloadInventory, refreshClinicOperations, updateStaffAttendance,
+      addPatient, updatePatient, addAppointment, updateAppointment, confirmAppointmentArrival, startVisit, updateVisit, cancelVisit, deleteVisit, transferVisitsToNextDay,
         assignDoctor,
         normalizePhone,
         callPatient, startConsultationFlow, saveConsultation, savePrescription, completeDispensing, recordPayment, adjustMedicineStock
