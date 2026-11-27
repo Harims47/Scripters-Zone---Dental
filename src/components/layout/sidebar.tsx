@@ -3,7 +3,8 @@ import { NavLink } from "react-router-dom"
 import { 
   LayoutDashboard, Users, Calendar, Clock, 
   Package, Stethoscope, Settings, Receipt,
-  LogOut, Menu, BarChart3, FolderArchive, FileText
+  LogOut, Menu, BarChart3, FolderArchive, FileText,
+  FlaskConical
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { t } from "../../lib/i18n"
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { title: "Billing", href: "/billing", icon: Receipt },
   { title: "Reimbursement", href: "/reimbursement", icon: FileText },
   { title: "Inventory", href: "/inventory", icon: Package },
+  { title: "Lab", href: "/lab", icon: FlaskConical },
   { title: "Staff", href: "/staff", icon: Stethoscope },
   { title: "Reports", href: "/reports", icon: BarChart3 },
   { title: "Historical Migration", href: "/historical-migration", icon: FolderArchive },

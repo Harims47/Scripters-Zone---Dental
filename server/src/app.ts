@@ -50,6 +50,7 @@ import historicalMigrationRoutes from './routes/historicalMigrationRoutes';
 import reimbursementRoutes from './routes/reimbursementRoutes';
 import settingsRoutes from './routes/settingsRoutes';
 import externalAdviceRoutes from './routes/externalAdviceRoutes';
+import labRoutes from './routes/labRoutes';
 import { QueueRunner } from './services/communication/queueRunner';
 import { HistoricalBatchService } from './services/historicalMigration/HistoricalBatchService';
 
@@ -125,6 +126,7 @@ app.use('/api/historical-migration', historicalMigrationRoutes);
 app.use('/api/reimbursements', reimbursementRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/external-advice', externalAdviceRoutes);
+app.use('/api/labs', labRoutes);
 
 // Health & Database Diagnostics Endpoint
 app.get('/api/health', async (req, res) => {

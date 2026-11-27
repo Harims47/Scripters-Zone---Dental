@@ -370,6 +370,7 @@ export function FdiToothChart({
                 <g
                   role="button"
                   tabIndex={0}
+                  data-fdi={fdi}
                   aria-label={`Tooth ${fdi}: ${info.name}`}
                   transform={`translate(${x}, ${y}) rotate(${rot})`}
                   onClick={() => !readOnly && onToggleTooth(fdi)}

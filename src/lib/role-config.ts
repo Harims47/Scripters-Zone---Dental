@@ -17,6 +17,7 @@ export type ClinicModule =
   | 'Reports'
   | 'Partial Payments'
   | 'Reimbursement'
+  | 'Lab'
 
 export interface RoleConfig {
   role: ClinicRole
@@ -30,26 +31,26 @@ export const ROLE_CONFIG: Record<ClinicRole, RoleConfig> = {
     role: 'Head Doctor',
     label: 'Head Doctor (Super Admin)',
     description: 'Full clinic access including staff and settings management.',
-    permissions: ['Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports', 'Reimbursement']
+    permissions: ['Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Inventory', 'Lab', 'Dispensing', 'Billing', 'Payments', 'Staff Management', 'Settings', 'Reports', 'Reimbursement']
   },
   'Duty Doctor': {
     role: 'Duty Doctor',
     label: 'Duty Doctor',
     description: 'Clinical access for daily patient consultations.',
-    permissions: ['Dashboard', 'Patients', 'Queue', 'Doctor Workspace', 'Prescriptions']
+    permissions: ['Dashboard', 'Patients', 'Queue', 'Doctor Workspace', 'Prescriptions', 'Lab']
   },
   'Receptionist': {
     role: 'Receptionist',
     label: 'Receptionist',
     description: 'Front-desk operations, appointments, and payments.',
-    permissions: ['Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Dispensing', 'Billing', 'Payments']
+    permissions: ['Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Lab', 'Dispensing', 'Billing', 'Payments']
   }
 }
 
 // All available modules for the preview UI
 export const ALL_MODULES: ClinicModule[] = [
   'Dashboard', 'Reception Desk', 'Partial Payments', 'Patients', 'Appointments', 'Queue', 'Doctor Workspace', 
-  'Prescriptions', 'Inventory', 'Dispensing', 'Billing', 'Payments', 
+  'Prescriptions', 'Inventory', 'Lab', 'Dispensing', 'Billing', 'Payments', 
   'Staff Management', 'Settings', 'Reports', 'Reimbursement'
 ]
 
@@ -62,6 +63,7 @@ export const SIDEBAR_MODULES: ClinicModule[] = [
   'Queue',
   'Reimbursement',
   'Inventory',
+  'Lab',
   'Staff Management',
   'Reports',
   'Settings'

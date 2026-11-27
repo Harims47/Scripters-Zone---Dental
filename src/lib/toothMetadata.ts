@@ -71,3 +71,40 @@ export function getToothInfo(fdi: number): ToothInfo | undefined {
 export function isValidFdiTooth(fdi: number): boolean {
   return VALID_FDI_NUMBERS.has(fdi);
 }
+
+/**
+ * Parses all teeth assigned to a procedure item (from either toothNumbers array/string or legacy toothNumber).
+ */
+export function parseTeeth(item?: { toothNumber?: number | null; toothNumbers?: string | number[] | null } | null): number[] {
+  if (!item) return [];
+  if (item.toothNumbers) {
+    if (Array.isArray(item.toothNumbers)) {
+      return item.toothNumbers
+        .map(Number)
+        .filter(n => !isNaN(n) && VALID_FDI_NUMBERS.has(n))
+        .sort((a, b) => a - b);
+    }
+    if (typeof item.toothNumbers === 'string') {
+      return item.toothNumbers
+        .split(',')
+        .map(s => parseInt(s.trim(), 10))
+        .filter(n => !isNaN(n) && VALID_FDI_NUMBERS.has(n))
+        .sort((a, b) => a - b);
+    }
+  }
+  if (item.toothNumber != null && VALID_FDI_NUMBERS.has(item.toothNumber)) {
+    return [item.toothNumber];
+  }
+  return [];
+}
+
+/**
+ * Returns formatted clinical label for teeth (e.g. "Tooth 13", "Teeth 11, 12, 13, 21, 22, 23", or "General").
+ */
+export function formatTeethLabel(item?: { toothNumber?: number | null; toothNumbers?: string | number[] | null } | null): string {
+  const teeth = parseTeeth(item);
+  if (teeth.length === 0) return 'General';
+  if (teeth.length === 1) return `Tooth ${teeth[0]}`;
+  return `Teeth ${teeth.join(', ')}`;
+}
+

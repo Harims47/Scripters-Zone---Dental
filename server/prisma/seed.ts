@@ -41,6 +41,7 @@ async function seedMasterCatalogs() {
     { category: 'Endodontics', name: 'Permanent Filling' },
     { category: 'Endodontics', name: 'RE RCT' },
     { category: 'Endodontics', name: 'POST & CORE' },
+    { category: 'Endodontics', name: 'POST & CORE + RCT' },
     { category: 'Endodontics', name: 'APICOECTOMY' },
 
     // 2. Prosthodontics

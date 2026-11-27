@@ -14,6 +14,7 @@ export const ROUTE_MODULE_MAP: Record<string, ClinicModule> = {
   '/reception/dispensing': 'Dispensing',
   '/billing': 'Billing',
   '/reimbursement': 'Reimbursement',
+  '/lab': 'Lab',
   '/payments': 'Payments',
   '/partial-payments': 'Partial Payments',
   '/staff': 'Staff Management',

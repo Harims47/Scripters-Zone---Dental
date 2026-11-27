@@ -176,6 +176,7 @@ export interface TreatmentPlanItem {
   treatmentPlanId: string;
   treatmentCatalogId: string;
   toothNumber?: number | null;
+  toothNumbers?: string | number[] | null;
   status: 'Planned' | 'In Progress' | 'Completed';
   notes: string | null;
   totalSittings: number;
@@ -183,6 +184,9 @@ export interface TreatmentPlanItem {
   completedAt: string | null;
   catalogItem?: TreatmentCatalog;
   sessions?: TreatmentSession[];
+  labRequests?: LabRequest[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface TreatmentPlan {
@@ -399,5 +403,59 @@ export interface ExternalDoctorAdvice {
   emailSentAt?: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface DentalLab {
+  id: string
+  name: string
+  contactPerson?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  color: string
+  notes?: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  totalRequests?: number
+  pendingRequests?: number
+  receivedRequests?: number
+}
+
+export type LabRequestStatus = 'Sent' | 'In Progress' | 'Received' | 'Cancelled'
+
+export interface LabRequest {
+  id: string
+  labId: string
+  patientId: string
+  treatmentPlanItemId?: string | null
+  visitId?: string | null
+  doctorId?: string | null
+  workType: string
+  toothNumbers?: string | null
+  shade?: string | null
+  sentDate: string
+  expectedDeliveryDate?: string | null
+  receivedDate?: string | null
+  status: LabRequestStatus
+  instructions?: string | null
+  cost: number
+  receivedNotes?: string | null
+  createdAt: string
+  updatedAt: string
+  lab?: DentalLab
+  patient?: {
+    id: string
+    name: string
+    phone?: string | null
+    age?: number
+    gender?: string
+  }
+  treatmentPlanItem?: TreatmentPlanItem
+  visit?: {
+    id: string
+    visitDate: string
+    reasonForVisit?: string | null
+  }
 }
 

@@ -6,10 +6,11 @@ import { Badge } from "../ui/badge"
 import { 
   UserPlus, CalendarPlus, Clock, Phone, 
   CheckCircle2, TrendingUp, Calendar, UserCheck, 
-  ArrowRight, Stethoscope
+  ArrowRight, Stethoscope, ChevronDown
 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../context/AuthContext"
+import { parseTeeth, formatTeethLabel } from "../../lib/toothMetadata"
 
 // --- HEADER ---
 export function DashboardHeader({ 
@@ -147,6 +148,73 @@ export interface WaitingPatientItem {
   }[]
 }
 
+function DashboardQueuePatientCell({ 
+  item,
+  isOpen,
+  onToggle
+}: { 
+  item: any;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const pending = item.pendingTreatments || [];
+  const hasTreatments = pending.length > 0;
+
+  return (
+    <div 
+      className="space-y-1.5"
+      onDoubleClick={() => {
+        if (hasTreatments) onToggle();
+      }}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="font-semibold text-slate-900 cursor-default">{item.patientName}</div>
+        {hasTreatments && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 shadow-2xs transition-colors cursor-pointer select-none"
+            title={isOpen ? "Click to collapse procedures" : "Click to view procedures"}
+          >
+            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+            <span>{pending.length} {pending.length === 1 ? 'Procedure' : 'Procedures'}</span>
+            <ChevronDown className={`w-3 h-3 text-amber-600 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+      </div>
+
+      {hasTreatments && isOpen && (
+        <div className="space-y-1 pt-1 pl-2 border-l-2 border-amber-300">
+          {pending.map((pt: any, pIdx: number) => {
+            const nextNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
+            const schedDate = pt.nextSession?.plannedDate
+              ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+              : null;
+            const teeth = parseTeeth(pt);
+            const teethTag = teeth.length > 0 ? (teeth.length === 1 ? ` #${teeth[0]}` : ` #${teeth.join(', ')}`) : '';
+            const teethLabel = formatTeethLabel(pt);
+            return (
+              <div
+                key={pIdx}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs max-w-full truncate"
+                title={`Unfinished treatment: ${pt.treatmentName}${teeth.length > 0 ? ` (${teethLabel})` : ''} • Sitting ${nextNum}/${pt.totalSittings}${schedDate ? ` • Scheduled: ${schedDate}` : ''}`}
+              >
+                <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                <span className="truncate">
+                  {pt.treatmentName}{teethTag} • Sitting {nextNum}/{pt.totalSittings}
+                  {schedDate ? ` • ${schedDate}` : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function WaitingPatientsTable({ 
   items, 
@@ -162,6 +230,7 @@ export function WaitingPatientsTable({
   isDoctor?: boolean
 }) {
   const navigate = useNavigate()
+  const [expandedPatientIds, setExpandedPatientIds] = useState<Record<string, boolean>>({})
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_12px_-4px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col h-full">
@@ -202,30 +271,17 @@ export function WaitingPatientsTable({
                     {String(item.position || idx + 1).padStart(2, '0')}
                   </td>
                   <td className="px-4 py-3.5">
-                    <div className="font-semibold text-slate-900">{item.patientName}</div>
-                    {item.pendingTreatments && item.pendingTreatments.length > 0 && (
-                      <div className="mt-1 space-y-1">
-                        {item.pendingTreatments.map((pt, pIdx) => {
-                          const nextNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
-                          const schedDate = pt.nextSession?.plannedDate
-                            ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                            : null;
-                          return (
-                            <div
-                              key={pIdx}
-                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs max-w-full truncate"
-                              title={`Unfinished treatment: ${pt.treatmentName}${pt.toothNumber ? ` (Tooth ${pt.toothNumber})` : ''} • Sitting ${nextNum}/${pt.totalSittings}${schedDate ? ` • Scheduled: ${schedDate}` : ''}`}
-                            >
-                              <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span className="truncate">
-                                {pt.treatmentName}{pt.toothNumber ? ` #${pt.toothNumber}` : ''} • Sitting {nextNum}/{pt.totalSittings}
-                                {schedDate ? ` • ${schedDate}` : ''}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <DashboardQueuePatientCell 
+                      item={item} 
+                      isOpen={!!expandedPatientIds[item.patientId || item.id]}
+                      onToggle={() => {
+                        const key = item.patientId || item.id;
+                        setExpandedPatientIds(prev => ({
+                          ...prev,
+                          [key]: !prev[key]
+                        }));
+                      }}
+                    />
                     {item.priority && (
                       <Badge variant="outline" className="bg-rose-50 text-rose-600 border-rose-200 text-[10px] px-1.5 py-0 mt-0.5">
                         Urgent

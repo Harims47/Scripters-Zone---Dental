@@ -21,7 +21,7 @@ import {
 import { Badge } from '../ui/badge'
 import { API_BASE_URL, api } from '../../lib/api'
 import type { TreatmentPlan, DentalImage } from '../../types/domain'
-import { getToothInfo } from '../../lib/toothMetadata'
+import { getToothInfo, parseTeeth, formatTeethLabel } from '../../lib/toothMetadata'
 import { DentalImageViewerModal } from '../consultation/DentalImageViewerModal'
 
 export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: string, onViewHistory?: () => void }) {
@@ -135,11 +135,14 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
     }
   }
 
-  // Treatment items applicable to this visit (completed or had sessions in this visit)
-  const visitTreatmentItems = treatmentPlan?.items.filter(item => 
-    item.completedVisitId === visitId || 
-    (item.sessions && item.sessions.some(s => s.visitId === visitId))
-  ) || []
+  // Treatment items applicable to this visit (completed, had sessions, or created in this visit)
+  const visitTime = visit?.createdAt ? new Date(visit.createdAt).getTime() - 2000 : 0
+  const visitTreatmentItems = treatmentPlan?.items.filter(item => {
+    if (item.completedVisitId === visitId) return true
+    if (item.sessions && item.sessions.some(s => s.visitId === visitId)) return true
+    if (!item.completedVisitId && item.createdAt && visitTime > 0 && new Date(item.createdAt).getTime() >= visitTime) return true
+    return false
+  }) || []
 
   const totalPaid = visitPayments.reduce((sum, p) => sum + (p.amount || 0), 0)
   const expectedAmount = visit.amountDue || 0
@@ -541,6 +544,8 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
                   {visitTreatmentItems.map(item => {
                     const toothInfo = item.toothNumber ? getToothInfo(item.toothNumber) : undefined
                     const visitSessions = item.sessions?.filter(s => s.visitId === visitId) || []
+                    const teeth = parseTeeth(item)
+                    const teethLabel = formatTeethLabel(item)
 
                     return (
                       <div key={item.id} className="flex items-start justify-between text-sm text-slate-700 bg-emerald-50/30 p-3.5 rounded-xl border border-emerald-100/70">
@@ -548,10 +553,10 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
                           <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                           <div className="w-full space-y-1.5">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {item.toothNumber && (
+                              {teeth.length > 0 && (
                                 <span className="text-xs bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded">
-                                  Tooth {item.toothNumber}
-                                  {toothInfo && ` • ${toothInfo.name}`}
+                                  {teethLabel}
+                                  {teeth.length === 1 && toothInfo && ` • ${toothInfo.name}`}
                                 </span>
                               )}
                               <span className="font-bold text-slate-900 text-sm">
@@ -561,7 +566,7 @@ export function HistoricalVisitDetails({ visitId, onViewHistory }: { visitId: st
                                 className={`text-[10px] ${
                                   item.status === 'Completed' 
                                     ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                                    : 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                    : 'bg-amber-100 text-amber-800 border-amber-200'
                                 }`}
                               >
                                 {item.status}

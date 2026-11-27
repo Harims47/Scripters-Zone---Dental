@@ -17,6 +17,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { PartialPaymentAlertsPage } from './pages/PartialPaymentAlertsPage';
 import { HistoricalMigrationPage } from './pages/HistoricalMigrationPage';
 import { ReimbursementPage } from './pages/ReimbursementPage';
+import { LabPage } from './pages/LabPage';
 import { ClinicProvider } from './context/ClinicContext';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -59,6 +60,7 @@ function App() {
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="billing" element={<BillingPage />} />
             <Route path="reimbursement" element={<ReimbursementPage />} />
+            <Route path="lab" element={<LabPage />} />
             <Route path="staff" element={<StaffPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="historical-migration" element={<HistoricalMigrationPage />} />

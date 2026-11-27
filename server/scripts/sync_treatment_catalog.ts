@@ -7,6 +7,7 @@ export const NEW_TREATMENT_CATALOG = [
   { category: 'Endodontics', name: 'Permanent Filling', variant: null },
   { category: 'Endodontics', name: 'RE RCT', variant: null },
   { category: 'Endodontics', name: 'POST & CORE', variant: null },
+  { category: 'Endodontics', name: 'POST & CORE + RCT', variant: null },
   { category: 'Endodontics', name: 'APICOECTOMY', variant: null },
 
   // 2. Prosthodontics

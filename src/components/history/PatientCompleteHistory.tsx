@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { api, API_BASE_URL } from '../../lib/api'
 import type { PatientHistoryData, DentalImage } from '../../types/domain'
-import { getToothInfo } from '../../lib/toothMetadata'
+import { getToothInfo, parseTeeth, formatTeethLabel } from '../../lib/toothMetadata'
 import { DentalImageViewerModal } from '../consultation/DentalImageViewerModal'
 import { 
   Calendar, 
@@ -30,6 +30,43 @@ import { Button } from '../ui/button'
 interface PatientCompleteHistoryProps {
   patientId: string
   onClose?: () => void
+}
+
+function renderProcedureNotes(rawNotes?: string | null) {
+  if (!rawNotes) return null;
+  const breakdownRegex = /\[Breakdown:\s*X-Ray:\s*₹?(\d*),\s*RCT:\s*₹?(\d*),\s*Crown:\s*₹?(\d*),\s*Scan:\s*₹?(\d*)\]/i;
+  const match = rawNotes.match(breakdownRegex);
+  const cleanNotes = rawNotes.replace(breakdownRegex, '').trim();
+
+  return (
+    <div className="space-y-1">
+      {cleanNotes && <div>{cleanNotes}</div>}
+      {match && (
+        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+          {Number(match[1]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+              X-Ray: ₹{Number(match[1]).toLocaleString()}
+            </span>
+          )}
+          {Number(match[2]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              RCT: ₹{Number(match[2]).toLocaleString()}
+            </span>
+          )}
+          {Number(match[3]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              Crown: ₹{Number(match[3]).toLocaleString()}
+            </span>
+          )}
+          {Number(match[4]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+              Scan: ₹{Number(match[4]).toLocaleString()}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PatientCompleteHistory({
@@ -276,7 +313,7 @@ export function PatientCompleteHistory({
               <p className="text-sm text-slate-500 mt-1">This patient has not completed or started any visits yet.</p>
             </div>
           ) : (
-            visits.map((visit) => {
+            visits.map((visit, vIdx) => {
               const isExpanded = !!expandedVisits[visit.id]
               const visitDate = (visit as any).visitDate ? new Date((visit as any).visitDate) : new Date(visit.createdAt)
               const formattedDate = visitDate.toLocaleDateString(undefined, { 
@@ -304,11 +341,23 @@ export function PatientCompleteHistory({
               const displayedVisitImages = showAllForThis ? mergedDentalImages : thisVisitImages
 
               // Treatments performed or sessions conducted in this visit
+              const visitTime = visit?.createdAt ? new Date(visit.createdAt).getTime() - 2000 : 0
+              const newerVisit = vIdx > 0 ? visits[vIdx - 1] : null
+              const newerVisitTime = newerVisit?.createdAt ? new Date(newerVisit.createdAt).getTime() : null
+
+              const isCreatedInThisVisit = (item: any) => {
+                if (!item.createdAt || visitTime <= 0) return false
+                const itemTime = new Date(item.createdAt).getTime()
+                return itemTime >= visitTime && (!newerVisitTime || itemTime < newerVisitTime)
+              }
+
               const completedItems = visit.completedTreatmentItems || []
-              const planItemsForVisit = (data.treatmentPlan?.items || []).filter(item => 
-                item.completedVisitId === visit.id ||
-                (item.sessions && item.sessions.some(s => s.visitId === visit.id))
-              )
+              const planItemsForVisit = (data.treatmentPlan?.items || []).filter(item => {
+                if (item.completedVisitId === visit.id) return true
+                if (item.sessions && item.sessions.some(s => s.visitId === visit.id)) return true
+                if (!item.completedVisitId && isCreatedInThisVisit(item)) return true
+                return false
+              })
 
               return (
                 <div 
@@ -658,6 +707,8 @@ export function PatientCompleteHistory({
                               {planItemsForVisit.map(item => {
                                 const toothInfo = item.toothNumber ? getToothInfo(item.toothNumber) : undefined
                                 const visitSessions = item.sessions?.filter(s => s.visitId === visit.id) || []
+                                const teeth = parseTeeth(item)
+                                const teethLabel = formatTeethLabel(item)
 
                                 return (
                                   <div key={item.id} className="flex items-start justify-between p-3.5 rounded-xl bg-emerald-50/40 border border-emerald-100">
@@ -665,16 +716,20 @@ export function PatientCompleteHistory({
                                       <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                                       <div className="w-full space-y-1.5">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          {item.toothNumber && (
+                                          {teeth.length > 0 && (
                                             <span className="text-xs bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded">
-                                              Tooth {item.toothNumber}
-                                              {toothInfo && ` • ${toothInfo.name}`}
+                                              {teethLabel}
+                                              {teeth.length === 1 && toothInfo && ` • ${toothInfo.name}`}
                                             </span>
                                           )}
                                           <span className="font-bold text-slate-900 text-sm">
                                             {item.catalogItem?.name || 'Procedure'} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
                                           </span>
-                                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px]">
+                                          <Badge className={`${
+                                            item.status === 'Completed'
+                                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                              : 'bg-amber-100 text-amber-800 border-amber-200'
+                                          } text-[10px]`}>
                                             {item.status}
                                           </Badge>
                                         </div>
@@ -701,7 +756,7 @@ export function PatientCompleteHistory({
                                           </div>
                                         )}
 
-                                        {item.notes && <div className="text-slate-600 text-xs mt-1">{item.notes}</div>}
+                                        {item.notes && <div className="text-slate-600 text-xs mt-1">{renderProcedureNotes(item.notes)}</div>}
                                       </div>
                                     </div>
                                   </div>
@@ -712,17 +767,19 @@ export function PatientCompleteHistory({
                             <div className="space-y-2">
                               {completedItems.map(item => {
                                 const toothInfo = item.toothNumber ? getToothInfo(item.toothNumber) : undefined
+                                const teeth = parseTeeth(item)
+                                const teethLabel = formatTeethLabel(item)
                                 return (
                                   <div key={item.id} className="flex items-start justify-between p-3 rounded-lg bg-emerald-50/40 border border-emerald-100">
                                     <div className="flex items-start gap-2.5">
                                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                                       <div>
                                         <div className="font-bold text-slate-900">
-                                          {item.toothNumber && `Tooth ${item.toothNumber} • `}
+                                          {teeth.length > 0 && `${teethLabel} • `}
                                           {item.catalogItem?.name || 'Procedure'} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
-                                          {toothInfo && <span className="text-xs text-sky-700 block font-normal">{toothInfo.name}</span>}
+                                          {teeth.length === 1 && toothInfo && <span className="text-xs text-sky-700 block font-normal">{toothInfo.name}</span>}
                                         </div>
-                                        {item.notes && <div className="text-slate-600 mt-1">{item.notes}</div>}
+                                        {item.notes && <div className="text-slate-600 mt-1">{renderProcedureNotes(item.notes)}</div>}
                                       </div>
                                     </div>
                                     <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px]">

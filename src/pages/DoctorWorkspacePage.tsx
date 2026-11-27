@@ -19,6 +19,7 @@ import { parseReasonForVisit } from '../constants/visitReasons'
 
 import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI'
 import { HistoricalVisitDetails } from '../components/history/HistoricalVisitDetails'
+import { formatTeethLabel, parseTeeth } from '../lib/toothMetadata'
 import type { PrescriptionLineItem } from '../components/prescription/prescription-components'
 import { PaymentMethodSelector, type PaymentMethod } from '../components/payment/payment-components'
 import { MEDICINE_CATEGORIES } from '../lib/medicine-categories'
@@ -401,6 +402,16 @@ export function DoctorWorkspacePage() {
   const [transferDoctorId, setTransferDoctorId] = useState<string>('')
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
   const [viewingHistoricalVisitId, setViewingHistoricalVisitId] = useState<string | null>(null)
+
+  const isVisitAtReception = useMemo(() => {
+    const s = (visit?.status || '').toLowerCase().trim();
+    return s === 'ready at reception' || 
+           s === 'ready for reception' || 
+           s === 'ready for payment' || 
+           s === 'completed' || 
+           s === 'paid' || 
+           searchParams.get('editTreatment') === 'true';
+  }, [visit?.status, searchParams])
 
   // External Doctor Advice & Medical Clearance State
   const [externalAdviceModalOpen, setExternalAdviceModalOpen] = useState(false)
@@ -1229,7 +1240,7 @@ export function DoctorWorkspacePage() {
                         </span>
                         <span className="text-slate-400 font-normal">—</span>
                         <span className="font-bold text-xs bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
-                          {pt.toothNumber ? `Tooth ${pt.toothNumber}` : 'General'}
+                          {formatTeethLabel(pt.item || pt)}
                         </span>
                       </div>
 
@@ -1295,9 +1306,9 @@ export function DoctorWorkspacePage() {
                           return (
                             <div key={item.id} className="text-slate-800">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                {item.toothNumber && (
+                                {parseTeeth(item).length > 0 && (
                                   <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
-                                    Tooth {item.toothNumber}
+                                    {formatTeethLabel(item)}
                                   </span>
                                 )}
                                 <span className="font-medium text-slate-900">{procedure} {variant}</span>
@@ -1797,6 +1808,7 @@ export function DoctorWorkspacePage() {
                   patientId={patient.id}
                   currentVisitId={visitId!}
                   treatmentFee={treatmentFee}
+                  isFeeLocked={isVisitAtReception}
                   initialTreatmentZeroReason={treatmentZeroReason}
                   initialEdit={treatmentModalInitialEdit}
                   initialView={treatmentModalInitialView}
@@ -1804,6 +1816,7 @@ export function DoctorWorkspacePage() {
                   targetSessionId={treatmentModalTargetSessionId}
                   onRegisterRollback={(fn) => { rollbackTreatmentPlan.current = fn; }}
                   onSaveTreatmentFee={async (newFee, zeroReason) => {
+                    if (isVisitAtReception) return;
                     setTreatmentFee(newFee);
                     if (zeroReason !== undefined) setTreatmentZeroReason(zeroReason);
                     if (visitId) {
@@ -1831,6 +1844,19 @@ export function DoctorWorkspacePage() {
                     setTreatmentModalInitialView('planning');
                     setTreatmentModalTargetItemId(null);
                     setTreatmentModalTargetSessionId(null);
+                    if (isVisitAtReception) {
+                      // Patient is already at reception; do not alter recorded visit/consultation fees
+                      if (patientId) {
+                        try {
+                          const res = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+                          setTreatmentPlan(res);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }
+                      await refreshClinicOperations();
+                      return;
+                    }
                     if (noProcedureReason) {
                       setTreatmentZeroReason(noProcedureReason);
                       const noProcNote = `[No Procedure Added: ${noProcedureReason}]`;
@@ -1941,9 +1967,9 @@ export function DoctorWorkspacePage() {
                       return (
                         <div key={item.id} className="text-sm pt-2 first:pt-0">
                           <div className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                            {item.toothNumber && (
+                            {parseTeeth(item).length > 0 && (
                               <span className="text-xs bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded">
-                                Tooth {item.toothNumber}
+                                {formatTeethLabel(item)}
                               </span>
                             )}
                             <span>{procedure} {variant}</span>

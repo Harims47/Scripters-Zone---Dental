@@ -9,6 +9,23 @@ export const VALID_FDI_NUMBERS = new Set([
   48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38
 ]);
 
+export const TREATMENT_PLAN_ITEM_INCLUDE = {
+  catalogItem: true,
+  completedVisit: true,
+  sessions: {
+    include: {
+      doctor: { select: { id: true, name: true, role: true } },
+      visit: true
+    },
+    orderBy: { sittingNumber: 'asc' as const }
+  },
+  labRequests: {
+    include: {
+      lab: true
+    }
+  }
+};
+
 export const getTreatmentCatalog = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const catalog = await prisma.treatmentCatalog.findMany({
@@ -37,17 +54,7 @@ export const getPatientTreatmentPlan = async (req: Request, res: Response, next:
       where: { patientId },
       include: {
         items: {
-          include: {
-            catalogItem: true,
-            completedVisit: true,
-            sessions: {
-              include: {
-                doctor: { select: { id: true, name: true, role: true } },
-                visit: true
-              },
-              orderBy: { sittingNumber: 'asc' }
-            }
-          },
+          include: TREATMENT_PLAN_ITEM_INCLUDE,
           orderBy: { createdAt: 'desc' }
         }
       }
@@ -58,17 +65,7 @@ export const getPatientTreatmentPlan = async (req: Request, res: Response, next:
         data: { patientId },
         include: {
           items: {
-            include: {
-              catalogItem: true,
-              completedVisit: true,
-              sessions: {
-                include: {
-                  doctor: { select: { id: true, name: true, role: true } },
-                  visit: true
-                },
-                orderBy: { sittingNumber: 'asc' }
-              }
-            }
+            include: TREATMENT_PLAN_ITEM_INCLUDE
           }
         }
       });
@@ -113,7 +110,8 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
       notes,
       completedVisitId,
       status,
-      totalSittings: rawTotalSittings
+      totalSittings: rawTotalSittings,
+      labRequest
     } = req.body;
 
     const parsed = parseInt(rawTotalSittings, 10);
@@ -138,7 +136,7 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
     const targetStatus = status || 'Planned';
     const isDirectCompleted = targetStatus === 'Completed';
 
-    // 2. Multi-tooth creation
+    // 2. Multi-tooth creation (Single procedure with multiple associated teeth)
     if (toothNumbers !== undefined && toothNumbers !== null) {
       if (!Array.isArray(toothNumbers) || toothNumbers.length === 0) {
         return res.status(400).json({ error: 'toothNumbers must be a non-empty array of numbers' });
@@ -157,69 +155,82 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
         }
       }
 
-      // Execute transactionally
-      const createdItems = await prisma.$transaction(async (tx) => {
-        const items = [];
-        for (const t of toothNumbers) {
-          const item = await tx.treatmentPlanItem.create({
-            data: {
-              treatmentPlanId: plan.id,
-              treatmentCatalogId,
-              toothNumber: t,
-              notes: notes || null,
-              totalSittings,
-              status: targetStatus,
-              completedVisitId: isDirectCompleted ? (completedVisitId || null) : null,
-              completedAt: isDirectCompleted ? new Date() : null,
-            }
-          });
+      const sortedTeeth = uniqueTeeth.slice().sort((a, b) => a - b);
+      const primaryTooth = sortedTeeth[0] || null;
+      const teethString = sortedTeeth.join(',');
 
-          // Create initial planned sittings
-          for (let s = 1; s <= totalSittings; s++) {
-            await tx.treatmentSession.create({
-              data: {
-                treatmentPlanItemId: item.id,
-                sittingNumber: s,
-                stage: totalSittings === 1 ? 'Primary Session' : `Sitting ${s}`,
-                status: (s === 1 && isDirectCompleted) ? 'Completed' : 'Planned',
-                actualDate: (s === 1 && isDirectCompleted) ? new Date() : null,
-                plannedDate: null,
-                visitId: (s === 1 && isDirectCompleted) ? (completedVisitId || null) : null,
-                clinicalNotes: null,
-              }
-            });
+      // Create a SINGLE TreatmentPlanItem representing this procedure across the selected teeth
+      const createdItem = await prisma.$transaction(async (tx) => {
+        const item = await tx.treatmentPlanItem.create({
+          data: {
+            treatmentPlanId: plan.id,
+            treatmentCatalogId,
+            toothNumber: primaryTooth,
+            toothNumbers: teethString,
+            notes: notes || null,
+            totalSittings,
+            status: targetStatus,
+            completedVisitId: isDirectCompleted ? (completedVisitId || null) : null,
+            completedAt: isDirectCompleted ? new Date() : null,
           }
+        });
 
-          const fullItem = await tx.treatmentPlanItem.findUnique({
-            where: { id: item.id },
-            include: {
-              catalogItem: true,
-              completedVisit: true,
-              sessions: {
-                include: {
-                  doctor: { select: { id: true, name: true, role: true } },
-                  visit: true
-                },
-                orderBy: { sittingNumber: 'asc' }
-              }
+        // Create initial planned sittings for this single procedure
+        for (let s = 1; s <= totalSittings; s++) {
+          await tx.treatmentSession.create({
+            data: {
+              treatmentPlanItemId: item.id,
+              sittingNumber: s,
+              stage: totalSittings === 1 ? 'Primary Session' : `Sitting ${s}`,
+              status: (s === 1 && isDirectCompleted) ? 'Completed' : 'Planned',
+              actualDate: (s === 1 && isDirectCompleted) ? new Date() : null,
+              plannedDate: null,
+              visitId: (s === 1 && isDirectCompleted) ? (completedVisitId || null) : null,
+              clinicalNotes: null,
             }
           });
-
-          if (fullItem) items.push(fullItem);
         }
-        return items;
+
+        // Create Lab Request if provided
+        if (labRequest && labRequest.labId) {
+          const parsedCost = labRequest.cost !== undefined ? parseFloat(labRequest.cost) : 0;
+          await tx.labRequest.create({
+            data: {
+              labId: labRequest.labId,
+              patientId,
+              treatmentPlanItemId: item.id,
+              visitId: isDirectCompleted ? (completedVisitId || null) : null,
+              doctorId: (req.user as any)?.staffId || (req.user as any)?.id || null,
+              workType: (labRequest.workType || catalogItem.name || 'Prosthetic').trim(),
+              toothNumbers: teethString,
+              shade: labRequest.shade ? String(labRequest.shade).trim() : null,
+              sentDate: new Date(),
+              expectedDeliveryDate: labRequest.expectedDeliveryDate ? new Date(labRequest.expectedDeliveryDate) : null,
+              instructions: labRequest.instructions ? String(labRequest.instructions).trim() : null,
+              cost: isNaN(parsedCost) ? 0 : parsedCost,
+              status: 'Sent'
+            }
+          });
+        }
+
+        return await tx.treatmentPlanItem.findUnique({
+          where: { id: item.id },
+          include: TREATMENT_PLAN_ITEM_INCLUDE
+        });
       });
 
-      return res.status(201).json(createdItems);
+      return res.status(201).json(createdItem);
     }
 
     // 3. Single-tooth (or general non-tooth) creation
     let validatedToothNumber: number | null = null;
+    let validatedToothNumbersStr: string | null = null;
     if (toothNumber !== undefined && toothNumber !== null) {
       if (typeof toothNumber !== 'number' || !Number.isInteger(toothNumber) || !VALID_FDI_NUMBERS.has(toothNumber)) {
         return res.status(400).json({ error: `Invalid FDI tooth number: ${toothNumber}` });
       }
       validatedToothNumber = toothNumber;
+      validatedToothNumbersStr = String(toothNumber);
     }
 
     const createdItem = await prisma.$transaction(async (tx) => {
@@ -228,6 +239,7 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
           treatmentPlanId: plan.id,
           treatmentCatalogId,
           toothNumber: validatedToothNumber,
+          toothNumbers: validatedToothNumbersStr,
           notes: notes || null,
           totalSittings,
           status: targetStatus,
@@ -252,19 +264,31 @@ export const addTreatmentPlanItem = async (req: Request, res: Response, next: Ne
         });
       }
 
+      // Create Lab Request if provided
+      if (labRequest && labRequest.labId) {
+        const parsedCost = labRequest.cost !== undefined ? parseFloat(labRequest.cost) : 0;
+        await tx.labRequest.create({
+          data: {
+            labId: labRequest.labId,
+            patientId,
+            treatmentPlanItemId: item.id,
+            visitId: isDirectCompleted ? (completedVisitId || null) : null,
+            doctorId: (req.user as any)?.staffId || (req.user as any)?.id || null,
+            workType: (labRequest.workType || catalogItem.name || 'Prosthetic').trim(),
+            toothNumbers: validatedToothNumbersStr,
+            shade: labRequest.shade ? String(labRequest.shade).trim() : null,
+            sentDate: new Date(),
+            expectedDeliveryDate: labRequest.expectedDeliveryDate ? new Date(labRequest.expectedDeliveryDate) : null,
+            instructions: labRequest.instructions ? String(labRequest.instructions).trim() : null,
+            cost: isNaN(parsedCost) ? 0 : parsedCost,
+            status: 'Sent'
+          }
+        });
+      }
+
       return tx.treatmentPlanItem.findUnique({
         where: { id: item.id },
-        include: {
-          catalogItem: true,
-          completedVisit: true,
-          sessions: {
-            include: {
-              doctor: { select: { id: true, name: true, role: true } },
-              visit: true
-            },
-            orderBy: { sittingNumber: 'asc' }
-          }
-        }
+        include: TREATMENT_PLAN_ITEM_INCLUDE
       });
     });
 
@@ -278,7 +302,7 @@ export const updateTreatmentPlanItem = async (req: Request, res: Response, next:
   try {
     const patientId = req.params.patientId as string;
     const itemId = req.params.itemId as string;
-    const { status, completedVisitId, notes, toothNumber, treatmentCatalogId, totalSittings } = req.body;
+    const { status, completedVisitId, notes, toothNumber, toothNumbers, treatmentCatalogId, totalSittings } = req.body;
 
     const item = await prisma.treatmentPlanItem.findUnique({
       where: { id: itemId },
@@ -337,14 +361,37 @@ export const updateTreatmentPlanItem = async (req: Request, res: Response, next:
       updateData.treatmentCatalogId = treatmentCatalogId;
     }
 
-    // Allow updating toothNumber on Planned/In Progress items
-    if (toothNumber !== undefined && !isClosedHistoricalVisit) {
+    // Allow updating toothNumber / toothNumbers on Planned/In Progress items
+    if (toothNumbers !== undefined && !isClosedHistoricalVisit) {
+      if (toothNumbers === null) {
+        updateData.toothNumber = null;
+        updateData.toothNumbers = null;
+      } else if (Array.isArray(toothNumbers)) {
+        if (toothNumbers.length === 0) {
+          updateData.toothNumber = null;
+          updateData.toothNumbers = null;
+        } else {
+          for (const t of toothNumbers) {
+            if (typeof t !== 'number' || !Number.isInteger(t) || !VALID_FDI_NUMBERS.has(t)) {
+              return res.status(400).json({ error: `Invalid FDI tooth number: ${t}` });
+            }
+          }
+          const sortedTeeth = Array.from(new Set(toothNumbers)).sort((a: number, b: number) => a - b);
+          updateData.toothNumber = sortedTeeth[0];
+          updateData.toothNumbers = sortedTeeth.join(',');
+        }
+      }
+    } else if (toothNumber !== undefined && !isClosedHistoricalVisit) {
       if (toothNumber !== null) {
         if (typeof toothNumber !== 'number' || !Number.isInteger(toothNumber) || !VALID_FDI_NUMBERS.has(toothNumber)) {
           return res.status(400).json({ error: `Invalid FDI tooth number: ${toothNumber}` });
         }
+        updateData.toothNumber = toothNumber;
+        updateData.toothNumbers = String(toothNumber);
+      } else {
+        updateData.toothNumber = null;
+        updateData.toothNumbers = null;
       }
-      updateData.toothNumber = toothNumber;
     }
 
     if (status === 'Completed') {
@@ -384,17 +431,7 @@ export const updateTreatmentPlanItem = async (req: Request, res: Response, next:
     const updatedItem = await prisma.treatmentPlanItem.update({
       where: { id: itemId },
       data: updateData,
-      include: {
-        catalogItem: true,
-        completedVisit: true,
-        sessions: {
-          include: {
-            doctor: { select: { id: true, name: true, role: true } },
-            visit: true
-          },
-          orderBy: { sittingNumber: 'asc' }
-        }
-      }
+      include: TREATMENT_PLAN_ITEM_INCLUDE
     });
 
     return res.json(updatedItem);
@@ -654,17 +691,7 @@ export const completeTreatmentSitting = async (req: Request, res: Response, next
         completedAt: shouldMarkOverall ? (session.treatmentPlanItem.completedAt || new Date()) : session.treatmentPlanItem.completedAt,
         notes: session.treatmentPlanItem.notes
       },
-      include: {
-        catalogItem: true,
-        completedVisit: true,
-        sessions: {
-          include: {
-            doctor: { select: { id: true, name: true, role: true } },
-            visit: true
-          },
-          orderBy: { sittingNumber: 'asc' }
-        }
-      }
+      include: TREATMENT_PLAN_ITEM_INCLUDE
     });
 
     return res.json({ session: updatedSession, item: updatedItem });
@@ -820,6 +847,7 @@ export async function getPendingTreatmentsForPatients(patientIds: string[]) {
           variant: item.catalogItem?.variant || null,
           category: item.catalogItem?.category || null,
           toothNumber: item.toothNumber,
+          toothNumbers: item.toothNumbers,
           status: item.status,
           totalSittings: Math.max(item.totalSittings || 1, (item.sessions || []).length),
           completedCount: completedSessions.length,
@@ -934,6 +962,7 @@ export const restoreTreatmentPlanSnapshot = async (req: Request, res: Response, 
               treatmentPlanId: plan.id,
               treatmentCatalogId: item.treatmentCatalogId,
               toothNumber: item.toothNumber,
+              toothNumbers: item.toothNumbers || null,
               status: item.status,
               notes: item.notes,
               totalSittings: item.totalSittings,

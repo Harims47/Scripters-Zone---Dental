@@ -344,7 +344,8 @@ export function PatientsPage() {
             Search patients and review their complete visit-by-visit clinical records.
           </p>
         </div>
-        {currentUser?.role === 'Head Doctor' && (
+        {/* Temporarily hidden as requested */}
+        {false && currentUser?.role === 'Head Doctor' && (
           <Button
             onClick={() => setIsImportModalOpen(true)}
             className="bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs flex items-center gap-1.5 h-9 px-3.5 rounded-xl self-start sm:self-auto transition-colors cursor-pointer"

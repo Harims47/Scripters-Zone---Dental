@@ -57,6 +57,7 @@ model Patient {
   reimbursementDocuments    ReimbursementDocument[]
   dentalImages              DentalImage[]
   externalAdvices           ExternalDoctorAdvice[]
+  labRequests               LabRequest[]
 }
 
 model Appointment {
@@ -104,6 +105,7 @@ model Visit {
   dentalImages              DentalImage[]
   externalAdvices           ExternalDoctorAdvice[]
   treatmentSessions         TreatmentSession[]
+  labRequests               LabRequest[]
 
   @@index([visitDate])
 }
@@ -261,6 +263,7 @@ model TreatmentPlanItem {
   treatmentPlanId    String
   treatmentCatalogId String
   toothNumber        Int?
+  toothNumbers       String?
   status             String             @default("Planned") // "Planned" | "In Progress" | "Completed"
   notes              String?            @db.Text
   totalSittings      Int                @default(1)
@@ -272,6 +275,7 @@ model TreatmentPlanItem {
   catalogItem        TreatmentCatalog   @relation(fields: [treatmentCatalogId], references: [id])
   completedVisit     Visit?             @relation(fields: [completedVisitId], references: [id])
   sessions           TreatmentSession[]
+  labRequests        LabRequest[]
 
   @@index([toothNumber])
 }
@@ -658,6 +662,51 @@ model ExternalDoctorAdvice {
 
   @@index([visitId])
   @@index([patientId])
+  @@index([status])
+}
+
+model DentalLab {
+  id            String       @id @default(uuid())
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?      @db.Text
+  color         String       @default("#0D9488") // Distinctive theme color code for visual identification
+  notes         String?      @db.Text
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  requests      LabRequest[]
+}
+
+model LabRequest {
+  id                   String             @id @default(uuid())
+  labId                String
+  lab                  DentalLab          @relation(fields: [labId], references: [id])
+  patientId            String
+  patient              Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatmentPlanItemId  String?
+  treatmentPlanItem    TreatmentPlanItem? @relation(fields: [treatmentPlanItemId], references: [id], onDelete: SetNull)
+  visitId              String?
+  visit                Visit?             @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  doctorId             String?
+  workType             String             // e.g. "Zirconia Crown", "PFM Bridge", "Cast Partial Denture", "Aligners"
+  toothNumbers         String?            // e.g. "14", "11, 12, 13", "General"
+  shade                String?            // e.g. "A1", "A2", "B1", "BL2"
+  sentDate             DateTime           @default(now())
+  expectedDeliveryDate DateTime?
+  receivedDate         DateTime?
+  status               String             @default("Sent") // "Sent" | "In Progress" | "Received" | "Delivered" | "Cancelled"
+  instructions         String?            @db.Text
+  cost                 Float?             @default(0)
+  receivedNotes        String?            @db.Text
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([labId])
+  @@index([patientId])
+  @@index([treatmentPlanItemId])
   @@index([status])
 }
 

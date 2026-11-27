@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -15,8 +15,11 @@ import {
   AlertCircle,
   CheckCircle2,
   Camera,
-  Clock
+  Clock,
+  Lock,
+  FlaskConical
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
   Dialog,
@@ -27,9 +30,9 @@ import {
   DialogFooter
 } from '../ui/dialog';
 import { api } from '../../lib/api';
-import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem, DentalImage } from '../../types/domain';
+import type { TreatmentPlan, TreatmentCatalog, TreatmentPlanItem, DentalImage, DentalLab } from '../../types/domain';
 import { FdiToothChart } from './FdiToothChart';
-import { getToothInfo } from '../../lib/toothMetadata';
+import { getToothInfo, parseTeeth, formatTeethLabel } from '../../lib/toothMetadata';
 import { DentalImagingSection } from './DentalImagingSection';
 import { TreatmentSessionsSection } from './TreatmentSessionsSection';
 
@@ -112,6 +115,43 @@ function getSessionDueInfo(rawDate?: string | null): {
   }
 }
 
+function renderProcedureNotes(rawNotes?: string | null) {
+  if (!rawNotes) return null;
+  const breakdownRegex = /\[Breakdown:\s*X-Ray:\s*₹?(\d*),\s*RCT:\s*₹?(\d*),\s*Crown:\s*₹?(\d*),\s*Scan:\s*₹?(\d*)\]/i;
+  const match = rawNotes.match(breakdownRegex);
+  const cleanNotes = rawNotes.replace(breakdownRegex, '').trim();
+
+  return (
+    <div className="space-y-1">
+      {cleanNotes && <div>{cleanNotes}</div>}
+      {match && (
+        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+          {Number(match[1]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+              X-Ray: ₹{Number(match[1]).toLocaleString()}
+            </span>
+          )}
+          {Number(match[2]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              RCT: ₹{Number(match[2]).toLocaleString()}
+            </span>
+          )}
+          {Number(match[3]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              Crown: ₹{Number(match[3]).toLocaleString()}
+            </span>
+          )}
+          {Number(match[4]) > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+              Scan: ₹{Number(match[4]).toLocaleString()}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TreatmentPlanUI({
   patientId,
   currentVisitId,
@@ -124,7 +164,8 @@ export function TreatmentPlanUI({
   initialEdit = false,
   initialView,
   targetItemId,
-  targetSessionId
+  targetSessionId,
+  isFeeLocked = false
 }: {
   patientId: string;
   currentVisitId?: string;
@@ -138,6 +179,7 @@ export function TreatmentPlanUI({
   initialView?: 'planning' | 'imaging' | 'sessions';
   targetItemId?: string | null;
   targetSessionId?: string | null;
+  isFeeLocked?: boolean;
 }) {
   const [plan, setPlan] = useState<TreatmentPlan | null>(null);
   const [catalog, setCatalog] = useState<TreatmentCatalog[]>([]);
@@ -160,7 +202,7 @@ export function TreatmentPlanUI({
   const sessionCreatedItemIds = useRef<string[]>([]);
   const isConfirmed = useRef<boolean>(false);
   const imagingRollbackRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const imagingCommitRef = useRef<() => void>(() => {});
+  const imagingCommitRef = useRef<() => void>(() => { });
 
   const rollback = useCallback(async () => {
     try {
@@ -214,6 +256,19 @@ export function TreatmentPlanUI({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [formResetKey, setFormResetKey] = useState<number>(0);
 
+  // Fee breakdown state for RCT, RE RCT, and POST & CORE + RCT
+  const [rctBreakdown, setRctBreakdown] = useState({
+    xray: '',
+    rct: '',
+    crown: '',
+    scan: ''
+  });
+  const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
+
+  // Dental Labs State
+  const [labs, setLabs] = useState<DentalLab[]>([]);
+  const [selectedLabId, setSelectedLabId] = useState<string>('');
+
   // Editing state for an existing planned item
   const [editingItem, setEditingItem] = useState<TreatmentPlanItem | null>(null);
   const [plannedSittings, setPlannedSittings] = useState<number>(1);
@@ -258,14 +313,15 @@ export function TreatmentPlanUI({
       setErrorMsg(null);
       setFormResetKey((k) => k + 1);
       try {
-        await api.post(`/api/patients/${patientId}/treatment-plan/snapshot`).catch(() => {});
+        await api.post(`/api/patients/${patientId}/treatment-plan/snapshot`).catch(() => { });
         const imgEndpoint = currentVisitId
           ? `/api/patients/${patientId}/dental-images?visitId=${currentVisitId}`
           : `/api/patients/${patientId}/dental-images`;
-        const [catRes, planRes, imgRes] = await Promise.all([
+        const [catRes, planRes, imgRes, labsRes] = await Promise.all([
           api.get<any>('/api/treatments/catalog'),
           api.get<any>(`/api/patients/${patientId}/treatment-plan`),
-          api.get<any>(imgEndpoint).catch(() => [])
+          api.get<any>(imgEndpoint).catch(() => []),
+          api.get<any>('/api/labs').catch(() => [])
         ]);
 
         const catList = Array.isArray(catRes) ? catRes : catRes?.data || [];
@@ -276,6 +332,9 @@ export function TreatmentPlanUI({
 
         const imgList = Array.isArray(imgRes) ? imgRes : [];
         setDentalImages(imgList);
+
+        const labList = Array.isArray(labsRes) ? labsRes : (labsRes as any)?.data || [];
+        setLabs(labList);
 
         // Pre-fill form when opened in edit mode
         if (initialEdit && planData?.items?.length) {
@@ -289,8 +348,29 @@ export function TreatmentPlanUI({
             setSelectedCategory(catItem?.category || '');
             setSelectedBaseProcedure(catItem?.name || '');
             setSelectedProcedure(itemToEdit.treatmentCatalogId);
-            setNotes(itemToEdit.notes || '');
-            setSelectedTeeth(itemToEdit.toothNumber ? [itemToEdit.toothNumber] : []);
+
+            const breakdownRegex = /\[Breakdown:\s*X-Ray:\s*₹?(\d*),\s*RCT:\s*₹?(\d*),\s*Crown:\s*₹?(\d*),\s*Scan:\s*₹?(\d*)\]/i;
+            const match = itemToEdit.notes ? itemToEdit.notes.match(breakdownRegex) : null;
+            if (match) {
+              setRctBreakdown({
+                xray: match[1] === '0' ? '' : match[1],
+                rct: match[2] === '0' ? '' : match[2],
+                crown: match[3] === '0' ? '' : match[3],
+                scan: match[4] === '0' ? '' : match[4]
+              });
+              setNotes((itemToEdit.notes || '').replace(breakdownRegex, '').trim());
+            } else {
+              setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+              setNotes(itemToEdit.notes || '');
+            }
+
+            if (itemToEdit.labRequests && itemToEdit.labRequests.length > 0) {
+              setSelectedLabId(itemToEdit.labRequests[0].labId || '');
+            } else {
+              setSelectedLabId('');
+            }
+
+            setSelectedTeeth(parseTeeth(itemToEdit));
           }
         }
       } catch (err) {
@@ -310,14 +390,50 @@ export function TreatmentPlanUI({
   );
   const hasVariants = currentProcedureVariants.length > 0;
 
+  const isSpecialRctProcedure = Boolean(
+    selectedBaseProcedure &&
+    ['RCT', 'RE RCT', 'POST & CORE + RCT'].includes(selectedBaseProcedure.trim().toUpperCase().replace(/\s+/g, ' '))
+  );
+
+  const handleBreakdownChange = (field: 'xray' | 'rct' | 'crown' | 'scan', val: string) => {
+    const numericOnly = val.replace(/[^0-9]/g, '');
+    const updated = { ...rctBreakdown, [field]: numericOnly };
+    setRctBreakdown(updated);
+
+    const xrayNum = parseInt(updated.xray, 10) || 0;
+    const rctNum = parseInt(updated.rct, 10) || 0;
+    const crownNum = parseInt(updated.crown, 10) || 0;
+    const scanNum = parseInt(updated.scan, 10) || 0;
+    const total = xrayNum + rctNum + crownNum + scanNum;
+
+    if (!isFeeLocked) {
+      setLocalTreatmentFee(String(total));
+    }
+  };
+
+  const rctBreakdownTotal = useMemo(() => {
+    return (
+      (parseInt(rctBreakdown.xray, 10) || 0) +
+      (parseInt(rctBreakdown.rct, 10) || 0) +
+      (parseInt(rctBreakdown.crown, 10) || 0) +
+      (parseInt(rctBreakdown.scan, 10) || 0)
+    );
+  }, [rctBreakdown]);
+
+  const rctBreakdownCount = useMemo(() => {
+    return [rctBreakdown.xray, rctBreakdown.rct, rctBreakdown.crown, rctBreakdown.scan].filter(
+      (v) => Boolean(v && Number(v) > 0)
+    ).length;
+  }, [rctBreakdown]);
+
   // Calculate teeth with existing treatments for chart badges
   const plannedTeeth = (plan?.items || [])
-    .filter((item) => item.status === 'Planned' && item.toothNumber != null)
-    .map((item) => item.toothNumber as number);
+    .filter((item) => item.status === 'Planned')
+    .flatMap((item) => parseTeeth(item));
 
   const completedTeeth = (plan?.items || [])
-    .filter((item) => item.status === 'Completed' && item.toothNumber != null)
-    .map((item) => item.toothNumber as number);
+    .filter((item) => item.status === 'Completed')
+    .flatMap((item) => parseTeeth(item));
 
   // Toggle tooth in multi-selection
   const handleToggleTooth = (fdi: number) => {
@@ -353,68 +469,82 @@ export function TreatmentPlanUI({
     setSaving(true);
     setErrorMsg(null);
 
+    // Format notes with breakdown if special RCT procedure
+    let finalNotes = notes.trim();
+    if (isSpecialRctProcedure) {
+      const hasAnyBreakdown = rctBreakdown.xray || rctBreakdown.rct || rctBreakdown.crown || rctBreakdown.scan;
+      if (hasAnyBreakdown) {
+        const breakdownStr = `[Breakdown: X-Ray: ₹${rctBreakdown.xray || 0}, RCT: ₹${rctBreakdown.rct || 0}, Crown: ₹${rctBreakdown.crown || 0}, Scan: ₹${rctBreakdown.scan || 0}]`;
+        const cleanedNotes = finalNotes.replace(/\[Breakdown:[^\]]*\]/gi, '').trim();
+        finalNotes = cleanedNotes ? `${cleanedNotes}\n${breakdownStr}` : breakdownStr;
+      }
+    }
+
+    const labRequestPayload = selectedLabId
+      ? {
+          labId: selectedLabId,
+          workType: selectedBaseProcedure || 'Prosthetic'
+        }
+      : undefined;
+
     try {
       if (editingItem) {
         // Update existing planned item
-        const singleTooth = selectedTeeth.length > 0 ? selectedTeeth[0] : null;
         const res = await api.patch<TreatmentPlanItem>(
           `/api/patients/${patientId}/treatment-plan/items/${editingItem.id}`,
           {
             treatmentCatalogId: selectedProcedure,
-            toothNumber: singleTooth,
-            notes: notes || null,
+            toothNumbers: selectedTeeth.length > 0 ? selectedTeeth : null,
+            notes: finalNotes || null,
             totalSittings: plannedSittings
           }
         );
 
-        setPlan((prev) =>
-          prev
-            ? {
-              ...prev,
-              items: prev.items.map((i) => (i.id === editingItem.id ? res : i))
-            }
-            : null
-        );
+        if (labRequestPayload) {
+          if (editingItem.labRequests && editingItem.labRequests.length > 0) {
+            await api.put(`/api/labs/requests/${editingItem.labRequests[0].id}`, labRequestPayload);
+          } else {
+            await api.post('/api/labs/requests', {
+              ...labRequestPayload,
+              treatmentPlanItemId: editingItem.id,
+              patientId,
+              visitId: currentVisitId,
+              toothNumbers: selectedTeeth.length > 0 ? selectedTeeth.join(',') : null
+            });
+          }
+          const refreshed = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+          setPlan(refreshed?.data || refreshed);
+        } else {
+          setPlan((prev) =>
+            prev
+              ? {
+                ...prev,
+                items: prev.items.map((i) => (i.id === editingItem.id ? res : i))
+              }
+              : null
+          );
+        }
 
         setEditingItem(null);
         setPlannedSittings(1);
       } else {
-        // Create new item(s)
-        if (selectedTeeth.length > 1) {
-          // Multi-tooth batch creation
-          const res = await api.post<TreatmentPlanItem[]>(
-            `/api/patients/${patientId}/treatment-plan/items`,
-            {
-              treatmentCatalogId: selectedProcedure,
-              toothNumbers: selectedTeeth,
-              notes: notes || undefined,
-              totalSittings: plannedSittings
-            }
-          );
+        // Create new procedure (single or multi-tooth creates 1 procedure)
+        const res = await api.post<TreatmentPlanItem>(
+          `/api/patients/${patientId}/treatment-plan/items`,
+          {
+            treatmentCatalogId: selectedProcedure,
+            toothNumbers: selectedTeeth.length > 0 ? selectedTeeth : undefined,
+            notes: finalNotes || undefined,
+            totalSittings: plannedSittings,
+            labRequest: labRequestPayload
+          }
+        );
 
-          const newItems = Array.isArray(res) ? res : [res];
-          newItems.forEach((i: any) => sessionCreatedItemIds.current.push(i.id));
-          setPlan((prev) =>
-            prev ? { ...prev, items: [...newItems, ...prev.items] } : null
-          );
-        } else {
-          // Single tooth or non-tooth creation
-          const singleTooth = selectedTeeth.length === 1 ? selectedTeeth[0] : null;
-          const res = await api.post<TreatmentPlanItem>(
-            `/api/patients/${patientId}/treatment-plan/items`,
-            {
-              treatmentCatalogId: selectedProcedure,
-              toothNumber: singleTooth,
-              notes: notes || undefined,
-              totalSittings: plannedSittings
-            }
-          );
-          sessionCreatedItemIds.current.push(res.id);
+        sessionCreatedItemIds.current.push(res.id);
 
-          setPlan((prev) =>
-            prev ? { ...prev, items: [res, ...prev.items] } : null
-          );
-        }
+        setPlan((prev) =>
+          prev ? { ...prev, items: [res, ...prev.items] } : null
+        );
       }
 
       // Reset form
@@ -422,6 +552,9 @@ export function TreatmentPlanUI({
       setSelectedBaseProcedure('');
       setSelectedProcedure('');
       setNotes('');
+      setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+      setIsBreakdownOpen(false);
+      setSelectedLabId('');
       setSelectedTeeth([]);
       setPlannedSittings(1);
       setCustomSittingsInput('');
@@ -440,8 +573,31 @@ export function TreatmentPlanUI({
     setSelectedCategory(catItem?.category || '');
     setSelectedBaseProcedure(catItem?.name || '');
     setSelectedProcedure(item.treatmentCatalogId);
-    setNotes(item.notes || '');
-    setSelectedTeeth(item.toothNumber ? [item.toothNumber] : []);
+    setIsBreakdownOpen(false);
+
+    // Check if item.notes contains breakdown
+    const breakdownRegex = /\[Breakdown:\s*X-Ray:\s*₹?(\d*),\s*RCT:\s*₹?(\d*),\s*Crown:\s*₹?(\d*),\s*Scan:\s*₹?(\d*)\]/i;
+    const match = item.notes ? item.notes.match(breakdownRegex) : null;
+    if (match) {
+      setRctBreakdown({
+        xray: match[1] === '0' ? '' : match[1],
+        rct: match[2] === '0' ? '' : match[2],
+        crown: match[3] === '0' ? '' : match[3],
+        scan: match[4] === '0' ? '' : match[4]
+      });
+      setNotes((item.notes || '').replace(breakdownRegex, '').trim());
+    } else {
+      setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+      setNotes(item.notes || '');
+    }
+
+    if (item.labRequests && item.labRequests.length > 0) {
+      setSelectedLabId(item.labRequests[0].labId || '');
+    } else {
+      setSelectedLabId('');
+    }
+
+    setSelectedTeeth(parseTeeth(item));
     const sittingsCount = item.totalSittings !== undefined && item.totalSittings !== null ? item.totalSittings : (item.sessions?.length || 1);
     setPlannedSittings(sittingsCount);
     setCustomSittingsInput(sittingsCount === 0 || sittingsCount > 3 ? String(sittingsCount) : '');
@@ -454,11 +610,29 @@ export function TreatmentPlanUI({
     setSelectedBaseProcedure('');
     setSelectedProcedure('');
     setNotes('');
+    setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+    setIsBreakdownOpen(false);
+    setSelectedLabId('');
     setSelectedTeeth([]);
     setPlannedSittings(1);
     setCustomSittingsInput('');
     setErrorMsg(null);
     setFormResetKey((k) => k + 1);
+  };
+
+  const handleDirectReceiveLab = async (requestId: string) => {
+    try {
+      await api.post(`/api/labs/requests/${requestId}/receive`, {
+        receivedDate: new Date().toISOString()
+      });
+      toast.success('Lab work recorded as received');
+      const updatedPlanRes = await api.get<any>(`/api/patients/${patientId}/treatment-plan`);
+      const updatedPlan = updatedPlanRes?.data || updatedPlanRes;
+      setPlan(updatedPlan);
+    } catch (err) {
+      console.error('Failed to mark lab request as received:', err);
+      toast.error('Failed to mark received');
+    }
   };
 
   const handleMarkCompleted = async (itemId: string) => {
@@ -520,10 +694,10 @@ export function TreatmentPlanUI({
   ) || [];
 
   const currentVisitItems = currentVisitId
-    ? plan?.items.filter((item) => 
-        item.completedVisitId === currentVisitId ||
-        (item.sessions && item.sessions.some((s: any) => s.visitId === currentVisitId && s.status === 'Completed'))
-      ) || []
+    ? plan?.items.filter((item) =>
+      item.completedVisitId === currentVisitId ||
+      (item.sessions && item.sessions.some((s: any) => s.visitId === currentVisitId && s.status === 'Completed'))
+    ) || []
     : plan?.items || [];
 
   const plannedItems = plan?.items.filter((item) =>
@@ -539,6 +713,95 @@ export function TreatmentPlanUI({
   const pendingSessionsCount = (plan?.items || []).reduce((acc, item) => {
     return acc + (item.sessions || []).filter((s: any) => s.status === 'Planned' || s.status === 'In Progress').length;
   }, 0);
+
+  const renderLabBadge = (item: TreatmentPlanItem) => {
+    if (!item.labRequests || item.labRequests.length === 0) return null;
+
+    return (
+      <div className="space-y-1.5 pt-1">
+        {item.labRequests.map((lr) => {
+          const labColor = lr.lab?.color || '#0D9488';
+          const isReceived = lr.status === 'Received';
+          return (
+            <div
+              key={lr.id}
+              className="p-2 rounded-lg border text-xs space-y-1 shadow-2xs transition-all"
+              style={{
+                backgroundColor: `${labColor}0D`,
+                borderColor: `${labColor}40`,
+                borderLeft: `3.5px solid ${labColor}`
+              }}
+            >
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <FlaskConical className="w-3.5 h-3.5 shrink-0" style={{ color: labColor }} />
+                  <span className="font-bold tracking-tight" style={{ color: labColor }}>
+                    {lr.lab?.name || 'Dental Lab'}
+                  </span>
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1 ${
+                    isReceived
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-amber-100 text-amber-800 border border-amber-200'
+                  }`}
+                >
+                  {isReceived ? (
+                    <>
+                      <Check className="w-2.5 h-2.5" />
+                      Received
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-2.5 h-2.5" />
+                      Sent to Lab
+                    </>
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 flex-wrap">
+                <div>
+                  <span className="font-semibold text-slate-800">{lr.workType}</span>
+                  {lr.shade && (
+                    <span className="ml-1 font-bold text-amber-900 bg-amber-50 px-1 py-0.2 rounded border border-amber-200 text-[10px]">
+                      Shade: {lr.shade}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {isReceived && lr.receivedDate
+                    ? `Rec'd: ${new Date(lr.receivedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
+                    : lr.expectedDeliveryDate
+                    ? `Due: ${new Date(lr.expectedDeliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
+                    : ''}
+                </span>
+              </div>
+
+              {lr.instructions && (
+                <p className="text-[10px] text-slate-500 italic line-clamp-1" title={lr.instructions}>
+                  "{lr.instructions}"
+                </p>
+              )}
+
+              {!isReceived && (
+                <div className="flex justify-end pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDirectReceiveLab(lr.id)}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                  >
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    Receive Lab Work
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -560,11 +823,10 @@ export function TreatmentPlanUI({
           <button
             type="button"
             onClick={() => setWorkspaceView('planning')}
-            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
-              workspaceView === 'planning'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${workspaceView === 'planning'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <span className="hidden sm:inline">Treatment Planning & FDI Chart</span>
             <span className="sm:hidden">Planning & FDI</span>
@@ -572,11 +834,10 @@ export function TreatmentPlanUI({
           <button
             type="button"
             onClick={() => setWorkspaceView('sessions')}
-            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
-              workspaceView === 'sessions'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${workspaceView === 'sessions'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
             <span>Treatment Sessions</span>
@@ -589,11 +850,10 @@ export function TreatmentPlanUI({
           <button
             type="button"
             onClick={() => setWorkspaceView('imaging')}
-            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
-              workspaceView === 'imaging'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-2 sm:px-3 py-1.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${workspaceView === 'imaging'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <Camera className="w-3.5 h-3.5 text-teal-600 shrink-0" />
             <span>Dental Imaging</span>
@@ -653,7 +913,7 @@ export function TreatmentPlanUI({
 
                   return (
                     <span key={item.id} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                      {item.catalogItem?.name} {item.toothNumber ? `(Tooth ${item.toothNumber})` : ''} — Sitting {nextSessionNum} of {item.totalSittings || 1} ({dueInfo.badgeText})
+                      {item.catalogItem?.name} {parseTeeth(item).length > 0 ? `(${formatTeethLabel(item)})` : ''} — Sitting {nextSessionNum} of {item.totalSittings || 1} ({dueInfo.badgeText})
                     </span>
                   );
                 })}
@@ -683,565 +943,585 @@ export function TreatmentPlanUI({
             />
           </div>
 
-        {/* =================================================================== */}
-        {/* MIDDLE COLUMN (min-[1440px]:col-span-3): Selected Tooth Details & Form */}
-        {/* =================================================================== */}
-        <div className="w-full min-[1440px]:col-span-3 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h4 className="text-sm font-bold text-slate-900">
-              {editingItem ? 'Edit Procedure' : 'Add Procedure'}
-            </h4>
-            {editingItem && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-xs text-slate-500 hover:text-slate-800"
-                onClick={handleCancelEdit}
-              >
-                Cancel Edit
-              </Button>
-            )}
-          </div>
-
-          {/* Selected Teeth Badges & Anatomical Details */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                Selected Teeth
-              </label>
-              {selectedTeeth.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearSelection}
-                  className="text-[11px] text-rose-600 hover:underline font-medium"
+          {/* =================================================================== */}
+          {/* MIDDLE COLUMN (min-[1440px]:col-span-3): Selected Tooth Details & Form */}
+          {/* =================================================================== */}
+          <div className="w-full min-[1440px]:col-span-3 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-2.5 max-h-[min(540px,calc(96vh-170px))] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900">
+                {editingItem ? 'Edit Procedure' : 'Add Procedure'}
+              </h4>
+              {editingItem && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-slate-500 hover:text-slate-800"
+                  onClick={handleCancelEdit}
                 >
-                  Clear
-                </button>
+                  Cancel Edit
+                </Button>
               )}
             </div>
 
-            {selectedTeeth.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-100">
-                {selectedTeeth.map((fdi) => {
-                  const info = getToothInfo(fdi);
-                  return (
-                    <span
-                      key={fdi}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold text-xs border border-sky-200"
-                      title={info?.name}
-                    >
-                      Tooth {fdi}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTooth(fdi)}
-                        className="hover:text-rose-600 ml-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500 italic">
-                No specific tooth selected. (Will be saved as general/whole-mouth procedure).
-              </div>
-            )}
-
-            {/* Structured Tooth Anatomical Metadata (Strictly Independent from Notes) */}
-            {primaryToothInfo && (
-              <div className="p-2 bg-gradient-to-r from-sky-50/70 to-blue-50/50 rounded-xl border border-sky-100/80 space-y-0.5 text-xs">
-                <div className="font-bold text-slate-900 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
-                    <span>Tooth {primaryToothInfo.fdi}</span>
-                  </div>
-                  <span className="font-medium text-slate-600 text-[11px] truncate max-w-[150px]">{primaryToothInfo.name}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pt-0.5">
-                  <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                    {primaryToothInfo.jaw} Jaw
-                  </span>
-                  <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                    {primaryToothInfo.quadrant}
-                  </span>
-                  <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                    {primaryToothInfo.type}
-                  </span>
-                </div>
-
-                {/* Subtle indicator if this tooth has an RVG radiograph */}
-                {dentalImages.some(img => img.type === 'RVG' && img.toothNumber === primaryToothInfo.fdi) && (
-                  <div className="flex items-center gap-1.5 text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200 mt-1">
-                    <Camera className="w-3 h-3 shrink-0" />
-                    <span>Tooth {primaryToothInfo.fdi} has RVG radiograph</span>
-                    <button
-                      type="button"
-                      onClick={() => setWorkspaceView('imaging')}
-                      className="ml-auto underline font-bold hover:text-teal-900"
-                    >
-                      View
-                    </button>
-                  </div>
+            {/* Selected Teeth Badges & Anatomical Details */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                  Selected Teeth
+                </label>
+                {selectedTeeth.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="text-[11px] text-rose-600 hover:underline font-medium"
+                  >
+                    Clear
+                  </button>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Treatment Category & Procedure Selectors */}
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Treatment Category</label>
-              <Select
-                key={`cat-select-${formResetKey}`}
-                value={selectedCategory}
-                onValueChange={(val) => {
-                  setSelectedCategory(val);
-                  setSelectedBaseProcedure('');
-                  setSelectedProcedure('');
-                }}
-              >
-                <SelectTrigger className="bg-white text-xs h-9">
-                  <SelectValue placeholder="Select Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c} className="text-xs">
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Treatment Procedure</label>
-              <Select
-                key={`proc-select-${formResetKey}-${selectedCategory}`}
-                value={selectedBaseProcedure}
-                onValueChange={(procName) => {
-                  setSelectedBaseProcedure(procName);
-                  const matching = categoryProcedures.filter((p) => p.name === procName);
-                  if (matching.length === 1 && !matching[0].variant) {
-                    setSelectedProcedure(matching[0].id);
-                  } else {
-                    setSelectedProcedure('');
-                  }
-                }}
-                disabled={!selectedCategory}
-              >
-                <SelectTrigger className="bg-white text-xs h-9">
-                  <SelectValue placeholder="Select Procedure" />
-                </SelectTrigger>
-                <SelectContent>
-                  {uniqueProcedureNames.map((name) => (
-                    <SelectItem key={name} value={name} className="text-xs">
-                      {name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Sub-Procedure / Variant Selector (Only shown when procedure has variants like Fixed Partial Denture or Fixed Appliance) */}
-            {hasVariants && (
-              <div className="space-y-1 pt-0.5 transition-all">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-700">Procedure Type / Sub-Category</label>
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full">
-                    {selectedBaseProcedure} Options
-                  </span>
+              {selectedTeeth.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-100">
+                  {selectedTeeth.map((fdi) => {
+                    const info = getToothInfo(fdi);
+                    return (
+                      <span
+                        key={fdi}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 font-bold text-xs border border-sky-200"
+                        title={info?.name}
+                      >
+                        Tooth {fdi}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTooth(fdi)}
+                          className="hover:text-rose-600 ml-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
+              ) : (
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500 italic">
+                  No specific tooth selected. (Will be saved as general/whole-mouth procedure).
+                </div>
+              )}
+
+              {/* Structured Tooth Anatomical Metadata (Strictly Independent from Notes) */}
+              {primaryToothInfo && (
+                <div className="p-2 bg-gradient-to-r from-sky-50/70 to-blue-50/50 rounded-xl border border-sky-100/80 space-y-0.5 text-xs">
+                  <div className="font-bold text-slate-900 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                      <span>Tooth {primaryToothInfo.fdi}</span>
+                    </div>
+                    <span className="font-medium text-slate-600 text-[11px] truncate max-w-[150px]">{primaryToothInfo.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pt-0.5">
+                    <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                      {primaryToothInfo.jaw} Jaw
+                    </span>
+                    <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                      {primaryToothInfo.quadrant}
+                    </span>
+                    <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                      {primaryToothInfo.type}
+                    </span>
+                  </div>
+
+                  {/* Subtle indicator if this tooth has an RVG radiograph */}
+                  {dentalImages.some(img => img.type === 'RVG' && img.toothNumber === primaryToothInfo.fdi) && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200 mt-1">
+                      <Camera className="w-3 h-3 shrink-0" />
+                      <span>Tooth {primaryToothInfo.fdi} has RVG radiograph</span>
+                      <button
+                        type="button"
+                        onClick={() => setWorkspaceView('imaging')}
+                        className="ml-auto underline font-bold hover:text-teal-900"
+                      >
+                        View
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Treatment Category & Procedure Selectors */}
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Treatment Category</label>
                 <Select
-                  key={`var-select-${formResetKey}-${selectedBaseProcedure}`}
-                  value={selectedProcedure}
-                  onValueChange={(val) => setSelectedProcedure(val)}
+                  key={`cat-select-${formResetKey}`}
+                  value={selectedCategory}
+                  onValueChange={(val) => {
+                    setSelectedCategory(val);
+                    setSelectedBaseProcedure('');
+                    setSelectedProcedure('');
+                    setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+                    setIsBreakdownOpen(false);
+                  }}
                 >
-                  <SelectTrigger className="bg-white text-xs h-9 border-teal-200 focus:border-teal-400">
-                    <SelectValue placeholder={`Select ${selectedBaseProcedure} Option...`} />
+                  <SelectTrigger className="bg-white text-xs h-9">
+                    <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currentProcedureVariants.map((v) => (
-                      <SelectItem key={v.id} value={v.id} className="text-xs">
-                        {v.variant}
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c} className="text-xs">
+                        {c}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
 
-            {/* Expected Sittings: Numeric 1, 2, 3, or custom number */}
-            <div className="space-y-1.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                  Expected Sittings
-                </label>
-                <span className="text-[11px] font-semibold text-indigo-700">
-                  {plannedSittings === 0 ? '0 sittings' : plannedSittings === 1 ? '1 sitting' : `${plannedSittings} sittings`}
-                </span>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Treatment Procedure</label>
+                <Select
+                  key={`proc-select-${formResetKey}-${selectedCategory}`}
+                  value={selectedBaseProcedure}
+                  onValueChange={(procName) => {
+                    setSelectedBaseProcedure(procName);
+                    const matching = categoryProcedures.filter((p) => p.name === procName);
+                    if (matching.length === 1 && !matching[0].variant) {
+                      setSelectedProcedure(matching[0].id);
+                    } else {
+                      setSelectedProcedure('');
+                    }
+                    if (procName !== selectedBaseProcedure) {
+                      setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+                      setIsBreakdownOpen(false);
+                    }
+                  }}
+                  disabled={!selectedCategory}
+                >
+                  <SelectTrigger className="bg-white text-xs h-9">
+                    <SelectValue placeholder="Select Procedure" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {uniqueProcedureNames.map((name) => (
+                      <SelectItem key={name} value={name} className="text-xs">
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex items-center gap-1">
-                {[0, 1, 2, 3].map((num) => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => {
-                      setPlannedSittings(num);
-                      setCustomSittingsInput('');
-                    }}
-                    className={`flex-1 h-7 rounded-lg text-xs font-bold border transition-all ${
-                      plannedSittings === num && customSittingsInput === ''
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
+
+              {/* Sub-Procedure / Variant Selector (Only shown when procedure has variants like Fixed Partial Denture or Fixed Appliance) */}
+              {hasVariants && (
+                <div className="space-y-1 pt-0.5 transition-all">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700">Procedure Type / Sub-Category</label>
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full">
+                      {selectedBaseProcedure} Options
+                    </span>
+                  </div>
+                  <Select
+                    key={`var-select-${formResetKey}-${selectedBaseProcedure}`}
+                    value={selectedProcedure}
+                    onValueChange={(val) => setSelectedProcedure(val)}
                   >
-                    {num}
-                  </button>
-                ))}
-                <div className="flex-[1.2] min-w-[52px] relative">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Custom"
-                    value={customSittingsInput}
-                    onChange={(e) => {
-                      const str = e.target.value.replace(/[^0-9]/g, '');
-                      setCustomSittingsInput(str);
-                      const val = parseInt(str, 10);
-                      if (str === '0' || val === 0) {
-                        setPlannedSittings(0);
-                      } else if (!isNaN(val) && val >= 1) {
-                        setPlannedSittings(Math.min(50, val));
-                      } else if (str === '') {
-                        setPlannedSittings(1);
-                      }
-                    }}
-                    onFocus={() => {
-                      if (plannedSittings > 3 && !customSittingsInput) {
-                        setCustomSittingsInput(String(plannedSittings));
-                      }
-                    }}
-                    className={`w-full h-7 px-1 text-xs font-bold text-center rounded-lg border transition-all outline-none ${
-                      customSittingsInput !== '' || (plannedSittings > 3 && customSittingsInput === '')
-                        ? 'bg-indigo-600 text-white border-indigo-600 placeholder:text-indigo-200 ring-2 ring-indigo-500/20'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 placeholder:text-slate-400'
-                    }`}
-                  />
+                    <SelectTrigger className="bg-white text-xs h-9 border-teal-200 focus:border-teal-400">
+                      <SelectValue placeholder={`Select ${selectedBaseProcedure} Option...`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentProcedureVariants.map((v) => (
+                        <SelectItem key={v.id} value={v.id} className="text-xs">
+                          {v.variant}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Doctor Clinical Notes (Strictly Separate from Tooth Number) */}
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">
-                Doctor Notes (Optional)
-              </label>
-              <Textarea
-                placeholder="Enter clinical notes, diagnosis, or instructions..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="bg-white text-xs min-h-[52px] resize-none"
-              />
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="flex items-center gap-1.5 text-xs text-rose-600 bg-rose-50 p-2 rounded-lg border border-rose-100">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          <Button
-            size="sm"
-            className="w-full h-8 text-xs font-bold"
-            disabled={!selectedProcedure || saving}
-            onClick={handleAddOrUpdate}
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-            ) : editingItem ? (
-              <CheckCircle2 className="w-4 h-4 mr-1.5" />
-            ) : (
-              <Plus className="w-4 h-4 mr-1.5" />
-            )}
-            {editingItem ? 'Save Changes' : selectedTeeth.length > 1 ? `Add ${selectedTeeth.length} Procedures` : 'Add to Plan'}
-          </Button>
-        </div>
-
-        {/* =================================================================== */}
-        {/* RIGHT COLUMN (min-[1440px]:col-span-4): Planned & Active Treatments */}
-        {/* =================================================================== */}
-        <div className="w-full min-[1440px]:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-3 max-h-[440px] overflow-y-auto">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h4 className="text-sm font-bold text-slate-900">Treatments & Sessions</h4>
-            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-              {ongoingItems.length + currentVisitItems.length + plannedItems.length} items
-            </span>
-          </div>
-
-          {/* 1. Active Ongoing Multi-Sitting Treatments */}
-          {ongoingItems.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  Active Ongoing Treatments ({ongoingItems.length})
-                </h5>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                  In Progress
-                </span>
-              </div>
-
-              {ongoingItems.map((item) => {
-                const totalS = item.totalSittings || 1;
-                const completedSessions = (item.sessions || []).filter((s: any) => s.status === 'Completed');
-                const pendingSessions = (item.sessions || []).filter((s: any) => s.status !== 'Completed' && s.status !== 'Cancelled');
-                const nextSession = pendingSessions.sort((a: any, b: any) => a.sittingNumber - b.sittingNumber)[0];
-                const nextSessionNum = nextSession?.sittingNumber || (completedSessions.length + 1);
-                const nextSessionDate = nextSession?.plannedDate || nextSession?.actualDate;
-                const dueInfo = getSessionDueInfo(nextSessionDate);
-
-                return (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-xl border bg-gradient-to-r from-amber-50/70 to-orange-50/50 border-amber-200 text-xs space-y-2 shadow-2xs"
+              {/* Option 1: Collapsible Fee Breakdown Accordion for RCT, RE RCT, and POST & CORE + RCT */}
+              {isSpecialRctProcedure && (
+                <div className="rounded-xl border border-teal-200 bg-teal-50/40 overflow-hidden transition-all">
+                  <button
+                    type="button"
+                    onClick={() => setIsBreakdownOpen(!isBreakdownOpen)}
+                    className="w-full flex items-center justify-between p-2.5 text-left hover:bg-teal-50/70 transition-colors cursor-pointer select-none"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {item.toothNumber ? (
-                            <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
-                              Tooth {item.toothNumber}
-                            </span>
-                          ) : (
-                            <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
-                              General
-                            </span>
-                          )}
-                          <span className="font-bold text-slate-900">
-                            {item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {item.catalogItem?.category}
-                        </div>
-                      </div>
-
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
-                        Sitting {completedSessions.length}/{totalS}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-teal-900 flex items-center gap-1.5">
+                        Fee Breakdown ({selectedBaseProcedure})
                       </span>
+                      {rctBreakdownTotal > 0 ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-300">
+                          ₹{rctBreakdownTotal.toLocaleString()} ({rctBreakdownCount} items)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-teal-600 bg-white/70 px-1.5 py-0.5 rounded border border-teal-200">
+                          Optional
+                        </span>
+                      )}
                     </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200/70 flex-wrap">
-                      <span className={`text-[11px] font-semibold flex items-center gap-1 ${
-                        dueInfo.isOverdue
-                          ? 'text-rose-700 font-bold'
-                          : dueInfo.isToday
-                          ? 'text-amber-900 font-bold'
-                          : dueInfo.isTomorrow
-                          ? 'text-indigo-950 font-bold'
-                          : 'text-slate-700'
-                      }`}>
-                        👉 Next: Sitting {nextSessionNum} ({dueInfo.cardText})
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-6 px-2.5 text-[11px] font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs cursor-pointer"
-                        onClick={() => {
-                          setWorkspaceView('sessions');
-                        }}
-                      >
-                        Record Sitting {nextSessionNum} &rarr;
-                      </Button>
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-teal-800 shrink-0">
+                      <span>{isBreakdownOpen ? 'Close' : rctBreakdownTotal > 0 ? 'Edit' : '+ Add'}</span>
+                      {isBreakdownOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  </button>
 
-          {/* Current Visit Procedures */}
-          {currentVisitId ? (
-            <div className="space-y-2.5">
-              <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Completed This Visit ({currentVisitItems.length})
-              </h5>
-
-              {currentVisitItems.length === 0 ? (
-                ongoingItems.length === 0 ? (
-                  <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                    No procedures recorded for this visit yet.
-                  </div>
-                ) : (
-                  <div className="text-center py-2 text-[11px] text-slate-400 bg-slate-50/40 rounded-lg border border-dashed border-slate-200">
-                    No additional procedures recorded. Active sitting shown above.
-                  </div>
-                )
-              ) : (
-                currentVisitItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-xl border bg-emerald-50/40 border-emerald-100 text-xs space-y-1.5 transition-all"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {item.toothNumber ? (
-                            <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
-                              Tooth {item.toothNumber}
-                            </span>
-                          ) : (
-                            <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
-                              General
-                            </span>
-                          )}
-                          <span className="font-bold text-slate-900">
-                            {item.catalogItem?.name}{' '}
-                            {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {item.catalogItem?.category}
-                        </div>
-                        {((item.totalSittings ?? 1) > 0) && (
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              {item.sessions?.filter(s => s.status === 'Completed').length || 0} / {item.totalSittings ?? 1} Sittings
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setWorkspaceView('sessions')}
-                              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold underline"
-                            >
-                              Manage Sittings &rarr;
-                            </button>
-                          </div>
+                  {isBreakdownOpen && (
+                    <div className="p-2.5 pt-1.5 border-t border-teal-200/60 space-y-2 bg-white/80">
+                      <div className="flex items-center justify-between text-[10px] text-teal-700 font-medium">
+                        <span>Enter itemized amounts (auto-sums to Total Fee)</span>
+                        {rctBreakdownTotal > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRctBreakdown({ xray: '', rct: '', crown: '', scan: '' });
+                              if (!isFeeLocked) {
+                                setLocalTreatmentFee('0');
+                              }
+                            }}
+                            className="text-rose-600 hover:underline font-semibold"
+                          >
+                            Clear
+                          </button>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-slate-400 hover:text-sky-600 hover:bg-sky-50 cursor-pointer"
-                          onClick={() => handleStartEdit(item)}
-                          title="Edit procedure"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                          onClick={() => handleDelete(item.id)}
-                          title="Remove procedure"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* X-Ray */}
+                        <div className="space-y-0.5">
+                          <label className="text-[11px] font-semibold text-slate-700 block">X-Ray (₹)</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-xs">
+                              ₹
+                            </span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              className="pl-5.5 h-7.5 text-xs bg-white font-semibold text-slate-900 border-teal-200 focus:border-teal-400 focus:ring-teal-400/20"
+                              value={rctBreakdown.xray}
+                              onChange={(e) => handleBreakdownChange('xray', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* RCT */}
+                        <div className="space-y-0.5">
+                          <label className="text-[11px] font-semibold text-slate-700 block">RCT (₹)</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-xs">
+                              ₹
+                            </span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              className="pl-5.5 h-7.5 text-xs bg-white font-semibold text-slate-900 border-teal-200 focus:border-teal-400 focus:ring-teal-400/20"
+                              value={rctBreakdown.rct}
+                              onChange={(e) => handleBreakdownChange('rct', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Crown */}
+                        <div className="space-y-0.5">
+                          <label className="text-[11px] font-semibold text-slate-700 block">Crown (₹)</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-xs">
+                              ₹
+                            </span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              className="pl-5.5 h-7.5 text-xs bg-white font-semibold text-slate-900 border-teal-200 focus:border-teal-400 focus:ring-teal-400/20"
+                              value={rctBreakdown.crown}
+                              onChange={(e) => handleBreakdownChange('crown', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Scan */}
+                        <div className="space-y-0.5">
+                          <label className="text-[11px] font-semibold text-slate-700 block">Scan (₹)</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-xs">
+                              ₹
+                            </span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              className="pl-5.5 h-7.5 text-xs bg-white font-semibold text-slate-900 border-teal-200 focus:border-teal-400 focus:ring-teal-400/20"
+                              value={rctBreakdown.scan}
+                              onChange={(e) => handleBreakdownChange('scan', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-teal-200/60 text-[11px]">
+                        <span className="font-semibold text-slate-600">Subtotal:</span>
+                        <span className="font-bold text-teal-800">
+                          ₹{rctBreakdownTotal.toLocaleString()}
+                        </span>
                       </div>
                     </div>
-
-                    {item.notes && (
-                      <div className="pt-1 text-[11px] text-slate-600 bg-white/70 p-1.5 rounded border border-emerald-100/70">
-                        {item.notes}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          ) : (
-            /* Longitudinal / Patient Profile List */
-            <div className="space-y-2.5">
-              {currentVisitItems.length === 0 ? (
-                <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                  No treatment plan items found for this patient.
+                  )}
                 </div>
-              ) : (
-                currentVisitItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`p-3 rounded-xl border text-xs space-y-1.5 transition-all ${
-                      item.status === 'Completed'
-                        ? 'bg-emerald-50/40 border-emerald-100'
-                        : 'bg-amber-50/30 border-amber-200/60'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {item.toothNumber ? (
-                            <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
-                              Tooth {item.toothNumber}
-                            </span>
-                          ) : (
-                            <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
-                              General
-                            </span>
-                          )}
-                          <span className="font-bold text-slate-900">
-                            {item.catalogItem?.name}{' '}
-                            {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
-                          </span>
-                          <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${
-                              item.status === 'Completed'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {item.status}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {item.catalogItem?.category}
-                        </div>
-                      </div>
+              )}
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        onClick={() => handleDelete(item.id)}
-                        title="Remove procedure"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-
-                    {item.notes && (
-                      <div className="pt-1 text-[11px] text-slate-600 bg-white/70 p-1.5 rounded border border-slate-100">
-                        {item.notes}
-                      </div>
-                    )}
-                  </div>
-                ))
+          {/* Dental Lab Selection (Simple dropdown only) */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <FlaskConical className="w-3.5 h-3.5 text-teal-600" />
+                <span>Dental Lab (Optional)</span>
+              </label>
+              {selectedLabId && (
+                <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 px-1.5 py-0.2 rounded border border-teal-200 flex items-center gap-1">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: labs.find((l) => l.id === selectedLabId)?.color || '#0D9488' }}
+                  />
+                  Lab Linked
+                </span>
               )}
             </div>
+            <select
+              value={selectedLabId}
+              onChange={(e) => setSelectedLabId(e.target.value)}
+              className="w-full h-8 text-xs bg-white rounded-lg border border-slate-200 px-2 font-medium text-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500/20"
+            >
+              <option value="">-- No Lab Required --</option>
+              {labs.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name} {l.contactPerson ? `(${l.contactPerson})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Expected Sittings: Numeric 1, 2, 3, or custom number */}
+          <div className="space-y-1.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                Expected Sittings
+              </label>
+              <span className="text-[11px] font-semibold text-indigo-700">
+                {plannedSittings === 0 ? '0 sittings' : plannedSittings === 1 ? '1 sitting' : `${plannedSittings} sittings`}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {[0, 1, 2, 3].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => {
+                    setPlannedSittings(num);
+                    setCustomSittingsInput('');
+                  }}
+                  className={`flex-1 h-7 rounded-lg text-xs font-bold border transition-all ${plannedSittings === num && customSittingsInput === ''
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                >
+                  {num}
+                </button>
+              ))}
+              <div className="flex-[1.2] min-w-[52px] relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Custom"
+                  value={customSittingsInput}
+                  onChange={(e) => {
+                    const str = e.target.value.replace(/[^0-9]/g, '');
+                    setCustomSittingsInput(str);
+                    const val = parseInt(str, 10);
+                    if (str === '0' || val === 0) {
+                      setPlannedSittings(0);
+                    } else if (!isNaN(val) && val >= 1) {
+                      setPlannedSittings(Math.min(50, val));
+                    } else if (str === '') {
+                      setPlannedSittings(1);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (plannedSittings > 3 && !customSittingsInput) {
+                      setCustomSittingsInput(String(plannedSittings));
+                    }
+                  }}
+                  className={`w-full h-7 px-1 text-xs font-bold text-center rounded-lg border transition-all outline-none ${customSittingsInput !== '' || (plannedSittings > 3 && customSittingsInput === '')
+                    ? 'bg-indigo-600 text-white border-indigo-600 placeholder:text-indigo-200 ring-2 ring-indigo-500/20'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 placeholder:text-slate-400'
+                    }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Doctor Clinical Notes (Strictly Separate from Tooth Number) */}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700">
+              Doctor Notes (Optional)
+            </label>
+            <Textarea
+              placeholder="Enter clinical notes, diagnosis, or instructions..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="bg-white text-xs min-h-[52px] resize-none"
+            />
+          </div>
+        </div>
+
+        {errorMsg && (
+          <div className="flex items-center gap-1.5 text-xs text-rose-600 bg-rose-50 p-2 rounded-lg border border-rose-100">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        <Button
+          size="sm"
+          className="w-full h-8 text-xs font-bold"
+          disabled={!selectedProcedure || saving}
+          onClick={handleAddOrUpdate}
+        >
+          {saving ? (
+            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+          ) : editingItem ? (
+            <CheckCircle2 className="w-4 h-4 mr-1.5" />
+          ) : (
+            <Plus className="w-4 h-4 mr-1.5" />
           )}
+          {editingItem ? 'Save Changes' : 'Add to Plan'}
+        </Button>
+      </div>
 
-          {/* Planned Roadmap Items (Pending Future / Complete Today) */}
-          {plannedItems.length > 0 && (
-            <div className="space-y-2.5 pt-2 border-t border-slate-100">
-              <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
-                Planned Future Procedures ({plannedItems.length})
+      {/* =================================================================== */}
+      {/* RIGHT COLUMN (min-[1440px]:col-span-4): Planned & Active Treatments */}
+      {/* =================================================================== */}
+      <div className="w-full min-[1440px]:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-xs space-y-3 max-h-[min(540px,calc(96vh-170px))] overflow-y-auto">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <h4 className="text-sm font-bold text-slate-900">Treatments & Sessions</h4>
+          <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+            {ongoingItems.length + currentVisitItems.length + plannedItems.length} items
+          </span>
+        </div>
+
+        {/* 1. Active Ongoing Multi-Sitting Treatments */}
+        {ongoingItems.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                Active Ongoing Treatments ({ongoingItems.length})
               </h5>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                In Progress
+              </span>
+            </div>
 
-              {plannedItems.map((item) => (
+            {ongoingItems.map((item) => {
+              const totalS = item.totalSittings || 1;
+              const completedSessions = (item.sessions || []).filter((s: any) => s.status === 'Completed');
+              const pendingSessions = (item.sessions || []).filter((s: any) => s.status !== 'Completed' && s.status !== 'Cancelled');
+              const nextSession = pendingSessions.sort((a: any, b: any) => a.sittingNumber - b.sittingNumber)[0];
+              const nextSessionNum = nextSession?.sittingNumber || (completedSessions.length + 1);
+              const nextSessionDate = nextSession?.plannedDate || nextSession?.actualDate;
+              const dueInfo = getSessionDueInfo(nextSessionDate);
+
+              return (
                 <div
                   key={item.id}
-                  className="p-3 rounded-xl border bg-amber-50/30 border-amber-200/60 text-xs space-y-2 shadow-2xs"
+                  className="p-3 rounded-xl border bg-gradient-to-r from-amber-50/70 to-orange-50/50 border-amber-200 text-xs space-y-2 shadow-2xs"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {item.toothNumber ? (
+                        {parseTeeth(item).length > 0 ? (
                           <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
-                            Tooth {item.toothNumber}
+                            {formatTeethLabel(item)}
+                          </span>
+                        ) : (
+                          <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
+                            General
+                          </span>
+                        )}
+                        <span className="font-bold text-slate-900">
+                          {item.catalogItem?.name} {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {item.catalogItem?.category}
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                      Sitting {completedSessions.length}/{totalS}
+                    </span>
+                  </div>
+
+                  {renderLabBadge(item)}
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200/70 flex-wrap">
+                    <span className={`text-[11px] font-semibold flex items-center gap-1 ${dueInfo.isOverdue
+                      ? 'text-rose-700 font-bold'
+                      : dueInfo.isToday
+                        ? 'text-amber-900 font-bold'
+                        : dueInfo.isTomorrow
+                          ? 'text-indigo-950 font-bold'
+                          : 'text-slate-700'
+                      }`}>
+                      👉 Next: Sitting {nextSessionNum} ({dueInfo.cardText})
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-6 px-2.5 text-[11px] font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs cursor-pointer"
+                      onClick={() => {
+                        setWorkspaceView('sessions');
+                      }}
+                    >
+                      Record Sitting {nextSessionNum} &rarr;
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Current Visit Procedures */}
+        {currentVisitId ? (
+          <div className="space-y-2.5">
+            <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Completed This Visit ({currentVisitItems.length})
+            </h5>
+
+            {currentVisitItems.length === 0 ? (
+              ongoingItems.length === 0 ? (
+                <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                  No procedures recorded for this visit yet.
+                </div>
+              ) : (
+                <div className="text-center py-2 text-[11px] text-slate-400 bg-slate-50/40 rounded-lg border border-dashed border-slate-200">
+                  No additional procedures recorded. Active sitting shown above.
+                </div>
+              )
+            ) : (
+              currentVisitItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-3 rounded-xl border bg-emerald-50/40 border-emerald-100 text-xs space-y-1.5 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {parseTeeth(item).length > 0 ? (
+                          <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
+                            {formatTeethLabel(item)}
                           </span>
                         ) : (
                           <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
@@ -1256,6 +1536,157 @@ export function TreatmentPlanUI({
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {item.catalogItem?.category}
                       </div>
+                      {((item.totalSittings ?? 1) > 0) && (
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            {item.sessions?.filter(s => s.status === 'Completed').length || 0} / {item.totalSittings ?? 1} Sittings
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setWorkspaceView('sessions')}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold underline"
+                          >
+                            Manage Sittings &rarr;
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-slate-400 hover:text-sky-600 hover:bg-sky-50 cursor-pointer"
+                        onClick={() => handleStartEdit(item)}
+                        title="Edit procedure"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        onClick={() => handleDelete(item.id)}
+                        title="Remove procedure"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {item.notes && (
+                    <div className="pt-1 text-[11px] text-slate-600 bg-white/70 p-1.5 rounded border border-emerald-100/70">
+                      {renderProcedureNotes(item.notes)}
+                    </div>
+                  )}
+
+                  {renderLabBadge(item)}
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          /* Longitudinal / Patient Profile List */
+          <div className="space-y-2.5">
+            {currentVisitItems.length === 0 ? (
+              <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                No treatment plan items found for this patient.
+              </div>
+            ) : (
+              currentVisitItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={`p-3 rounded-xl border text-xs space-y-1.5 transition-all ${item.status === 'Completed'
+                    ? 'bg-emerald-50/40 border-emerald-100'
+                    : 'bg-amber-50/30 border-amber-200/60'
+                    }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {parseTeeth(item).length > 0 ? (
+                          <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
+                            {formatTeethLabel(item)}
+                          </span>
+                        ) : (
+                          <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
+                            General
+                          </span>
+                        )}
+                        <span className="font-bold text-slate-900">
+                          {item.catalogItem?.name}{' '}
+                          {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-full ${item.status === 'Completed'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                            }`}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {item.catalogItem?.category}
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      onClick={() => handleDelete(item.id)}
+                      title="Remove procedure"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  {item.notes && (
+                    <div className="pt-1 text-[11px] text-slate-600 bg-white/70 p-1.5 rounded border border-slate-100">
+                      {renderProcedureNotes(item.notes)}
+                    </div>
+                  )}
+
+                  {renderLabBadge(item)}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Planned Roadmap Items (Pending Future / Complete Today) */}
+        {plannedItems.length > 0 && (
+          <div className="space-y-2.5 pt-2 border-t border-slate-100">
+            <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
+              Planned Future Procedures ({plannedItems.length})
+            </h5>
+
+            {plannedItems.map((item) => (
+              <div
+                key={item.id}
+                className="p-3 rounded-xl border bg-amber-50/30 border-amber-200/60 text-xs space-y-2 shadow-2xs"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {parseTeeth(item).length > 0 ? (
+                        <span className="font-bold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
+                          {formatTeethLabel(item)}
+                        </span>
+                      ) : (
+                        <span className="font-medium text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded text-[10px]">
+                          General
+                        </span>
+                      )}
+                      <span className="font-bold text-slate-900">
+                        {item.catalogItem?.name}{' '}
+                        {item.catalogItem?.variant ? `(${item.catalogItem.variant})` : ''}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {item.catalogItem?.category}
+                    </div>
                     {((item.totalSittings ?? 1) > 0) && (
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -1270,429 +1701,447 @@ export function TreatmentPlanUI({
                         </button>
                       </div>
                     )}
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-slate-400 hover:text-sky-600 hover:bg-sky-50"
-                        onClick={() => handleStartEdit(item)}
-                        title="Edit procedure"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                        onClick={() => handleDelete(item.id)}
-                        title="Delete procedure"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
                   </div>
 
-                  {item.notes && (
-                    <div className="text-[11px] text-slate-600 bg-white/70 p-1.5 rounded border border-amber-100">
-                      {item.notes}
-                    </div>
-                  )}
-
-                  {((item.totalSittings ?? 1) > 1) ? (
+                  <div className="flex items-center gap-1">
                     <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-50 font-bold"
-                      onClick={() => setWorkspaceView('sessions')}
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-slate-400 hover:text-sky-600 hover:bg-sky-50"
+                      onClick={() => handleStartEdit(item)}
+                      title="Edit procedure"
                     >
-                      <Clock className="w-3 h-3 mr-1 text-amber-600" /> Start / Manage Sittings &rarr;
+                      <Edit2 className="h-3 w-3" />
                     </Button>
-                  ) : (
                     <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold"
-                      disabled={saving}
-                      onClick={() => handleMarkCompleted(item.id)}
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                      onClick={() => handleDelete(item.id)}
+                      title="Delete procedure"
                     >
-                      <Check className="w-3 h-3 mr-1" /> Complete Today
+                      <Trash2 className="h-3 w-3" />
                     </Button>
-                  )}
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* Past Completed History (Hidden as of now) */}
-          {false as boolean && pastCompletedItems.length > 0 && (
-            <div className="pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowPastHistory(!showPastHistory)}
-                className="flex items-center justify-between w-full text-xs text-slate-500 hover:text-slate-800 py-1.5 font-medium transition-colors"
-              >
-                <span className="flex items-center gap-1.5">
-                  <History className="w-3.5 h-3.5 text-slate-400" />
-                  Past Visits History ({pastCompletedItems.length})
-                </span>
-                {showPastHistory ? (
-                  <ChevronUp className="w-3.5 h-3.5" />
-                ) : (
-                  <ChevronDown className="w-3.5 h-3.5" />
+                {item.notes && (
+                  <div className="text-[11px] text-slate-600 bg-white/70 p-1.5 rounded border border-amber-100">
+                    {renderProcedureNotes(item.notes)}
+                  </div>
                 )}
-              </button>
 
-              {showPastHistory && (
-                <div className="mt-2 space-y-2 pl-2 border-l-2 border-slate-200">
-                  {pastCompletedItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs flex justify-between items-center text-slate-600"
-                    >
-                      <div>
-                        <div className="font-semibold text-slate-800 flex items-center gap-1">
-                          {item.toothNumber && (
-                            <span className="text-[10px] bg-sky-100 text-sky-800 px-1 py-0.2 rounded font-bold">
-                              T{item.toothNumber}
-                            </span>
-                          )}
-                          {item.catalogItem?.name}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {item.catalogItem?.category} {item.notes ? `• ${item.notes}` : ''}
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">
-                        Past Visit
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+                {renderLabBadge(item)}
 
-      {/* =================================================================== */}
-      {/* BOTTOM BAR: Total Treatment Fee & Done Action                       */}
-      {/* =================================================================== */}
-      {(currentVisitId || treatmentFee !== undefined) && (
-        <div className="py-2 px-3 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col gap-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div className="space-y-0.5">
-              <label className="text-xs font-bold text-slate-800">Total Treatment Fee (₹)</label>
-              <p className="text-[10px] text-slate-500">
-                Applicable procedure or treatment charge for this clinical consultation
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-36">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-xs">
-                  ₹
-                </span>
-                <Input
-                  type="number"
-                  min="0"
-                  step="50"
-                  className="pl-6 h-8 text-xs bg-white font-semibold text-slate-900"
-                  value={localTreatmentFee}
-                  onBlur={() => {
-                    let num = Number(localTreatmentFee);
-                    if (localTreatmentFee === '' || isNaN(num) || num < 0) {
-                      num = 0;
-                    }
-                    setLocalTreatmentFee(String(num));
-                  }}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setLocalTreatmentFee(val);
-                  }}
-                />
+                {((item.totalSittings ?? 1) > 1) ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-50 font-bold"
+                    onClick={() => setWorkspaceView('sessions')}
+                  >
+                    <Clock className="w-3 h-3 mr-1 text-amber-600" /> Start / Manage Sittings &rarr;
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold"
+                    disabled={saving}
+                    onClick={() => handleMarkCompleted(item.id)}
+                  >
+                    <Check className="w-3 h-3 mr-1" /> Complete Today
+                  </Button>
+                )}
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 px-4 text-xs font-semibold bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                onClick={async () => {
-                  await rollback();
-                  if (onCancel) onCancel();
-                }}
-              >
-                Cancel
-              </Button>
-              {onDone && (
-                <Button
-                  className="h-8 px-5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
-                  onClick={async () => {
-                    const feeNum = Number(localTreatmentFee) || 0;
-                    const totalProcedures = currentVisitItems.length + plannedItems.length + ongoingItems.length;
-
-                    if (totalProcedures === 0) {
-                      if (!noProcedureReason.trim()) {
-                        setIsNoProcedureModalOpen(true);
-                        return;
-                      }
-                    } else if (feeNum === 0 && !treatmentZeroReason.trim() && currentVisitItems.length > 0) {
-                      setIsZeroFeeModalOpen(true);
-                      return;
-                    }
-
-                    isConfirmed.current = true;
-                    try {
-                      await api.post(`/api/patients/${patientId}/treatment-plan/commit-snapshot`);
-                    } catch (e) {
-                      console.error('Failed to commit snapshot:', e);
-                    }
-                    sessionCreatedItemIds.current = [];
-                    imagingCommitRef.current();
-                    const finalReason = totalProcedures === 0 ? noProcedureReason.trim() : treatmentZeroReason;
-                    if (onSaveTreatmentFee) await onSaveTreatmentFee(feeNum, finalReason);
-                    if (onDone) onDone(totalProcedures === 0 ? noProcedureReason.trim() : undefined, feeNum);
-                  }}
-                >
-                  Done
-                </Button>
-              )}
-            </div>
+            ))}
           </div>
+        )}
 
-          {(currentVisitItems.length + plannedItems.length + ongoingItems.length) === 0 ? (
-            <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
-              {noProcedureReason ? (
-                <span className="inline-flex items-center gap-1 text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 font-medium">
-                  No Procedure Reason: {noProcedureReason}
-                  <button
-                    type="button"
-                    onClick={() => setIsNoProcedureModalOpen(true)}
-                    className="underline text-teal-900 ml-1 hover:text-teal-950 font-bold"
-                  >
-                    Edit
-                  </button>
-                </span>
-              ) : (
-                <span className="text-rose-600 font-semibold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  Adding a procedure is mandatory. Clicking Done without a procedure requires a clinical reason.
-                </span>
-              )}
-            </div>
-          ) : Number(localTreatmentFee) === 0 && currentVisitItems.length > 0 && (
-            <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
-              {treatmentZeroReason ? (
-                <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                  Waiver: {treatmentZeroReason}
-                  <button
-                    type="button"
-                    onClick={() => setIsZeroFeeModalOpen(true)}
-                    className="underline text-amber-800 ml-1 hover:text-amber-900"
-                  >
-                    Edit
-                  </button>
-                </span>
-              ) : (
-                <span className="text-amber-600 font-medium">
-                  ₹0 treatment fee requires a waiver reason upon clicking Done.
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Modal for ₹0 Treatment Fee Reason (opens only when Done is clicked with ₹0) */}
-      <Dialog open={isZeroFeeModalOpen} onOpenChange={setIsZeroFeeModalOpen}>
-        <DialogContent className="max-w-md w-full p-5 gap-3.5 bg-white rounded-2xl shadow-xl">
-          <DialogHeader className="space-y-1">
-            <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 text-amber-700">
-                <AlertCircle className="w-4 h-4" />
+        {/* Past Completed History (Hidden as of now) */}
+        {false as boolean && pastCompletedItems.length > 0 && (
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setShowPastHistory(!showPastHistory)}
+              className="flex items-center justify-between w-full text-xs text-slate-500 hover:text-slate-800 py-1.5 font-medium transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 text-slate-400" />
+                Past Visits History ({pastCompletedItems.length})
               </span>
-              Reason for ₹0 Treatment Fee
-            </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
-              Please specify why no treatment fee is charged for this visit. Required for clinical audit and fee waiver records.
-            </DialogDescription>
-          </DialogHeader>
+              {showPastHistory ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
 
-          <div className="space-y-3.5 py-1">
-            {/* Quick Tags */}
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-                Select Reason Tag
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {ZERO_FEE_REASONS.map((tag) => (
-                  <button
-                    type="button"
-                    key={tag}
-                    onClick={() => {
-                      setTreatmentZeroReason(tag);
-                      setTreatmentZeroError('');
-                    }}
-                    className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
-                      treatmentZeroReason === tag
-                        ? 'bg-amber-600 text-white border-amber-600 font-semibold shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
-                    }`}
+            {showPastHistory && (
+              <div className="mt-2 space-y-2 pl-2 border-l-2 border-slate-200">
+                {pastCompletedItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs flex justify-between items-center text-slate-600"
                   >
-                    {tag}
-                  </button>
+                    <div>
+                      <div className="font-semibold text-slate-800 flex items-center gap-1">
+                        {parseTeeth(item).length > 0 && (
+                          <span className="text-[10px] bg-sky-100 text-sky-800 px-1 py-0.2 rounded font-bold">
+                            {formatTeethLabel(item)}
+                          </span>
+                        )}
+                        {item.catalogItem?.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {item.catalogItem?.category} {item.notes ? `• ${item.notes}` : ''}
+                      </div>
+                    </div>
+                    <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">
+                      Past Visit
+                    </span>
+                  </div>
                 ))}
               </div>
-            </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+    </div >
 
-            {/* Detailed Reason Text Box */}
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Reason Details / Notes <span className="text-rose-500">*</span>
-              </label>
-              <Textarea
-                placeholder="Enter reason for ₹0 treatment fee (e.g. Free checkup, warranty adjustment, package follow-up)..."
-                value={treatmentZeroReason}
-                onChange={(e) => {
-                  setTreatmentZeroReason(e.target.value);
-                  if (e.target.value.trim()) setTreatmentZeroError('');
-                }}
-                rows={3}
-                className={`text-xs bg-white resize-none ${
-                  treatmentZeroError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
-                }`}
-              />
-              {treatmentZeroError && (
-                <p className="text-[11px] text-rose-600 font-medium mt-1">{treatmentZeroError}</p>
+    {/* =================================================================== */ }
+  {/* BOTTOM BAR: Total Treatment Fee & Done Action                       */ }
+  {/* =================================================================== */ }
+  {
+    (currentVisitId || treatmentFee !== undefined) && (
+      <div className="py-2 px-3 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="space-y-0.5">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+              <span>Total Treatment Fee (₹)</span>
+              {isFeeLocked && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                  <Lock className="w-2.5 h-2.5 text-amber-700" /> Fee Locked (Patient at Reception)
+                </span>
               )}
-            </div>
+            </label>
+            <p className="text-[10px] text-slate-500">
+              {isFeeLocked
+                ? 'Total fee is locked because this patient is already at Reception. Only procedures can be updated.'
+                : 'Applicable procedure or treatment charge for this clinical consultation'}
+            </p>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-36">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-xs">
+                ₹
+              </span>
+              <Input
+                type="number"
+                min="0"
+                step="50"
+                disabled={isFeeLocked}
+                readOnly={isFeeLocked}
+                className={`pl-6 h-8 text-xs font-semibold ${isFeeLocked
+                  ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200 select-none'
+                  : 'bg-white text-slate-900'
+                  }`}
+                value={localTreatmentFee}
+                onBlur={() => {
+                  if (isFeeLocked) return;
+                  let num = Number(localTreatmentFee);
+                  if (localTreatmentFee === '' || isNaN(num) || num < 0) {
+                    num = 0;
+                  }
+                  setLocalTreatmentFee(String(num));
+                }}
+                onChange={(e) => {
+                  if (isFeeLocked) return;
+                  const val = e.target.value;
+                  setLocalTreatmentFee(val);
+                }}
+              />
+            </div>
             <Button
+              type="button"
               variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => {
-                setTreatmentZeroError('');
-                setIsZeroFeeModalOpen(false);
+              className="h-8 px-4 text-xs font-semibold bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+              onClick={async () => {
+                await rollback();
+                if (onCancel) onCancel();
               }}
             >
               Cancel
             </Button>
-            <Button
-              size="sm"
-              className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
-              onClick={async () => {
-                if (!treatmentZeroReason.trim()) {
-                  setTreatmentZeroError('Please select or provide a reason for ₹0 treatment fee.');
-                  return;
-                }
-                // Close ONLY this waiver reason modal
-                setIsZeroFeeModalOpen(false);
-              }}
-            >
-              Confirm Reason
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {onDone && (
+              <Button
+                className="h-8 px-5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
+                onClick={async () => {
+                  const feeNum = Number(localTreatmentFee) || 0;
+                  const totalProcedures = currentVisitItems.length + plannedItems.length + ongoingItems.length;
 
-      {/* Modal for No Procedure Reason (opens when Done is clicked with 0 procedures) */}
-      <Dialog open={isNoProcedureModalOpen} onOpenChange={setIsNoProcedureModalOpen}>
-        <DialogContent className="max-w-md w-full p-5 gap-3.5 bg-white rounded-2xl shadow-xl">
-          <DialogHeader className="space-y-1">
-            <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-rose-100 text-rose-700">
-                <AlertCircle className="w-4 h-4" />
-              </span>
-              Clinical Reason Required
-            </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
-              Adding a procedure is mandatory for treatment planning. If no procedure was performed or planned during this visit, please specify the clinical reason to proceed.
-            </DialogDescription>
-          </DialogHeader>
+                  if (totalProcedures === 0) {
+                    if (!noProcedureReason.trim()) {
+                      setIsNoProcedureModalOpen(true);
+                      return;
+                    }
+                  } else if (!isFeeLocked && feeNum === 0 && !treatmentZeroReason.trim() && currentVisitItems.length > 0) {
+                    setIsZeroFeeModalOpen(true);
+                    return;
+                  }
 
-          <div className="space-y-3.5 py-1">
-            {/* Quick Tags */}
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-                Select Reason Tag
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {NO_PROCEDURE_REASONS.map((tag) => (
-                  <button
-                    type="button"
-                    key={tag}
-                    onClick={() => {
-                      setNoProcedureReason(tag);
-                      setNoProcedureError('');
-                    }}
-                    className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
-                      noProcedureReason === tag
-                        ? 'bg-teal-600 text-white border-teal-600 font-semibold shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-teal-50 hover:border-teal-300'
-                    }`}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Detailed Reason Text Box */}
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Clinical Reason Details / Notes <span className="text-rose-500">*</span>
-              </label>
-              <Textarea
-                placeholder="Enter clinical reason why no procedure was added (e.g. Patient came for diagnostic consultation only, deferred procedure due to fever)..."
-                value={noProcedureReason}
-                onChange={(e) => {
-                  setNoProcedureReason(e.target.value);
-                  if (e.target.value.trim()) setNoProcedureError('');
+                  isConfirmed.current = true;
+                  try {
+                    await api.post(`/api/patients/${patientId}/treatment-plan/commit-snapshot`);
+                  } catch (e) {
+                    console.error('Failed to commit snapshot:', e);
+                  }
+                  sessionCreatedItemIds.current = [];
+                  imagingCommitRef.current();
+                  const finalReason = totalProcedures === 0 ? noProcedureReason.trim() : treatmentZeroReason;
+                  if (!isFeeLocked && onSaveTreatmentFee) {
+                    await onSaveTreatmentFee(feeNum, finalReason);
+                  }
+                  if (onDone) onDone(totalProcedures === 0 ? noProcedureReason.trim() : undefined, feeNum);
                 }}
-                rows={3}
-                className={`text-xs bg-white resize-none ${
-                  noProcedureError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
-                }`}
-              />
-              {noProcedureError && (
-                <p className="text-[11px] text-rose-600 font-medium mt-1">{noProcedureError}</p>
-              )}
-            </div>
+              >
+                Done
+              </Button>
+            )}
           </div>
+        </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => {
-                setNoProcedureError('');
-                setIsNoProcedureModalOpen(false);
-              }}
-            >
-              Cancel (Add Procedure)
-            </Button>
-            <Button
-              size="sm"
-              className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
-              onClick={() => {
-                if (!noProcedureReason.trim()) {
-                  setNoProcedureError('Please select or provide a reason why no procedure was added.');
-                  return;
-                }
-                setNoProcedureError('');
-                setIsNoProcedureModalOpen(false);
-              }}
-            >
-              Confirm Reason
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        {(currentVisitItems.length + plannedItems.length + ongoingItems.length) === 0 ? (
+          <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
+            {noProcedureReason ? (
+              <span className="inline-flex items-center gap-1 text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 font-medium">
+                No Procedure Reason: {noProcedureReason}
+                <button
+                  type="button"
+                  onClick={() => setIsNoProcedureModalOpen(true)}
+                  className="underline text-teal-900 ml-1 hover:text-teal-950 font-bold"
+                >
+                  Edit
+                </button>
+              </span>
+            ) : (
+              <span className="text-rose-600 font-semibold flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                Adding a procedure is mandatory. Clicking Done without a procedure requires a clinical reason.
+              </span>
+            )}
+          </div>
+        ) : !isFeeLocked && Number(localTreatmentFee) === 0 && currentVisitItems.length > 0 && (
+          <div className="text-[10px] w-full text-left pt-0.5 border-t border-slate-200/60">
+            {treatmentZeroReason ? (
+              <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                Waiver: {treatmentZeroReason}
+                <button
+                  type="button"
+                  onClick={() => setIsZeroFeeModalOpen(true)}
+                  className="underline text-amber-800 ml-1 hover:text-amber-900"
+                >
+                  Edit
+                </button>
+              </span>
+            ) : (
+              <span className="text-amber-600 font-medium">
+                ₹0 treatment fee requires a waiver reason upon clicking Done.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  {/* Modal for ₹0 Treatment Fee Reason (opens only when Done is clicked with ₹0) */ }
+  <Dialog open={isZeroFeeModalOpen} onOpenChange={setIsZeroFeeModalOpen}>
+    <DialogContent className="max-w-md w-full p-5 gap-3.5 bg-white rounded-2xl shadow-xl">
+      <DialogHeader className="space-y-1">
+        <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 text-amber-700">
+            <AlertCircle className="w-4 h-4" />
+          </span>
+          Reason for ₹0 Treatment Fee
+        </DialogTitle>
+        <DialogDescription className="text-xs text-slate-500">
+          Please specify why no treatment fee is charged for this visit. Required for clinical audit and fee waiver records.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-3.5 py-1">
+        {/* Quick Tags */}
+        <div>
+          <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+            Select Reason Tag
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {ZERO_FEE_REASONS.map((tag) => (
+              <button
+                type="button"
+                key={tag}
+                onClick={() => {
+                  setTreatmentZeroReason(tag);
+                  setTreatmentZeroError('');
+                }}
+                className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${treatmentZeroReason === tag
+                  ? 'bg-amber-600 text-white border-amber-600 font-semibold shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
+                  }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Detailed Reason Text Box */}
+        <div>
+          <label className="text-xs font-semibold text-slate-700 block mb-1">
+            Reason Details / Notes <span className="text-rose-500">*</span>
+          </label>
+          <Textarea
+            placeholder="Enter reason for ₹0 treatment fee (e.g. Free checkup, warranty adjustment, package follow-up)..."
+            value={treatmentZeroReason}
+            onChange={(e) => {
+              setTreatmentZeroReason(e.target.value);
+              if (e.target.value.trim()) setTreatmentZeroError('');
+            }}
+            rows={3}
+            className={`text-xs bg-white resize-none ${treatmentZeroError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
+              }`}
+          />
+          {treatmentZeroError && (
+            <p className="text-[11px] text-rose-600 font-medium mt-1">{treatmentZeroError}</p>
+          )}
+        </div>
+      </div>
+
+      <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={() => {
+            setTreatmentZeroError('');
+            setIsZeroFeeModalOpen(false);
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
+          onClick={async () => {
+            if (!treatmentZeroReason.trim()) {
+              setTreatmentZeroError('Please select or provide a reason for ₹0 treatment fee.');
+              return;
+            }
+            // Close ONLY this waiver reason modal
+            setIsZeroFeeModalOpen(false);
+          }}
+        >
+          Confirm Reason
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  {/* Modal for No Procedure Reason (opens when Done is clicked with 0 procedures) */ }
+  <Dialog open={isNoProcedureModalOpen} onOpenChange={setIsNoProcedureModalOpen}>
+    <DialogContent className="max-w-md w-full p-5 gap-3.5 bg-white rounded-2xl shadow-xl">
+      <DialogHeader className="space-y-1">
+        <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-rose-100 text-rose-700">
+            <AlertCircle className="w-4 h-4" />
+          </span>
+          Clinical Reason Required
+        </DialogTitle>
+        <DialogDescription className="text-xs text-slate-500">
+          Adding a procedure is mandatory for treatment planning. If no procedure was performed or planned during this visit, please specify the clinical reason to proceed.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-3.5 py-1">
+        {/* Quick Tags */}
+        <div>
+          <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+            Select Reason Tag
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {NO_PROCEDURE_REASONS.map((tag) => (
+              <button
+                type="button"
+                key={tag}
+                onClick={() => {
+                  setNoProcedureReason(tag);
+                  setNoProcedureError('');
+                }}
+                className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${noProcedureReason === tag
+                  ? 'bg-teal-600 text-white border-teal-600 font-semibold shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-teal-50 hover:border-teal-300'
+                  }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Detailed Reason Text Box */}
+        <div>
+          <label className="text-xs font-semibold text-slate-700 block mb-1">
+            Clinical Reason Details / Notes <span className="text-rose-500">*</span>
+          </label>
+          <Textarea
+            placeholder="Enter clinical reason why no procedure was added (e.g. Patient came for diagnostic consultation only, deferred procedure due to fever)..."
+            value={noProcedureReason}
+            onChange={(e) => {
+              setNoProcedureReason(e.target.value);
+              if (e.target.value.trim()) setNoProcedureError('');
+            }}
+            rows={3}
+            className={`text-xs bg-white resize-none ${noProcedureError ? 'border-rose-500 focus-visible:ring-rose-400' : 'border-slate-200'
+              }`}
+          />
+          {noProcedureError && (
+            <p className="text-[11px] text-rose-600 font-medium mt-1">{noProcedureError}</p>
+          )}
+        </div>
+      </div>
+
+      <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={() => {
+            setNoProcedureError('');
+            setIsNoProcedureModalOpen(false);
+          }}
+        >
+          Cancel (Add Procedure)
+        </Button>
+        <Button
+          size="sm"
+          className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white"
+          onClick={() => {
+            if (!noProcedureReason.trim()) {
+              setNoProcedureError('Please select or provide a reason why no procedure was added.');
+              return;
+            }
+            setNoProcedureError('');
+            setIsNoProcedureModalOpen(false);
+          }}
+        >
+          Confirm Reason
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+    </div >
   );
 }

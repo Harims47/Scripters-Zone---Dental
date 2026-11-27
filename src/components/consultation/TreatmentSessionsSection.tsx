@@ -21,6 +21,7 @@ import {
 } from '../ui/dialog';
 import { api } from '../../lib/api';
 import type { TreatmentPlan, TreatmentPlanItem, TreatmentSession } from '../../types/domain';
+import { formatTeethLabel, parseTeeth } from '../../lib/toothMetadata';
 
 interface TreatmentSessionsSectionProps {
   patientId: string;
@@ -289,9 +290,9 @@ export function TreatmentSessionsSection({
                 {/* ── Treatment Header ────────────────────────────── */}
                 <div className="px-3.5 py-2.5 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {item.toothNumber ? (
+                    {parseTeeth(item).length > 0 ? (
                       <span className="font-bold text-xs bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
-                        Tooth {item.toothNumber}
+                        {formatTeethLabel(item)}
                       </span>
                     ) : (
                       <span className="font-semibold text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded">

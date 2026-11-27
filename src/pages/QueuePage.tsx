@@ -1,12 +1,13 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, PlayCircle, Users, Tag, Clock } from 'lucide-react'
+import { Search, PlayCircle, Users, Tag, Clock, ChevronDown, Edit2, Lock } from 'lucide-react'
 import { DataTable } from '../components/data-table/data-table'
 import { DataTableToolbar } from '../components/data-table/data-table-toolbar'
 import { DataTableEmpty } from '../components/data-table/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '../components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog'
 import { toast } from 'react-hot-toast'
 
 import { useClinicContext } from '../context/ClinicContext'
@@ -14,7 +15,9 @@ import { useAuth } from '../context/AuthContext'
 import { canAccessRoute } from '../lib/route-permissions'
 import { api } from '../lib/api'
 import { DiscountModal } from '../components/queue/DiscountModal'
+import { TreatmentPlanUI } from '../components/consultation/TreatmentPlanUI'
 import { parseReasonForVisit } from '../constants/visitReasons'
+import { parseTeeth, formatTeethLabel } from '../lib/toothMetadata'
 
 type QueueRow = {
   id: string
@@ -43,6 +46,9 @@ export function QueuePage() {
   const [search, setSearch] = useState('')
   const [visitTypeFilter, setVisitTypeFilter] = useState<'all' | 'Walk-in' | 'Appointment'>('all')
   const [discountModalRow, setDiscountModalRow] = useState<QueueRow | null>(null)
+  const [editTreatmentRow, setEditTreatmentRow] = useState<QueueRow | null>(null)
+  const editTreatmentRollbackRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  const [expandedProcedureIds, setExpandedProcedureIds] = useState<Record<string, boolean>>({})
   
   const navigate = useNavigate()
 
@@ -149,38 +155,94 @@ export function QueuePage() {
     api.download(`/api/queue/export?${query}`, `queue_export.${format}`);
   }
 
-  const columns: ColumnDef<QueueRow>[] = [
+function QueuePatientCell({ 
+  row, 
+  isOpen, 
+  onToggle 
+}: { 
+  row: any; 
+  isOpen: boolean; 
+  onToggle: () => void; 
+}) {
+  const pending = row.original.pendingTreatments || [];
+  const hasTreatments = pending.length > 0;
+
+  return (
+    <div 
+      className="space-y-1.5"
+      onDoubleClick={() => {
+        if (hasTreatments) onToggle();
+      }}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-semibold text-slate-900 cursor-default">{row.original.name}</span>
+        {hasTreatments && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 shadow-2xs transition-colors cursor-pointer select-none"
+            title={isOpen ? "Click to collapse procedures" : "Click to view procedures"}
+          >
+            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+            <span>{pending.length} {pending.length === 1 ? 'Procedure' : 'Procedures'}</span>
+            <ChevronDown className={`w-3 h-3 text-amber-600 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+      </div>
+
+      {hasTreatments && isOpen && (
+        <div className="space-y-1 pt-1 pl-2 border-l-2 border-amber-300">
+          {pending.map((pt: any, idx: number) => {
+            const nextNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
+            const schedDate = pt.nextSession?.plannedDate
+              ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+              : null;
+            const teeth = parseTeeth(pt);
+            const teethTag = teeth.length > 0 ? (teeth.length === 1 ? ` #${teeth[0]}` : ` #${teeth.join(', ')}`) : '';
+            const teethLabel = formatTeethLabel(pt);
+            return (
+              <div
+                key={idx}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs max-w-full truncate"
+                title={`Unfinished treatment: ${pt.treatmentName}${teeth.length > 0 ? ` (${teethLabel})` : ''} • Sitting ${nextNum}/${pt.totalSittings}${schedDate ? ` • Scheduled: ${schedDate}` : ''}`}
+              >
+                <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                <span className="truncate">
+                  {pt.treatmentName}{teethTag} • Sitting {nextNum}/{pt.totalSittings}
+                  {schedDate ? ` • ${schedDate}` : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+  const columns: ColumnDef<QueueRow>[] = useMemo(() => [
     {
       accessorKey: "name",
       header: "Patient Name",
-      cell: ({ row }) => (
-        <div>
-          <span className="font-semibold text-slate-900 block">{row.original.name}</span>
-          {row.original.pendingTreatments && row.original.pendingTreatments.length > 0 && (
-            <div className="mt-1 space-y-1">
-              {row.original.pendingTreatments.map((pt: any, idx: number) => {
-                const nextNum = pt.nextSession?.sittingNumber || (pt.completedCount + 1);
-                const schedDate = pt.nextSession?.plannedDate
-                  ? new Date(pt.nextSession.plannedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                  : null;
-                return (
-                  <div
-                    key={idx}
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs max-w-full truncate"
-                    title={`Unfinished treatment: ${pt.treatmentName}${pt.toothNumber ? ` (Tooth ${pt.toothNumber})` : ''} • Sitting ${nextNum}/${pt.totalSittings}${schedDate ? ` • Scheduled: ${schedDate}` : ''}`}
-                  >
-                    <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                    <span className="truncate">
-                      {pt.treatmentName}{pt.toothNumber ? ` #${pt.toothNumber}` : ''} • Sitting {nextNum}/{pt.totalSittings}
-                      {schedDate ? ` • ${schedDate}` : ''}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )
+      cell: ({ row }) => {
+        const patientKey = row.original.patientId || row.original.id;
+        const isOpen = !!expandedProcedureIds[patientKey];
+        return (
+          <QueuePatientCell
+            row={row}
+            isOpen={isOpen}
+            onToggle={() => {
+              setExpandedProcedureIds(prev => ({
+                ...prev,
+                [patientKey]: !prev[patientKey]
+              }));
+            }}
+          />
+        );
+      }
     },
     {
       accessorKey: "reasonForVisit",
@@ -279,6 +341,13 @@ export function QueuePage() {
       header: "Status",
       cell: ({ row }) => {
         const item = row.original;
+        const normalizedStatus = (item.status || '').toLowerCase().trim();
+        const isReadyForReception = normalizedStatus === 'ready at reception' || 
+                                    normalizedStatus === 'ready for reception' || 
+                                    normalizedStatus === 'ready for payment' ||
+                                    normalizedStatus === 'dispensing' ||
+                                    normalizedStatus === 'payment';
+
         let actionButton = null;
         if (canManageClinical) {
           if (item.status === 'Called' || item.status === 'With Doctor' || item.status === 'Waiting' || item.status === 'In Progress' || item.status === 'Transferred') {
@@ -289,10 +358,28 @@ export function QueuePage() {
                 <PlayCircle className="mr-2 h-4 w-4" /> {isResuming ? 'Resume Consulting' : 'Start Consulting'}
               </Button>
             );
-          } else if (item.status === 'Ready for Reception' || item.status === 'Ready for Payment' || item.status === 'Paid' || item.status === 'Completed') {
+          } else if (isReadyForReception) {
+            actionButton = (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-800">
+                  Ready at Reception
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditTreatmentRow(item)}
+                  className="h-7.5 px-2.5 text-xs font-bold border-teal-300 text-teal-700 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-400 shadow-2xs flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Edit procedures for this patient"
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-teal-600" />
+                  Edit Treatment
+                </Button>
+              </div>
+            );
+          } else if (item.status === 'Paid' || item.status === 'Completed') {
             actionButton = (
               <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-800">
-                {item.status === 'Ready for Reception' ? 'Completed (At Reception)' : item.status}
+                {item.status}
               </span>
             );
           }
@@ -314,7 +401,7 @@ export function QueuePage() {
         );
       }
     }
-  ];
+  ], [expandedProcedureIds, canManageClinical, consultations]);
 
   return (
     <div className="space-y-6 pb-8 w-full min-w-0">
@@ -385,6 +472,54 @@ export function QueuePage() {
           currentDiscountReason={discountModalRow.discountReason}
           onApplyDiscount={handleApplyDiscount}
         />
+      )}
+
+      {/* Edit Treatment Modal (Opened directly from Queue when patient is at Reception) */}
+      {editTreatmentRow && (
+        <Dialog open={!!editTreatmentRow} onOpenChange={async (open) => {
+          if (!open) {
+            await editTreatmentRollbackRef.current();
+            setEditTreatmentRow(null);
+          }
+        }}>
+          <DialogContent className="max-w-7xl w-[96vw] max-w-full max-h-[96vh] flex flex-col p-0 gap-0 bg-slate-50 overflow-hidden">
+            <DialogHeader className="px-3.5 sm:px-5 py-2.5 bg-white border-b border-slate-100 shrink-0">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="space-y-0.5">
+                  <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span>Edit Treatment Plan — {editTreatmentRow.name}</span>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-700" />
+                      Fee Locked (Patient at Reception)
+                    </span>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500">
+                    Add or update clinical procedures. Total treatment fee is locked and cannot be modified here.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+            <div className="p-2 sm:p-3 overflow-y-auto overflow-x-hidden flex-1 w-full min-w-0 [scrollbar-gutter:stable]">
+              <TreatmentPlanUI
+                key={`${editTreatmentRow.patientId}-${editTreatmentRow.visitId}`}
+                patientId={editTreatmentRow.patientId}
+                currentVisitId={editTreatmentRow.visitId}
+                treatmentFee={editTreatmentRow.treatmentFee}
+                isFeeLocked={true}
+                onRegisterRollback={(fn) => { editTreatmentRollbackRef.current = fn; }}
+                onDone={async () => {
+                  setEditTreatmentRow(null);
+                  await refreshClinicOperations();
+                  toast.success('Treatment procedures updated');
+                }}
+                onCancel={async () => {
+                  await editTreatmentRollbackRef.current();
+                  setEditTreatmentRow(null);
+                }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )
